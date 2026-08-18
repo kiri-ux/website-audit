@@ -47,11 +47,11 @@ Outputs to `out/`:
 | Canonicalization | 4/6 | |
 | International SEO | 4/8 | |
 | HTML & Code Quality | 5/9 | |
-| Mobile SEO | 3/7 | Remainder need the Lighthouse reroute (Google retired the Mobile-Friendly Test) |
+| Mobile SEO | 7/7 | MOB-03..06 rerouted to Lighthouse via DataForSEO — Google retired the Mobile-Friendly Test API |
 | E-E-A-T | 9/24 | Page-existence subset; the other 15 are Tier B judgment |
 | AI SEO / GEO | 8/30 | llms.txt, AI-crawler access, schema; 14 are Tier B, 8 are the AI-visibility monitor |
-| Search Console / GA4 | 0/38 | Phase 2 — needs client OAuth |
-| Off-Page & Authority | 0/29 | Phase 2 — needs Ahrefs or Semrush |
+| Search Console / GA4 | 6/38 | Needs a Vici login on the property (`GOOGLE_TOKENS`). 27 rows across GSC/GA4/ANA genuinely require client account access — 9% of the template |
+| Off-Page & Authority | 12/29 | DataForSEO backlinks summary + anchors; the rest are further metered endpoints |
 
 ## Verification
 
@@ -81,8 +81,14 @@ checks/
   security.py       SEC + TLS, with dependency cascading
   geo_schema.py     SCHEMA, GEO, E-E-A-T page-existence
   perf.py           PERF + PageSpeed Insights adapter
+collectors/
+  analytics.py      GSC + GA4, multi-login token index
+  dataforseo.py     backlinks, ranked keywords, Lighthouse, screenshots
+  backlinks.py      Ahrefs/Semrush fallback for the OFF section
 scoring.py          severity → section score → overall rating
+charts.py           vector chart flowables (gauge, ranked bars, segment bars)
 report.py           HTML renderer
+pdf_report.py       client-facing PDF, built on charts.py
 ```
 
 **Adding a checkpoint** is one function:
@@ -115,8 +121,13 @@ should appear once. See `_cascade()` in `security.py`.
 
 ## Known limits
 
-- `MOB-03..07` reference Google's Mobile-Friendly Test, which Google retired
-  along with its API. Reroute to Lighthouse/PSI.
+- `MOB-07` still references Google's retired Mobile-Friendly Test. `MOB-03..06`
+  now read the Lighthouse mobile run instead, which is the documented
+  replacement.
 - PSI requires outbound access to `googleapis.com`; use `--skip-psi` offline.
+  Unauthenticated PSI shares a per-IP quota, so it returns 429 from a shared
+  host like Render. DataForSEO's hosted Lighthouse fills only the rows PSI
+  could not answer — PSI is still preferred where it succeeds, because it
+  carries CrUX field data and DataForSEO's run is a lab measurement.
 - External-link checking is sampled (60 URLs) to bound crawl time.
 - Tier B (37 judgment rows) and the AI-visibility monitor are Phases 3 and 4.

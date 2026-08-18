@@ -15,7 +15,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///data/test_capture.db")
 os.environ.setdefault("ARTIFACT_STORE", "local://data/test_capture_art")
 os.environ.setdefault("SKIP_PSI", "true")
 
-API_PORT, FIXTURE_PORT = 8013, 8099   # 8099 matches the host baked into fixture sitemap.xml
+API_PORT, FIXTURE_PORT = 8013, 8091   # own port; fixture is port-corrected
 API = f"http://127.0.0.1:{API_PORT}"
 FIXTURE = f"http://localhost:{FIXTURE_PORT}/"
 FAILURES = []
@@ -83,14 +83,8 @@ def main():
     from engine.crawler import Crawler
     from engine import checks
 
-    root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        "fixture", "site")
-    class Quiet(http.server.SimpleHTTPRequestHandler):
-        def log_message(self, *a): pass
-    socketserver.TCPServer.allow_reuse_address = True
-    httpd = socketserver.TCPServer(("0.0.0.0", FIXTURE_PORT),
-                                   functools.partial(Quiet, directory=root))
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    from tests._fixture import serve, stop as stop_server
+    httpd, root = serve(FIXTURE_PORT)
 
     import uvicorn
     db.init_db()
@@ -125,9 +119,14 @@ def main():
     print("\nEQUIVALENCE — capture must match the server crawl")
     st, f = GET(f"/api/audits/{aid}/findings")
     cap = f["findings"]
-    check("same number of checkpoints evaluated",
-          len(cap) == len(server_findings),
+    # The capture path also runs the judgment layer and external collectors, so
+    # it is a SUPERSET. Equivalence is about the crawler-derived rows agreeing.
+    check("capture is a superset of the server crawl",
+          set(server_findings) <= set(cap),
           f"capture {len(cap)} vs server {len(server_findings)}")
+    check("every server checkpoint also appears in the capture",
+          not (set(server_findings) - set(cap)),
+          str(sorted(set(server_findings) - set(cap))[:6]))
 
     # Compare statuses on every content-derived checkpoint.
     IGNORE = {  # transport/PSI rows differ by design: server probes them
@@ -184,7 +183,7 @@ def main():
     print(f"  {len(FAILURES)} FAILED: {FAILURES}" if FAILURES
           else "  ALL CHECKS PASSED — browser capture is equivalent to a server crawl")
     print("=" * 68 + "\n")
-    httpd.shutdown()
+    stop_server(httpd)
     return 1 if FAILURES else 0
 
 if __name__ == "__main__":

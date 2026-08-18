@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS audits (
   crawl_note     TEXT,
   crawl_truncated TEXT,
   capture_method TEXT,
+  extras         TEXT,               -- JSON: rankings table, screenshots — report
+                                     -- material that is not a checkpoint finding
   options        TEXT,               -- JSON: crawl overrides
   created_at     REAL NOT NULL,
   started_at     REAL,
@@ -233,6 +235,7 @@ MIGRATIONS = [
     ("audits", "crawl_truncated", "TEXT"),
     ("jobs", "job_type", "TEXT DEFAULT 'audit'"),
     ("audits", "capture_method", "TEXT"),
+    ("audits", "extras", "TEXT"),
 ]
 
 

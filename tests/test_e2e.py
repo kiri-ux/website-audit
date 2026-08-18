@@ -23,11 +23,9 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///data/test_e2e.db")
 os.environ.setdefault("ARTIFACT_STORE", "local://data/test_artifacts")
 os.environ.setdefault("SKIP_PSI", "true")
 
-API_PORT, FIXTURE_PORT = 8010, 8099
+API_PORT, FIXTURE_PORT = 8010, 8090
 API = f"http://127.0.0.1:{API_PORT}"
-# must match the hostname baked into fixture/site/sitemap.xml,
-# otherwise sitemap-seeded URLs are (correctly) rejected as off-host
-FIXTURE = f"http://localhost:{FIXTURE_PORT}/"
+FIXTURE = f"http://localhost:{FIXTURE_PORT}/"   # fixture is port-corrected
 
 FAILURES = []
 
@@ -78,16 +76,11 @@ def main():
     from app.config import cfg
 
     # ---------- boot fixture site ----------
-    import http.server, socketserver, functools
-    root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        "fixture", "site")
-    class Quiet(http.server.SimpleHTTPRequestHandler):
-        def log_message(self, *a):        # keep test output readable
-            pass
-    handler = functools.partial(Quiet, directory=root)
-    socketserver.TCPServer.allow_reuse_address = True
-    httpd = socketserver.TCPServer(("0.0.0.0", FIXTURE_PORT), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    # Served from a port-corrected COPY so sitemap URLs match the port this test
+    # owns; otherwise sitemap seeding is silently skipped and the crawl covers
+    # only nav-linked pages.
+    from tests._fixture import serve, stop as stop_server
+    httpd, root = serve(FIXTURE_PORT)
 
     # ---------- boot API ----------
     import uvicorn
@@ -202,7 +195,7 @@ def main():
     else:
         print("  ALL CHECKS PASSED — full pipeline verified end to end")
     print("=" * 66 + "\n")
-    httpd.shutdown()
+    stop_server(httpd)
     return 1 if FAILURES else 0
 
 

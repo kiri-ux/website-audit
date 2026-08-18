@@ -25,6 +25,10 @@ from engine.crawler import Crawler
 from engine import checks as engine_checks
 from engine import scoring as engine_scoring
 from engine import aivis
+from engine.judgment import run_judgment
+from engine.collectors import (collect_gsc, collect_ga4, collect_backlinks,
+                               collect_rankings, collect_lighthouse,
+                               capture_screenshot, dataforseo)
 
 _stop = False
 
@@ -91,6 +95,52 @@ def run_audit_job(audit_id: str):
     ctx = {"psi_key": cfg.psi_key,
            "skip_psi": bool(opts.get("skip_psi", cfg.skip_psi))}
     findings = engine_checks.run_all(art, ctx)
+
+    # ---- Phase 3: judgment layer (E-E-A-T + GEO assessment) ----
+    if not opts.get("skip_judgment"):
+        step("checking", "assessing E-E-A-T and GEO checkpoints")
+        findings.update(run_judgment(
+            art, business_model=a.get("vertical"), client=a.get("client_name"),
+            progress=lambda d, t: db.update_audit(
+                audit_id, progress=f"judgment {d}/{t}")))
+
+    # ---- external collectors (client credentials / vendor keys) ----
+    step("checking", "collecting Search Console, Analytics and backlink data")
+    findings.update(collect_gsc(a["target_url"], opts.get("gsc_refresh_token")))
+    findings.update(collect_ga4(opts.get("ga4_property_id"),
+                                opts.get("ga4_refresh_token"),
+                                site_url=a["target_url"]))
+    findings.update(collect_backlinks(art.host))
+
+    extras = {}
+    if dataforseo.configured() and not opts.get("skip_dataforseo"):
+        # Lighthouse via DataForSEO FILLS GAPS ONLY. Where PageSpeed Insights
+        # answered we keep it, because PSI carries CrUX field data and this is a
+        # lab run. Where PSI was rate-limited or skipped — the 429s on Render's
+        # shared egress — these rows are the difference between a measurement
+        # and a blank.
+        step("checking", "running Lighthouse via DataForSEO")
+        lh = collect_lighthouse(a["target_url"])
+        filled = 0
+        for cid, f in lh.items():
+            cur = findings.get(cid)
+            if f.get("status") == "Need Access":
+                continue
+            if cur is None or cur.get("status") == "Need Access" \
+                    or (cur.get("confidence") or 0) == 0:
+                findings[cid] = f
+                filled += 1
+        if filled:
+            print(f"[worker] {audit_id} DataForSEO Lighthouse filled {filled} "
+                  f"rows PSI could not answer", flush=True)
+
+        step("checking", "collecting keyword rankings")
+        rk = collect_rankings(art.host, opts.get("location_name"))
+        extras["rankings"] = rk
+        shot = capture_screenshot(a["target_url"])
+        if shot:
+            extras["screenshot"] = shot
+
     db.save_findings(audit_id, findings)
 
     step("scoring", f"{len(findings)} checkpoints evaluated; scoring")
@@ -110,6 +160,7 @@ def run_audit_job(audit_id: str):
         crawl_note=(f"{art.quality.likely_cause} · " + "; ".join(art.quality.signals)
                     if art.quality.degenerate else None),
         crawl_truncated=art.truncated,
+        extras=json.dumps(extras) if extras else None,
         overall_score=sc["overall"]["score"], overall_rating=sc["overall"]["rating"],
         pages_crawled=len(art.pages), coverage=f"{len(findings)}/{len(cat)}",
         completed_at=time.time())

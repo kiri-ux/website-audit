@@ -26,6 +26,8 @@ from engine.report import render_html
 from engine import checks as engine_checks
 from engine import scoring as engine_scoring
 from .capture import artifact_from_capture
+from engine.pdf_report import build_pdf
+from engine.summarise import build_summary, polish_with_llm
 
 app = FastAPI(title="Vici SEO/GEO Audit", version="1.0")
 Q = get_queue()
@@ -159,7 +161,16 @@ def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
         return audit_html(a)                       # live status page, auto-refreshes
     findings = db.get_findings(audit_id)
     scores = db.get_scores(audit_id)
-    meta = {"url": a["target_url"], "client": a["client_name"],
+    meta = _report_meta(a)
+    cat = db.catalog()
+    meta["pdf_url"] = f"/audits/{audit_id}.pdf"
+    return render_html(meta, scores, findings, cat,
+                       summary=build_summary(findings, scores, cat, meta))
+
+
+def _report_meta(a: dict) -> dict:
+    return {"url": a["target_url"], "client": a["client_name"],
+            "vertical": a.get("vertical"),
             "pages_crawled": a["pages_crawled"] or 0,
             "coverage": a["coverage"] or "",
             "generated": time.strftime("%Y-%m-%d %H:%M",
@@ -169,8 +180,48 @@ def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
             "crawl_note": a.get("crawl_note"),
             "truncated": a.get("crawl_truncated"),
             "capture_method": a.get("capture_method"),
+            "extras": json.loads(a.get("extras") or "{}"),
             "build": version.label()}
-    return render_html(meta, scores, findings, db.catalog())
+
+
+@app.get("/api/audits/{audit_id}/summary")
+def audit_summary(audit_id: str, polish: bool = False,
+                  x_api_key: str | None = Header(None)):
+    """Executive summary + roadmap. Deterministic by default; ?polish=1 rewrites
+    the same facts as client-ready prose when an LLM key is configured."""
+    p = principal(x_api_key)
+    a = db.get_audit(audit_id, p.scope)
+    if not a:
+        raise HTTPException(404, "audit not found")
+    findings, scores, cat = (db.get_findings(audit_id), db.get_scores(audit_id),
+                             db.catalog())
+    s = build_summary(findings, scores, cat, _report_meta(a))
+    if polish:
+        s = polish_with_llm(s, _report_meta(a))
+    return s
+
+
+@app.get("/audits/{audit_id}.pdf")
+def audit_pdf(audit_id: str, polish: bool = False,
+              x_api_key: str | None = Header(None)):
+    """The client-facing deliverable."""
+    p = principal(x_api_key)
+    a = db.get_audit(audit_id, p.scope)
+    if not a:
+        raise HTTPException(404, "audit not found")
+    if a["status"] not in ("ready",):
+        raise HTTPException(409, f"audit is {a['status']}, not ready")
+    findings, scores, cat = (db.get_findings(audit_id), db.get_scores(audit_id),
+                             db.catalog())
+    meta = _report_meta(a)
+    summary = build_summary(findings, scores, cat, meta)
+    if polish:
+        summary = polish_with_llm(summary, meta)
+    pdf = build_pdf(meta, scores, findings, cat, summary,
+                    logo_path=os.getenv("REPORT_LOGO_PATH") or None)
+    fname = (a["client_name"] or "audit").replace(" ", "-").lower()
+    return Response(pdf, media_type="application/pdf", headers={
+        "Content-Disposition": f'inline; filename="{fname}-seo-geo-audit.pdf"'})
 
 
 # ==================================================================== BROWSER CAPTURE
@@ -197,6 +248,17 @@ def ingest_capture(audit_id: str, payload: dict, x_api_key: str | None = Header(
 
     ctx = {"psi_key": cfg.psi_key, "skip_psi": cfg.skip_psi}
     findings = engine_checks.run_all(art, ctx)
+    # Same downstream collectors as the server path — one audit, one coverage.
+    from engine.judgment import run_judgment
+    from engine.collectors import collect_gsc, collect_ga4, collect_backlinks
+    opts = json.loads(a.get("options") or "{}")
+    if not opts.get("skip_judgment"):
+        findings.update(run_judgment(art, business_model=a.get("vertical"),
+                                     client=a.get("client_name")))
+    findings.update(collect_gsc(a["target_url"], opts.get("gsc_refresh_token")))
+    findings.update(collect_ga4(opts.get("ga4_property_id"),
+                                opts.get("ga4_refresh_token")))
+    findings.update(collect_backlinks(art.host))
     db.save_findings(audit_id, findings)
 
     cat = db.catalog()

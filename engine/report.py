@@ -133,7 +133,7 @@ SEV_RAMP = {"Critical": "var(--o4)", "High": "var(--o3)",
             "Medium": "var(--o2)", "Low": "var(--o1)", "Opportunity": "var(--track)"}
 
 
-def render_html(meta, sc, findings, catalog):
+def render_html(meta, sc, findings, catalog, summary=None):
     st = Counter(f["status"] for f in findings.values())
     sev = Counter(f["severity"] for f in findings.values()
                   if f["status"] in {"Fail", "Not Implemented", "Warning"})
@@ -180,6 +180,40 @@ def render_html(meta, sc, findings, catalog):
              f"<div class='d'>{_desc}</div></div></div>")
 
     # KPI row of stat tiles
+    if meta.get("pdf_url"):
+        P.append(f"<div style='margin:18px 0'><a href='{e(meta['pdf_url'])}' "
+                 f"style='display:inline-block;padding:9px 18px;background:var(--seq);"
+                 f"color:#fff;border-radius:7px;font-weight:640;font-size:13.5px;"
+                 f"text-decoration:none'>Download client PDF</a>"
+                 f"<a href='{e(meta['pdf_url'])}?polish=1' style='margin-left:12px;"
+                 f"font-size:12.5px;color:var(--ink2)'>with AI-written summary</a></div>")
+
+    if summary:
+        P.append("<h2>Executive summary</h2>")
+        if summary.get("overview"):
+            P.append(f"<div class='note'>{e(summary['overview'])}</div>")
+        for key, title in (("working", "What's working"),
+                           ("issues", "Priority issues"),
+                           ("opportunity", "Biggest opportunity")):
+            v = summary.get(key)
+            if not v:
+                continue
+            P.append(f"<h2 style='margin-top:22px'>{title}</h2>")
+            if isinstance(v, str):
+                P.append(f"<div class='ev'>{e(v)}</div>")
+            else:
+                P.append("<ul style='margin:6px 0 0 18px;padding:0'>"
+                         + "".join(f"<li class='ev' style='margin-bottom:5px'>{e(x)}</li>"
+                                   for x in v) + "</ul>")
+        if summary.get("roadmap"):
+            P.append("<h2>Prioritized next steps</h2>")
+            for ph in summary["roadmap"]:
+                P.append(f"<div style='margin-bottom:14px'><b>{e(ph.get('phase'))}</b>"
+                         f"<div class='rec' style='font-style:normal;margin:2px 0 5px'>"
+                         f"{e(ph.get('rationale'))}</div><ul style='margin:0 0 0 18px'>"
+                         + "".join(f"<li class='ev' style='margin-bottom:4px'>{e(x)}</li>"
+                                   for x in ph.get("actions", [])) + "</ul></div>")
+
     P.append("<h2>At a glance</h2><div class='kpis'>")
     for v, l in ((st["Pass"], "Passing"),
                  (st["Fail"], "Failing"),
@@ -235,6 +269,36 @@ def render_html(meta, sc, findings, catalog):
                  + (f"<div class='rec'>→ {e(f['recommendation'])}</div>"
                     if f['recommendation'] else "") + "</td></tr>")
     P.append("</table>")
+
+    # KEYWORD RANKINGS
+    rk = ((meta.get("extras") or {}).get("rankings") or {})
+    if rk.get("available") and rk.get("rows"):
+        P.append("<h2>Keyword rankings &amp; industry benchmarks</h2>")
+        P.append(f"<div class='note'>Keywords this domain already ranks for in "
+                 f"{e(rk.get('location'))}, ordered by position. "
+                 f"<b>{rk.get('top10', 0)} of {rk.get('total', 0)}</b> sit on page "
+                 f"one. Volume and difficulty are third-party estimates, not "
+                 f"measurements of this site.</div>")
+        P.append("<table><tr><th>Keyword</th><th style='width:64px'>Pos.</th>"
+                 "<th style='width:86px'>Volume</th><th style='width:92px'>Difficulty"
+                 "</th><th>Ranking URL</th></tr>")
+        for r in rk["rows"][:25]:
+            pos = r.get("position")
+            vol = r.get("search_volume")
+            dif = r.get("difficulty")
+            pos_cell = (f"<b>{pos}</b>" if isinstance(pos, int) and pos <= 10
+                        else e(pos if pos is not None else "—"))
+            P.append(f"<tr><td>{e(r.get('keyword'))}</td>"
+                     f"<td class='num'>{pos_cell}</td>"
+                     f"<td class='num'>{format(vol, ',') if isinstance(vol, int) else '—'}</td>"
+                     f"<td class='num'>{e(dif) if dif is not None else '—'}</td>"
+                     f"<td><div class='ev'>"
+                     f"{e((r.get('url') or '').split('//')[-1])}</div></td></tr>")
+        P.append("</table>")
+    elif rk and not rk.get("available"):
+        P.append("<h2>Keyword rankings &amp; industry benchmarks</h2>"
+                 f"<div class='note'>Not collected — {e(rk.get('reason'))}. "
+                 f"This section is omitted rather than estimated.</div>")
 
     # FULL FINDINGS
     P.append("<h2>Detailed findings</h2>")

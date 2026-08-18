@@ -63,6 +63,36 @@ services:
         sync: false
       - key: SERP_ENDPOINT
         sync: false
+      # Phase 3 judgment layer (E-E-A-T + GEO assessment). Absent = those 29
+      # rows report Need Access rather than being guessed at.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Off-page authority, keyword rankings, Lighthouse and screenshots.
+      # These are the credentials the SEO quote tool already runs on — set them
+      # and DataForSEO answers all four; leave them and the Ahrefs/Semrush
+      # adapter below is used for backlinks only.
+      - key: DFS_LOGIN
+        sync: false
+      - key: DFS_PASSWORD
+        sync: false
+      - key: AHREFS_API_KEY
+        sync: false
+      - key: SEMRUSH_API_KEY
+        sync: false
+      # Client analytics OAuth (Search Console + GA4, 38 rows).
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      # JSON {"label": "refresh_token"} of VICI logins — the same model the
+      # site-scan tool uses for GTM. A token inherits whatever that login can
+      # already see, including properties added tomorrow, with no per-client
+      # OAuth dance. It does NOT replace the access grant itself.
+      - key: GOOGLE_TOKENS
+        sync: false
+      # Optional logo for the client PDF; blank = unbranded with a clean slot.
+      - key: REPORT_LOGO_PATH
+        sync: false
       # Scale out by raising numInstances — the Redis queue makes workers
       # independent, and job handling is idempotent.
     numInstances: 1

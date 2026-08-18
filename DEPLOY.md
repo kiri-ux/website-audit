@@ -87,6 +87,30 @@ prompt during Apply, or set them later per service.
 Any platform you leave unset is reported as **"not measured"** rather than
 counted as zero visibility. You can add them one at a time.
 
+**Also worker-only — the credentials you already pay for:**
+
+| Key | Purpose |
+|---|---|
+| `DFS_LOGIN` + `DFS_PASSWORD` | DataForSEO. Fills the 29 Off-Page rows, the keyword rankings table, Lighthouse (PERF-10..14, PERF-19, MOB-03..06) and report screenshots. Same credentials as the SEO quote tool. |
+| `AHREFS_API_KEY` *or* `SEMRUSH_API_KEY` | Fallback for backlinks only, used when `DFS_LOGIN` is unset |
+| `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | OAuth app for Search Console and GA4 |
+| `GOOGLE_TOKENS` | JSON `{"label": "refresh_token"}` of Vici logins, or a path to that file |
+
+Two notes on these.
+
+**Route Lighthouse through DataForSEO if PageSpeed Insights is returning 429.**
+Unauthenticated PSI calls share a per-IP quota with every other anonymous caller
+on Render's egress, so the limit is not really yours. DataForSEO fetches the
+site itself. The worker still prefers PSI where it succeeds, because PSI carries
+CrUX *field* data and DataForSEO's is a lab run — the DataForSEO rows only fill
+what PSI could not answer.
+
+**`GOOGLE_TOKENS` removes the per-client OAuth dance, not the access grant.** A
+token inherits exactly what its login can already see, including properties
+added tomorrow. If nobody has added a Vici login to the client's Search Console
+property, no token helps — and the report says so, naming how many logins were
+tried, instead of reporting the site as failing.
+
 ### ⚠️ The artifact-store gotcha
 
 `ARTIFACT_STORE` defaults to a local path. That works locally, where the API and

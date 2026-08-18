@@ -23,7 +23,7 @@ os.environ.setdefault("ARTIFACT_STORE", "local://data/test_aivis_art")
 os.environ.setdefault("SKIP_PSI", "true")
 os.environ.setdefault("AI_REPLAY_CORPUS", "fixture/ai_corpus.json")
 
-API_PORT, FIXTURE_PORT = 8011, 8098
+API_PORT, FIXTURE_PORT = 8011, 8089
 API = f"http://127.0.0.1:{API_PORT}"
 FIXTURE = f"http://localhost:{FIXTURE_PORT}/"
 FAILURES = []
@@ -90,16 +90,8 @@ def main():
 
     # fixture site, so we can link a real audit to the monitor run
     import http.server, socketserver, functools
-    root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        "fixture", "site")
-
-    class Quiet(http.server.SimpleHTTPRequestHandler):
-        def log_message(self, *a):
-            pass
-    socketserver.TCPServer.allow_reuse_address = True
-    httpd = socketserver.TCPServer(("0.0.0.0", FIXTURE_PORT),
-                                   functools.partial(Quiet, directory=root))
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    from tests._fixture import serve, stop as stop_server
+    httpd, root = serve(FIXTURE_PORT)
 
     import uvicorn
     db.init_db()
@@ -253,7 +245,7 @@ def main():
     else:
         print("  ALL CHECKS PASSED — AI visibility monitor verified end to end")
     print("=" * 68 + "\n")
-    httpd.shutdown()
+    stop_server(httpd)
     return 1 if FAILURES else 0
 
 

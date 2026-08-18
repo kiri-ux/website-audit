@@ -12,8 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.18-8"
-BUILD_NOTES = "sampled crawls cannot claim sitewide findings"
+BUILD = "2026.08.18-12"
+BUILD_NOTES = ("Charted report: score gauge, ranked area bars, severity and "
+               "coverage strips; dashboard score rings")
 # ---------------------------------------------------------------------------
 
 

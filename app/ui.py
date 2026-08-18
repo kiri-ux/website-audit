@@ -56,6 +56,33 @@ code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
  color:var(--muted)}
 .steps div.on{border-top-color:var(--seq);color:var(--ink);font-weight:620}
 .steps div.done{border-top-color:var(--seq);color:var(--ink2)}
+/* --- stat strip: the fleet at a glance, above the per-audit detail --- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px;
+ margin-top:14px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;
+ padding:12px 14px}
+.stat .n{font-size:23px;font-weight:680;letter-spacing:-.02em;
+ font-variant-numeric:tabular-nums;line-height:1.15}
+.stat .k{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
+ margin-top:2px}
+.stat .k b{width:7px;height:7px;border-radius:50%;display:inline-block;
+ margin-right:4px;vertical-align:0}
+/* --- ring: score as an arc so the number has context, not just a value --- */
+.ring{display:block}
+.ring text{font:600 13px ui-sans-serif,system-ui,sans-serif;fill:var(--ink);
+ font-variant-numeric:tabular-nums}
+.ring text.sm{font-size:11px;fill:var(--muted);font-weight:500}
+/* --- live progress rail --- */
+.rail{position:relative;height:6px;background:var(--track);border-radius:3px;
+ margin:20px 0 4px;overflow:hidden}
+.rail>i{display:block;height:100%;background:var(--seq);border-radius:3px;
+ transition:width .4s ease}
+.rail.indet>i{width:38%;animation:slide 1.5s ease-in-out infinite}
+@keyframes slide{0%{margin-left:-38%}100%{margin-left:100%}}
+.marks{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);
+ letter-spacing:.04em}
+.marks span.on{color:var(--ink);font-weight:640}
+.marks span.done{color:var(--ink2)}
 """
 
 STATUS_COLOR = {"ready": "var(--good)", "failed": "var(--critical)",
@@ -66,6 +93,42 @@ STATUS_COLOR = {"ready": "var(--good)", "failed": "var(--critical)",
 
 def e(x):
     return _h.escape(str(x if x is not None else ""))
+
+
+def _ring(score, size=44, stroke=5):
+    """
+    Score as a donut. Same encoding decision as the PDF gauge: length carries
+    magnitude, one hue only. A None score draws an empty dashed ring and a dash
+    — never a full ring at zero, which would read as "scored zero".
+    """
+    import math
+    r = (size - stroke) / 2
+    circ = 2 * math.pi * r
+    c = size / 2
+    if score is None:
+        return (f"<svg class='ring' width='{size}' height='{size}' "
+                f"viewBox='0 0 {size} {size}' role='img' aria-label='not scored'>"
+                f"<circle cx='{c}' cy='{c}' r='{r}' fill='none' stroke='var(--line)' "
+                f"stroke-width='{stroke}' stroke-dasharray='3 3'/>"
+                f"<text class='sm' x='{c}' y='{c}' text-anchor='middle' "
+                f"dominant-baseline='central'>—</text></svg>")
+    off = circ * (1 - max(0.0, min(1.0, score / 100.0)))
+    return (f"<svg class='ring' width='{size}' height='{size}' "
+            f"viewBox='0 0 {size} {size}' role='img' aria-label='score {score} of 100'>"
+            f"<circle cx='{c}' cy='{c}' r='{r}' fill='none' stroke='var(--track)' "
+            f"stroke-width='{stroke}'/>"
+            f"<circle cx='{c}' cy='{c}' r='{r}' fill='none' stroke='var(--seq)' "
+            f"stroke-width='{stroke}' stroke-linecap='round' "
+            f"stroke-dasharray='{circ:.2f}' stroke-dashoffset='{off:.2f}' "
+            f"transform='rotate(-90 {c} {c})'/>"
+            f"<text x='{c}' y='{c}' text-anchor='middle' "
+            f"dominant-baseline='central'>{score}</text></svg>")
+
+
+def _stat(n, label, dot=None):
+    d = f"<b style='background:{dot}'></b>" if dot else ""
+    return (f"<div class='stat'><div class='n'>{e(n)}</div>"
+            f"<div class='k'>{d}{e(label)}</div></div>")
 
 
 def _shell(title, body, refresh=None):
@@ -81,18 +144,17 @@ def dashboard_html(audits, principal, queue_depth):
     for a in audits:
         col = STATUS_COLOR.get(a["status"], "var(--muted)")
         score = a["overall_score"]
-        bar = (f"<div class='bar'><i style='width:{score}%'></i></div>"
-               if score is not None else "<span style='color:var(--muted)'>—</span>")
         spin = "<span class='spin'></span> " if a["status"] in (
             "crawling", "checking", "scoring") else ""
         rows.append(
-            f"<tr><td><a href='/audits/{a['id']}'>{e(a['client_name'])}</a><br>"
+            f"<tr><td style='width:56px'>{_ring(score)}</td>"
+            f"<td><a href='/audits/{a['id']}'>{e(a['client_name'])}</a><br>"
             f"<code>{e(a['target_url'])[:58]}</code></td>"
             f"<td><span class='chip'><b style='background:{col}'></b>{spin}{e(a['status'])}</span>"
             + (f"<br><span style='color:var(--muted);font-size:11.5px'>{e(a['progress'])}</span>"
                if a["status"] not in ("ready", "failed") and a.get("progress") else "")
-            + f"</td><td>{bar}</td>"
-            f"<td class='num'>{score if score is not None else '—'}</td>"
+            + f"</td>"
+            f"<td class='num'>{e(a.get('overall_rating') or '—')}</td>"
             f"<td class='num'>{e(a['coverage'] or '—')}</td>"
             f"<td class='num'>{a['pages_crawled'] or '—'}</td></tr>"
             + (f"<tr><td colspan='6' style='padding-top:0;border:0;"
@@ -102,23 +164,41 @@ def dashboard_html(audits, principal, queue_depth):
                f"<code>{a['id']}</code>.</td></tr>"
                if a["status"] == "needs_capture" else ""))
 
-    table = ("<table><tr><th>Client</th><th>Status</th><th>Score</th>"
-             "<th class='num'>/100</th><th class='num'>Coverage</th>"
+    table = ("<table><tr><th>Score</th><th>Client</th><th>Status</th>"
+             "<th class='num'>Rating</th><th class='num'>Coverage</th>"
              "<th class='num'>Pages</th></tr>" + "".join(rows) + "</table>"
              ) if rows else "<div class='empty'>No audits yet — submit one above.</div>"
 
     running = any(a["status"] in ("queued", "crawling", "checking", "scoring")
                   for a in audits)
 
+    # ---- fleet strip -----------------------------------------------------
+    # Averaged over SCORED audits only. Counting an unscored audit as zero
+    # would drag the average down for the crime of not having finished yet.
+    scored = [a["overall_score"] for a in audits if a["overall_score"] is not None]
+    n_run = sum(1 for a in audits if a["status"] in
+                ("queued", "crawling", "checking", "scoring"))
+    n_blocked = sum(1 for a in audits if a["status"] == "needs_capture")
+    n_failed = sum(1 for a in audits if a["status"] == "failed")
+    stats = "<div class='stats'>" + "".join([
+        _stat(len(audits), "audits"),
+        _stat(len(scored), "scored", STATUS_COLOR["ready"]),
+        _stat(n_run, "in flight", STATUS_COLOR["crawling"]),
+        _stat(n_blocked, "need capture", STATUS_COLOR["needs_capture"]),
+        _stat(n_failed, "failed", STATUS_COLOR["failed"]),
+        _stat(round(sum(scored) / len(scored)) if scored else "—", "mean score"),
+        _stat(queue_depth, "queue depth"),
+    ]) + "</div>"
+
     body = f"""
     <h1>SEO &amp; GEO Audit Engine</h1>
-    <div class='sub'>{e(principal.name)} · mode <code>{e(cfg.mode)}</code>
-      · queue depth {queue_depth}</div>
+    <div class='sub'>{e(principal.name)} · mode <code>{e(cfg.mode)}</code></div>
     <div style='margin-top:10px'>
       <span class='chip' style='background:var(--seq);color:#fff;border-color:var(--seq);
         font-size:12px;padding:4px 12px'>{e(version.label())}</span>
       <span style='color:var(--muted);font-size:12px;margin-left:8px'>
         {e(version.BUILD_NOTES)}</span></div>
+    {stats}
 
     <h2>New audit</h2>
     <div class='card'><form method='post' action='/audits' id='auditform'>
@@ -153,11 +233,12 @@ def dashboard_html(audits, principal, queue_depth):
 
 def audit_html(a):
     """Live status page shown while an audit is still running."""
+    import json as _json
     order = ["queued", "crawling", "checking", "scoring", "ready"]
     cur = a["status"]
     idx = order.index(cur) if cur in order else 0
-    steps = "".join(
-        f"<div class='{'on' if i == idx else ('done' if i < idx else '')}'>{s}</div>"
+    marks = "".join(
+        f"<span class='{'on' if i == idx else ('done' if i < idx else '')}'>{s}</span>"
         for i, s in enumerate(order))
 
     if cur == "failed":
@@ -165,10 +246,45 @@ def audit_html(a):
                  f"<p class='sub'>{e(a.get('error'))}</p>"
                  f"<p><a href='/'>← back to dashboard</a></p></div>")
         refresh = None
+    elif cur == "needs_capture":
+        inner = (f"<div class='card'>"
+                 f"<b style='color:var(--serious)'>Server crawl blocked</b>"
+                 f"<p class='sub'>{e(a.get('crawl_note') or a.get('progress'))}</p>"
+                 f"<p class='sub'>Open the client site in Chrome, launch "
+                 f"<b>Vici Audit Capture</b>, and paste audit id "
+                 f"<code>{e(a['id'])}</code>. Nothing has been reported as a defect "
+                 f"— a blocked crawl is a handoff, not a result.</p></div>")
+        refresh = None
     else:
-        inner = (f"<div class='steps'>{steps}</div>"
-                 f"<div class='card'><span class='spin'></span> "
-                 f"<b>{e(a.get('progress') or cur)}</b>"
+        # Determinate where we can be, honest where we can't. Page counts only
+        # exist during the crawl; once checks start there is no meaningful
+        # fraction to show, so the rail goes indeterminate rather than
+        # inventing a percentage that creeps.
+        # Options have been double-encoded by a caller before now, so a decode
+        # can legitimately hand back a string. Anything that isn't a dict means
+        # "no page target" — the rail goes indeterminate, which is correct.
+        opts = a.get("options") or {}
+        for _ in range(2):
+            if isinstance(opts, str):
+                try:
+                    opts = _json.loads(opts)
+                except Exception:
+                    opts = {}
+        if not isinstance(opts, dict):
+            opts = {}
+        done = a.get("pages_crawled") or 0
+        target = int(opts.get("max_pages") or 0)
+        if cur == "crawling" and target and done:
+            pct = max(3, min(97, round(100 * done / target)))
+            rail = (f"<div class='rail'><i style='width:{pct}%'></i></div>"
+                    f"<div class='marks' style='margin-bottom:14px'>"
+                    f"<span class='on'>{done} of up to {target} pages</span>"
+                    f"<span>{pct}%</span></div>")
+        else:
+            rail = "<div class='rail indet'><i></i></div>"
+        inner = (rail + f"<div class='marks'>{marks}</div>"
+                 f"<div class='card' style='margin-top:16px'>"
+                 f"<span class='spin'></span> <b>{e(a.get('progress') or cur)}</b>"
                  f"<p class='sub'>This page refreshes automatically. A full crawl of "
                  f"150 pages typically takes 2–5 minutes.</p></div>")
         refresh = 4
