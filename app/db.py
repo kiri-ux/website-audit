@@ -94,12 +94,84 @@ CREATE TABLE IF NOT EXISTS checkpoints (
 -- DB-backed queue. Used when REDIS_URL is unset; harmless when it is.
 CREATE TABLE IF NOT EXISTS jobs (
   id           TEXT PRIMARY KEY,
-  audit_id     TEXT NOT NULL,
+  audit_id     TEXT NOT NULL,      -- audit_id OR ai_run id, per job_type
+  job_type     TEXT NOT NULL DEFAULT 'audit',   -- audit | ai_monitor
   state        TEXT NOT NULL,      -- pending|leased|done|failed
   attempts     INTEGER NOT NULL DEFAULT 0,
   leased_until REAL,
   last_error   TEXT,
   created_at   REAL NOT NULL
+);
+
+-- ============================ AI VISIBILITY ============================
+-- The monitor is a TIME SERIES, not a one-shot check. A single run answers
+-- "are we cited"; the series answers "is our work moving the number", which is
+-- what a retainer is actually sold on. Hence a stable panel_version: if the
+-- questions change, older runs are no longer comparable and must not be
+-- silently plotted on the same line.
+CREATE TABLE IF NOT EXISTS ai_profiles (
+  id            TEXT PRIMARY KEY,
+  partner_id    TEXT NOT NULL,
+  client_name   TEXT NOT NULL,
+  brand         TEXT NOT NULL,
+  domain        TEXT NOT NULL,
+  profile       TEXT NOT NULL,     -- JSON ClientProfile
+  panel         TEXT,              -- JSON frozen query panel
+  panel_version INTEGER NOT NULL DEFAULT 1,
+  created_at    REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_aiprof_partner ON ai_profiles(partner_id);
+
+CREATE TABLE IF NOT EXISTS ai_runs (
+  id               TEXT PRIMARY KEY,
+  partner_id       TEXT NOT NULL,
+  profile_id       TEXT NOT NULL,
+  audit_id         TEXT,
+  panel_version    INTEGER,
+  status           TEXT NOT NULL,
+  progress         TEXT,
+  repeats          INTEGER,
+  platforms        TEXT,
+  skipped          TEXT,
+  mention_rate     REAL,
+  citation_rate    REAL,
+  unprompted_citation_rate REAL,
+  client_citations INTEGER,
+  top_competitor_domain    TEXT,
+  citation_gap     INTEGER,
+  answers_ok       INTEGER,
+  answers_error    INTEGER,
+  headline         TEXT,
+  error            TEXT,
+  created_at       REAL NOT NULL,
+  completed_at     REAL
+);
+CREATE INDEX IF NOT EXISTS idx_airuns_profile ON ai_runs(profile_id, created_at);
+
+CREATE TABLE IF NOT EXISTS ai_results (
+  run_id         TEXT NOT NULL,
+  query_id       TEXT NOT NULL,
+  platform       TEXT NOT NULL,
+  repeat_idx     INTEGER NOT NULL,
+  intent         TEXT,
+  prompted       INTEGER,
+  ok             INTEGER,
+  mentioned      INTEGER,
+  cited          INTEGER,
+  prominence     REAL,
+  citation_count INTEGER,
+  cited_domains  TEXT,
+  error          TEXT,
+  PRIMARY KEY (run_id, query_id, platform, repeat_idx)
+);
+
+CREATE TABLE IF NOT EXISTS ai_sov (
+  run_id     TEXT NOT NULL,
+  domain     TEXT NOT NULL,
+  citations  INTEGER,
+  share      REAL,
+  is_client  INTEGER,
+  PRIMARY KEY (run_id, domain)
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_state ON jobs(state, created_at);
 """
@@ -295,3 +367,133 @@ def get_scores(audit_id) -> dict:
     a = get_audit(audit_id) or {}
     return {"sections": secs,
             "overall": {"score": a.get("overall_score"), "rating": a.get("overall_rating")}}
+
+
+# ================================================================ AI VISIBILITY
+def create_ai_profile(partner_id, client_name, profile_dict, panel_list) -> str:
+    pid = uuid.uuid4().hex[:16]
+    with conn() as c:
+        c.cursor().execute(_q(
+            "INSERT INTO ai_profiles (id,partner_id,client_name,brand,domain,profile,"
+            "panel,panel_version,created_at) VALUES (?,?,?,?,?,?,?,?,?)"),
+            (pid, partner_id, client_name, profile_dict["brand"],
+             profile_dict["domain"], json.dumps(profile_dict),
+             json.dumps(panel_list), 1, time.time()))
+    return pid
+
+
+def get_ai_profile(profile_id, partner_id=None):
+    sql, args = "SELECT * FROM ai_profiles WHERE id=?", [profile_id]
+    if partner_id:
+        sql += " AND partner_id=?"; args.append(partner_id)
+    with conn() as c:
+        cur = c.cursor(); cur.execute(_q(sql), tuple(args))
+        r = cur.fetchone()
+        if not r:
+            return None
+        return dict(zip([d[0] for d in cur.description], r))
+
+
+def list_ai_profiles(partner_id=None):
+    sql, args = "SELECT * FROM ai_profiles", []
+    if partner_id:
+        sql += " WHERE partner_id=?"; args.append(partner_id)
+    sql += " ORDER BY created_at DESC"
+    with conn() as c:
+        cur = c.cursor(); cur.execute(_q(sql), tuple(args))
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
+def create_ai_run(partner_id, profile_id, repeats, audit_id=None,
+                  panel_version=1) -> str:
+    rid = uuid.uuid4().hex[:16]
+    with conn() as c:
+        c.cursor().execute(_q(
+            "INSERT INTO ai_runs (id,partner_id,profile_id,audit_id,panel_version,"
+            "status,progress,repeats,created_at) VALUES (?,?,?,?,?,?,?,?,?)"),
+            (rid, partner_id, profile_id, audit_id, panel_version,
+             "queued", "waiting for a worker", repeats, time.time()))
+    return rid
+
+
+def update_ai_run(run_id, **fields):
+    if not fields:
+        return
+    sets = ",".join(f"{k}=?" for k in fields)
+    with conn() as c:
+        c.cursor().execute(_q(f"UPDATE ai_runs SET {sets} WHERE id=?"),
+                           (*fields.values(), run_id))
+
+
+def get_ai_run(run_id, partner_id=None):
+    sql, args = "SELECT * FROM ai_runs WHERE id=?", [run_id]
+    if partner_id:
+        sql += " AND partner_id=?"; args.append(partner_id)
+    with conn() as c:
+        cur = c.cursor(); cur.execute(_q(sql), tuple(args))
+        r = cur.fetchone()
+        if not r:
+            return None
+        return dict(zip([d[0] for d in cur.description], r))
+
+
+def list_ai_runs(profile_id=None, partner_id=None, limit=50):
+    sql, args, where = "SELECT * FROM ai_runs", [], []
+    if profile_id:
+        where.append("profile_id=?"); args.append(profile_id)
+    if partner_id:
+        where.append("partner_id=?"); args.append(partner_id)
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY created_at DESC LIMIT ?"; args.append(limit)
+    with conn() as c:
+        cur = c.cursor(); cur.execute(_q(sql), tuple(args))
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
+def save_ai_results(run_id, results, sov):
+    with conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM ai_results WHERE run_id=?"), (run_id,))
+        cur.execute(_q("DELETE FROM ai_sov WHERE run_id=?"), (run_id,))
+        for r in results:
+            cur.execute(_q(
+                "INSERT INTO ai_results (run_id,query_id,platform,repeat_idx,intent,"
+                "prompted,ok,mentioned,cited,prominence,citation_count,cited_domains,"
+                "error) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"),
+                (run_id, r["query_id"], r["platform"], r.get("repeat", 0),
+                 r.get("intent"), int(bool(r.get("prompted"))), int(bool(r["ok"])),
+                 int(bool(r["mentioned"])), int(bool(r["cited"])), r["prominence"],
+                 r["citation_count"], json.dumps(r["cited_domains"]), r.get("error")))
+        for s in sov:
+            cur.execute(_q("INSERT INTO ai_sov (run_id,domain,citations,share,is_client) "
+                           "VALUES (?,?,?,?,?)"),
+                        (run_id, s["domain"], s["citations"], s["share"],
+                         int(bool(s["is_client"]))))
+
+
+def get_ai_sov(run_id):
+    with conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT domain,citations,share,is_client FROM ai_sov "
+                       "WHERE run_id=? ORDER BY citations DESC"), (run_id,))
+        return [{"domain": r[0], "citations": r[1], "share": r[2],
+                 "is_client": bool(r[3])} for r in cur.fetchall()]
+
+
+def get_ai_platform_stats(run_id):
+    """Per-platform rates recomputed from stored rows (no duplicated aggregate)."""
+    with conn() as c:
+        cur = c.cursor()
+        cur.execute(_q(
+            "SELECT platform, COUNT(*), SUM(mentioned), SUM(cited), AVG(prominence) "
+            "FROM ai_results WHERE run_id=? AND ok=1 GROUP BY platform"), (run_id,))
+        out = {}
+        for plat, n, m, ct, prom in cur.fetchall():
+            out[plat] = {"answers": n,
+                         "mention_rate": round(100 * (m or 0) / n, 1) if n else None,
+                         "citation_rate": round(100 * (ct or 0) / n, 1) if n else None,
+                         "avg_prominence": round(prom or 0, 3)}
+        return out

@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from engine.crawler import Crawler
 from engine import checks as engine_checks
 from engine import scoring as engine_scoring
+from engine import aivis
 
 _stop = False
 
@@ -85,6 +86,98 @@ def run_audit_job(audit_id: str):
           f"coverage={len(findings)}/{len(cat)}", flush=True)
 
 
+def run_ai_monitor_job(run_id: str):
+    """
+    AI visibility monitor run.
+
+    Idempotent like the audit job: results for this run_id are deleted and
+    rewritten rather than appended.
+
+    Note it reuses the profile's FROZEN panel rather than regenerating. The
+    product is a time series; regenerating the questions between runs would make
+    consecutive points incomparable while still looking like a trend.
+    """
+    run = db.get_ai_run(run_id)
+    if not run:
+        raise RuntimeError(f"ai_run {run_id} not found")
+    prof_row = db.get_ai_profile(run["profile_id"])
+    if not prof_row:
+        raise RuntimeError(f"ai_profile {run['profile_id']} not found")
+
+    pdict = json.loads(prof_row["profile"])
+    profile = aivis.ClientProfile(**pdict)
+    panel_raw = json.loads(prof_row["panel"] or "[]")
+    queries = [aivis.Query(**q) for q in panel_raw] or aivis.build_panel(profile)
+
+    def step(status, progress):
+        db.update_ai_run(run_id, status=status, progress=progress)
+        print(f"[worker] ai_run {run_id} :: {progress}", flush=True)
+
+    step("running", f"querying platforms ({len(queries)} queries x "
+                    f"{run['repeats']} repeats)")
+
+    corpus_path = os.getenv("AI_REPLAY_CORPUS")
+    if corpus_path and os.path.exists(corpus_path):
+        # Deterministic mode — demos and CI, no API keys, no spend.
+        with open(corpus_path) as f:
+            corpus = json.load(f)
+        out = aivis.run_replay(profile, corpus, queries=queries,
+                               repeats=run["repeats"] or 1)
+    else:
+        out = aivis.run_panel(profile, queries=queries,
+                              repeats=run["repeats"] or 3,
+                              progress=lambda d, t: db.update_ai_run(
+                                  run_id, progress=f"{d}/{t} answers collected"))
+
+    agg = out.get("aggregate") or {}
+    if out.get("error"):
+        db.update_ai_run(run_id, status="failed", progress="failed",
+                         error=out["error"],
+                         skipped=json.dumps(out.get("skipped_platforms", [])),
+                         completed_at=time.time())
+        raise RuntimeError(out["error"])
+
+    step("scoring", "aggregating share of voice")
+    db.save_ai_results(run_id, out["results"], agg.get("share_of_voice", []))
+
+    summ = aivis.summary_row(agg, profile)
+    db.update_ai_run(
+        run_id, status="ready", progress="complete",
+        platforms=json.dumps(sorted(agg.get("by_platform", {}).keys())),
+        skipped=json.dumps(agg.get("skipped_platforms", [])),
+        mention_rate=agg.get("mention_rate"),
+        citation_rate=agg.get("citation_rate"),
+        unprompted_citation_rate=agg.get("unprompted_citation_rate"),
+        client_citations=summ["client_citations"],
+        top_competitor_domain=summ["top_competitor_domain"],
+        citation_gap=summ["citation_gap"],
+        answers_ok=agg.get("answers_ok"), answers_error=agg.get("answers_error"),
+        headline=out.get("headline"), completed_at=time.time())
+
+    # Feed GEO-23..30 back onto the linked audit, if there is one.
+    if run.get("audit_id"):
+        geo = aivis.findings_from_run(agg, profile)
+        existing = db.get_findings(run["audit_id"])
+        existing.update(geo)
+        db.save_findings(run["audit_id"], existing)
+        cat = db.catalog()
+        a = db.get_audit(run["audit_id"])
+        sc = engine_scoring.score(existing, cat, (a or {}).get("vertical"))
+        db.save_scores(run["audit_id"], sc)
+        db.update_audit(run["audit_id"],
+                        overall_score=sc["overall"]["score"],
+                        overall_rating=sc["overall"]["rating"],
+                        coverage=f"{len(existing)}/{len(cat)}")
+        print(f"[worker] ai_run {run_id} merged {len(geo)} GEO rows into "
+              f"audit {run['audit_id']}", flush=True)
+
+    print(f"[worker] ai_run {run_id} DONE citation_rate={agg.get('citation_rate')}% "
+          f"mention_rate={agg.get('mention_rate')}%", flush=True)
+
+
+HANDLERS = {"audit": run_audit_job, "ai_monitor": run_ai_monitor_job}
+
+
 def main():
     # Graceful shutdown matters in production: Render sends SIGTERM on deploy,
     # and we want the in-flight crawl to finish rather than be killed mid-job.
@@ -109,8 +202,12 @@ def main():
             continue
         idle = 0
         aid = job["audit_id"]
+        jtype = job.get("job_type", "audit")
         try:
-            run_audit_job(aid)
+            handler = HANDLERS.get(jtype)
+            if handler is None:
+                raise RuntimeError(f"unknown job_type {jtype!r}")
+            handler(aid)
             q.complete(job)
         except Exception as e:
             tb = traceback.format_exc()
@@ -118,9 +215,10 @@ def main():
             # Three strikes, then park it. A permanently broken target should
             # not occupy a worker forever.
             retry = job.get("attempts", 1) < 3
-            db.update_audit(aid, status="queued" if retry else "failed",
-                            progress="retrying after error" if retry else "failed",
-                            error=f"{type(e).__name__}: {e}")
+            upd = db.update_audit if jtype == "audit" else db.update_ai_run
+            upd(aid, status="queued" if retry else "failed",
+                progress="retrying after error" if retry else "failed",
+                error=f"{type(e).__name__}: {e}")
             q.fail(job, str(e), retry)
     print("[worker] stopped", flush=True)
 

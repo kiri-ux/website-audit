@@ -116,6 +116,7 @@ def artifact(audit_id: str, x_api_key: str | None = Header(None)):
 
 # ------------------------------------------------------------------ UI
 from .ui import dashboard_html, audit_html  # noqa: E402
+from .ui_aivis import visibility_html, visibility_index_html  # noqa: E402
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -153,3 +154,141 @@ def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
                                        time.localtime(a["completed_at"] or time.time())),
             "duration_s": round((a["completed_at"] or 0) - (a["started_at"] or 0), 1)}
     return render_html(meta, scores, findings, db.catalog())
+
+
+# ==================================================================== AI VISIBILITY
+class MonitorProfile(BaseModel):
+    client_name: str
+    brand: str
+    domain: str
+    category: str
+    products: list[str] = []
+    locations: list[str] = []
+    competitors: list[str] = []
+    services: list[str] = []
+    aliases: list[str] = []
+
+
+class MonitorRun(BaseModel):
+    repeats: int = 3
+    audit_id: str | None = None
+
+
+def _profile_payload(m: MonitorProfile) -> dict:
+    d = m.model_dump()
+    d.pop("client_name", None)
+    return d
+
+
+@app.post("/api/monitors", status_code=201)
+def create_monitor(m: MonitorProfile, x_api_key: str | None = Header(None)):
+    """
+    Create a monitored profile. The query panel is generated ONCE here and
+    frozen — runs replay the same questions so the time series stays comparable.
+    """
+    from engine.aivis import ClientProfile, build_panel
+    p = principal(x_api_key)
+    pd = _profile_payload(m)
+    panel = [q.to_dict() for q in build_panel(ClientProfile(**pd))]
+    pid = db.create_ai_profile(tenancy.owner_for_new_audit(p), m.client_name, pd, panel)
+    return {"profile_id": pid, "panel_size": len(panel),
+            "unprompted": sum(1 for q in panel if not q["prompted"]),
+            "dashboard": f"/visibility/{pid}"}
+
+
+@app.get("/api/monitors")
+def list_monitors(x_api_key: str | None = Header(None)):
+    p = principal(x_api_key)
+    return {"profiles": db.list_ai_profiles(p.scope)}
+
+
+@app.post("/api/monitors/{profile_id}/runs", status_code=202)
+def start_monitor_run(profile_id: str, body: MonitorRun | None = None,
+                      x_api_key: str | None = Header(None)):
+    p = principal(x_api_key)
+    prof = db.get_ai_profile(profile_id, p.scope)
+    if not prof:
+        raise HTTPException(404, "profile not found")
+    body = body or MonitorRun()
+    rid = db.create_ai_run(prof["partner_id"], profile_id, body.repeats,
+                           body.audit_id, prof["panel_version"])
+    Q.enqueue(rid, job_type="ai_monitor")
+    return {"run_id": rid, "status": "queued", "poll": f"/api/monitors/runs/{rid}"}
+
+
+@app.get("/api/monitors/runs/{run_id}")
+def get_monitor_run(run_id: str, x_api_key: str | None = Header(None)):
+    p = principal(x_api_key)
+    r = db.get_ai_run(run_id, p.scope)
+    if not r:
+        raise HTTPException(404, "run not found")
+    out = dict(r)
+    if r["status"] == "ready":
+        out["by_platform"] = db.get_ai_platform_stats(run_id)
+        out["share_of_voice"] = db.get_ai_sov(run_id)
+    return out
+
+
+@app.get("/api/monitors/{profile_id}/history")
+def monitor_history(profile_id: str, x_api_key: str | None = Header(None)):
+    p = principal(x_api_key)
+    if not db.get_ai_profile(profile_id, p.scope):
+        raise HTTPException(404, "profile not found")
+    runs = db.list_ai_runs(profile_id=profile_id)
+    return {"history": [{"run_id": r["id"], "at": r["created_at"],
+                         "citation_rate": r["citation_rate"],
+                         "mention_rate": r["mention_rate"],
+                         "citation_gap": r["citation_gap"]} for r in runs]}
+
+
+# ---------------------------------------------------------------- UI
+@app.get("/visibility", response_class=HTMLResponse)
+def visibility_index(x_api_key: str | None = Header(None)):
+    p = principal(x_api_key)
+    profs = db.list_ai_profiles(p.scope)
+    runs = {pr["id"]: db.list_ai_runs(profile_id=pr["id"]) for pr in profs}
+    return visibility_index_html(profs, runs, Q.depth())
+
+
+@app.post("/visibility")
+def visibility_create(client_name: str = Form(...), brand: str = Form(...),
+                      domain: str = Form(...), category: str = Form(...),
+                      x_api_key: str | None = Header(None)):
+    from engine.aivis import ClientProfile, build_panel
+    p = principal(x_api_key)
+    pd = {"brand": brand, "domain": domain, "category": category,
+          "products": [], "locations": [], "competitors": [], "services": [],
+          "aliases": []}
+    panel = [q.to_dict() for q in build_panel(ClientProfile(**pd))]
+    pid = db.create_ai_profile(tenancy.owner_for_new_audit(p), client_name, pd, panel)
+    return RedirectResponse(f"/visibility/{pid}", status_code=303)
+
+
+@app.post("/visibility/{profile_id}/run")
+def visibility_run(profile_id: str, x_api_key: str | None = Header(None)):
+    p = principal(x_api_key)
+    prof = db.get_ai_profile(profile_id, p.scope)
+    if not prof:
+        raise HTTPException(404, "profile not found")
+    rid = db.create_ai_run(prof["partner_id"], profile_id, 3, None,
+                           prof["panel_version"])
+    Q.enqueue(rid, job_type="ai_monitor")
+    return RedirectResponse(f"/visibility/{profile_id}", status_code=303)
+
+
+@app.get("/visibility/{profile_id}", response_class=HTMLResponse)
+def visibility_page(profile_id: str, x_api_key: str | None = Header(None)):
+    p = principal(x_api_key)
+    prof = db.get_ai_profile(profile_id, p.scope)
+    if not prof:
+        raise HTTPException(404, "profile not found")
+    runs = db.list_ai_runs(profile_id=profile_id)
+    ready = [r for r in runs if r["status"] == "ready"]
+    if not ready:
+        status = runs[0]["status"] if runs else "never run"
+        return visibility_index_html([prof], {prof["id"]: runs}, Q.depth())
+    latest = ready[0]
+    return visibility_html(prof, latest,
+                           db.get_ai_platform_stats(latest["id"]),
+                           db.get_ai_sov(latest["id"]),
+                           list(reversed(ready)))

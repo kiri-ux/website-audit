@@ -49,9 +49,44 @@ services:
         sync: false
       - key: CRAWL_USER_AGENT
         value: "ViciAuditBot/1.0 (+https://vicimediainc.com/bot; SEO audit crawler)"
+      # AI visibility monitor. Any platform without a key is reported as
+      # "not measured" rather than counted as zero visibility.
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PERPLEXITY_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SERP_API_KEY
+        sync: false
+      - key: SERP_ENDPOINT
+        sync: false
       # Scale out by raising numInstances — the Redis queue makes workers
       # independent, and job handling is idempotent.
     numInstances: 1
+
+  # ---------------------------------------------------------------- cron
+  # Enqueues due monitor runs. Finishes in seconds — it does NOT execute runs,
+  # because Render hard-stops a cron at 12 hours and a fleet of monitor runs
+  # across many clients would blow past that. The worker does the work.
+  - type: cron
+    name: vici-monitor-scheduler
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: python3 -m app.schedule --due-only
+    schedule: "0 6 1 * *"          # 06:00 UTC on the 1st of each month
+    plan: starter
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: {name: vici-audit-db, property: connectionString}
+      - key: REDIS_URL
+        fromService: {type: keyvalue, name: vici-audit-queue, property: connectionString}
+      - key: MONITOR_INTERVAL_DAYS
+        value: "30"
+      - key: MONITOR_REPEATS
+        value: "3"
 
   # ---------------------------------------------------------------- queue
   - type: keyvalue

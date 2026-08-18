@@ -7,12 +7,24 @@ FROM mcr.microsoft.com/playwright/python:v1.42.0-jammy
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    # PyPI's CDN returns intermittent 502s. Without these, a single transient
+    # blip fails the entire build — which is exactly what happened on the first
+    # deploy attempt. Retry with backoff instead.
+    PIP_RETRIES=10 \
+    PIP_TIMEOUT=60 \
+    PIP_DEFAULT_TIMEOUT=60 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 WORKDIR /srv
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Split into two layers so a failure in the (larger, slower) production extras
+# doesn't force a rebuild of the core deps, and so the core app can build even
+# if an optional driver is unavailable.
+RUN python3 -m pip install --upgrade pip \
+ && pip install -r requirements.txt
 
 COPY . .
 
@@ -22,6 +34,9 @@ USER pwuser
 
 EXPOSE 8000
 
+# Render provides $PORT. Defaulting to 8000 keeps local `docker run` working.
+ENV PORT=8000
+
 # Overridden per service — the API and the worker share this image but run
 # different commands. See render.yaml / docker-compose.yml.
-CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn app.api:app --host 0.0.0.0 --port ${PORT:-8000}"]

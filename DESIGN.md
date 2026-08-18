@@ -21,7 +21,8 @@ So the product is the **findings store**. The Word document, the HTML report and
 the partner API are all just renderers over it. Build the store first; never let
 a renderer become the source of truth.
 
-**Current coverage: 159 of 313 checkpoints (50%), fully automated, no paid APIs.**
+**Current coverage: 159 of 313 checkpoints (50%) from the crawl alone, plus 8
+AI-visibility rows from the monitor — 167 of 313 (53%), no paid SEO APIs.**
 
 ---
 
@@ -266,11 +267,7 @@ it produces confident mush that a competent SEO spots instantly and it discredit
 the other 276 rows. 37 narrow calls beat 5 broad ones on accuracy, cost and
 debuggability. Budget ~$2–4 per audit; don't optimise it, optimise accuracy.
 
-**Phase 4 — AI visibility monitor (+8 rows → 278).** Query panels fired at
-ChatGPT / Claude / Perplexity / Gemini / Copilot, measuring citation rate and
-competitor share of voice. This is the differentiator, the bridge from one-time
-audit to recurring retainer, and the strongest argument for hosting at all —
-it is inherently scheduled work.
+**Phase 4 — AI visibility monitor (+8 rows → 278). ✅ BUILT.** See §11.
 
 **Remaining 35:** 29 backlink rows (one adapter once you pick Ahrefs or Semrush)
 and 6 blocked on a client-supplied keyword map.
@@ -291,6 +288,130 @@ call. The collector interface is designed so re-pointing a row from `semrush` to
 
 ---
 
+## 11. AI Visibility Monitor (Phase 4 — built)
+
+Fills GEO-23 … GEO-30, which the template marks "Manual Review" — meaning
+someone currently types prompts into chat windows and screenshots the answers.
+
+### The measurement
+
+Four numbers, in increasing order of commercial value:
+
+| Metric | What it means |
+|---|---|
+| **mention rate** | the brand name appears in the answer |
+| **citation rate** | the client's DOMAIN appears in the answer's sources — **the real metric** |
+| **unprompted citation rate** | cited on queries that never named the brand — *earned* visibility |
+| **share of voice** | which domains got cited instead |
+
+"Mentioned" is the vanity metric. A model can name a brand from training data
+while citing five competitors as its sources. The citation is what drives
+referral traffic and what a content/PR retainer can actually move. The dashboard
+leads with citation rate and states the distinction explicitly, because clients
+will otherwise anchor on the bigger, softer number.
+
+### Three design decisions that matter
+
+**1. Repeats, not single shots.** These platforms are non-deterministic — the
+same question can be cited once in three asks. Every query runs `repeats` times
+and every number is a RATE over attempts. A single-shot boolean would swing 30
+points between runs for no real-world reason, and a client watching that would
+rightly stop believing it. Three is the floor; five is better.
+
+**2. The panel is frozen at profile creation.** The product is a time series, so
+the questions must be stable. Regenerating them between runs would make
+consecutive points incomparable while still looking like a trend. Changing the
+panel creates a new `panel_version` rather than mutating the old one.
+
+**3. Unmeasured ≠ zero.** A platform with no API key is reported as `Need
+Access` with `confidence: 0.0`, never as 0% visibility. Copilot has no public
+consumer API and is left explicitly unavailable rather than faked. GEO-24/25
+(Featured Snippets, Passage Ranking) are Google SERP features, not chatbots —
+they cap at `Warning` with a stated proxy, and **a proxy can never return
+`Pass`**. (That last rule was added after testing caught the code doing exactly
+that: certifying a row it had never measured.)
+
+### Panel construction
+
+~40 queries across five intents, weighted toward the ones where the brand is
+NOT named in the prompt:
+
+```
+brand       "Is <brand> reputable?"                  prompted   — proves little
+category    "Best <category> in <location>?"         unprompted — the real test
+product     "Where can I buy <product> near me?"     unprompted
+comparison  "<brand> vs <competitor>"                prompted
+question    "How long does <category> delivery take?" unprompted
+```
+
+Default mix: 25 unprompted / 14 prompted.
+
+### Platforms
+
+| Adapter | Grounded | Notes |
+|---|---|---|
+| `perplexity` | yes | Sonar returns sources natively |
+| `claude` | yes | server-side `web_search` tool |
+| `chatgpt` | yes | Responses API + hosted `web_search` |
+| `gemini` | yes | Google Search grounding |
+| `ai_overview` | yes | **no official API** — via a SERP provider; least stable adapter |
+| `copilot` | — | no public consumer API; Azure OpenAI + Bing grounding, or leave off |
+
+Citation extraction is deliberately defensive — each adapter tries several known
+response shapes and falls back to scraping URLs from the answer text. Every
+result records `citation_shape` (where the URLs were actually found), because a
+renamed API field would otherwise silently zero the headline metric.
+
+### Accuracy
+
+The analyser is validated against a recorded corpus with planted traps —
+false positives matter more than misses here, since over-reporting tells a client
+they're visible when they aren't:
+
+```
+"a grand total of"        must NOT match "Grand Home Furnishings"
+"Grand Rapids, Michigan"  place name sharing the first token
+"Grandiose Furniture"     prefix collision, different brand
+notgrandhf.com            domain ENDING with the client domain
+grandhf.com.evil.example  client domain as a subdomain of another host
+blog.grandhf.com          real subdomain — MUST count
+www.grandhf.com           www normalisation
+```
+
+`python3 verify_ai.py` → **100% precision and recall on both mention and
+citation across 195 answers; all six traps rejected.**
+
+### Running it
+
+```bash
+# deterministic, no API keys, no spend — demos and CI
+AI_REPLAY_CORPUS=fixture/ai_corpus.json python3 -m app.dev
+python3 make_ai_fixture.py     # rebuild the corpus
+python3 verify_ai.py           # accuracy vs ground truth
+python3 tests/test_aivis_e2e.py
+
+# live: set any of OPENAI_API_KEY / ANTHROPIC_API_KEY / PERPLEXITY_API_KEY /
+# GEMINI_API_KEY / SERP_API_KEY. Unset platforms are skipped, not zeroed.
+```
+
+Record a real corpus once with `aivis.record_corpus()`, commit it, and CI gets a
+realistic regression suite that costs nothing and never flakes.
+
+### Scheduling — why this justifies hosting
+
+`app/schedule.py` enqueues runs for every profile past `MONITOR_INTERVAL_DAYS`.
+It **only enqueues** — the worker executes. That split is deliberate: Render
+hard-stops a cron at 12 hours, and a fleet of monitor runs across many clients
+would blow past it. The cron finishes in seconds. It also skips profiles with a
+run already in flight, so a double-fired cron cannot double-bill your API spend.
+
+`render.yaml` includes a `vici-monitor-scheduler` cron running monthly.
+
+**This is the piece that makes hosting necessary.** A one-shot audit runs fine
+from a CLI. Scheduled recurring measurement across a client book does not.
+
+---
+
 ## 9. Known issues
 
 - **`MOB-03..07` reference a retired tool.** Google shut down the Mobile-Friendly
@@ -304,6 +425,13 @@ call. The collector interface is designed so re-pointing a row from `semrush` to
   before scaling out.
 - **No auth in internal mode by design.** Put it behind your VPN or add a
   reverse-proxy auth layer before exposing it.
+- **`ai_overview` has no official API** and depends on a SERP provider. Expect
+  it to need more maintenance than the other adapters; it is also the one
+  clients ask about most.
+- **Copilot is not measurable** without Azure OpenAI + Bing grounding. It
+  reports `Need Access` rather than a fake zero.
+- **AI platform responses vary by region and personalisation.** Fix what you can
+  (region, no history) and report rates across repeats, never single answers.
 
 ---
 

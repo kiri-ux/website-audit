@@ -27,12 +27,13 @@ class DbQueue:
 
     LEASE_S = 3600
 
-    def enqueue(self, audit_id: str) -> str:
+    def enqueue(self, audit_id: str, job_type: str = "audit") -> str:
         jid = uuid.uuid4().hex[:16]
         with db.conn() as c:
             c.cursor().execute(db._q(
-                "INSERT INTO jobs (id,audit_id,state,attempts,created_at) "
-                "VALUES (?,?,?,?,?)"), (jid, audit_id, "pending", 0, time.time()))
+                "INSERT INTO jobs (id,audit_id,job_type,state,attempts,created_at) "
+                "VALUES (?,?,?,?,?,?)"),
+                (jid, audit_id, job_type, "pending", 0, time.time()))
         return jid
 
     def lease(self) -> dict | None:
@@ -41,13 +42,13 @@ class DbQueue:
         with db.conn() as c:
             cur = c.cursor()
             cur.execute(db._q(
-                "SELECT id,audit_id,attempts FROM jobs "
+                "SELECT id,audit_id,attempts,job_type FROM jobs "
                 "WHERE state='pending' OR (state='leased' AND leased_until < ?) "
                 "ORDER BY created_at LIMIT 1"), (now,))
             row = cur.fetchone()
             if not row:
                 return None
-            jid, aid, attempts = row[0], row[1], row[2]
+            jid, aid, attempts, jtype = row[0], row[1], row[2], row[3]
             # Conditional update is the lock: if another worker claimed it
             # between our SELECT and here, rowcount is 0 and we return None.
             cur.execute(db._q(
@@ -56,7 +57,8 @@ class DbQueue:
                 (now + self.LEASE_S, attempts + 1, jid, now))
             if cur.rowcount == 0:
                 return None
-            return {"job_id": jid, "audit_id": aid, "attempts": attempts + 1}
+            return {"job_id": jid, "audit_id": aid, "attempts": attempts + 1,
+                    "job_type": jtype or "audit"}
 
     def complete(self, job: dict):
         with db.conn() as c:
@@ -87,9 +89,10 @@ class RedisQueue:
         import redis
         self.r = redis.from_url(url, decode_responses=True)
 
-    def enqueue(self, audit_id: str) -> str:
+    def enqueue(self, audit_id: str, job_type: str = "audit") -> str:
         jid = uuid.uuid4().hex[:16]
-        self.r.lpush(self.KEY, json.dumps({"job_id": jid, "audit_id": audit_id}))
+        self.r.lpush(self.KEY, json.dumps(
+            {"job_id": jid, "audit_id": audit_id, "job_type": job_type}))
         return jid
 
     def lease(self) -> dict | None:
@@ -98,6 +101,7 @@ class RedisQueue:
             return None
         d = json.loads(raw)
         d["_raw"], d["attempts"] = raw, 1
+        d.setdefault("job_type", "audit")
         self.r.setex(f"vici:lease:{d['job_id']}", self.LEASE_S, "1")
         return d
 

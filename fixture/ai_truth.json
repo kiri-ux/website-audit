@@ -1,0 +1,1013 @@
+{
+ "profile": {
+  "brand": "Grand Home Furnishings",
+  "domain": "grandhf.com",
+  "category": "furniture and mattress retailer",
+  "products": [
+   "sectional sofa",
+   "queen mattress",
+   "dining table"
+  ],
+  "locations": [
+   "Roanoke VA",
+   "Virginia",
+   "Bristol TN"
+  ],
+  "competitors": [
+   "Wayfair",
+   "Ashley Furniture",
+   "Rooms To Go"
+  ],
+  "aliases": [
+   "Grand Home",
+   "Grand Furniture"
+  ]
+ },
+ "truth": {
+  "perplexity": {
+   "f8de7571640e": {
+    "mentioned": true,
+    "cited": true,
+    "note": "full brand name + own domain cited"
+   },
+   "170638493fc7": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + SUBDOMAIN must count as cited"
+   },
+   "a8a48d117339": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + bare domain"
+   },
+   "787d4afe082c": {
+    "mentioned": false,
+    "cited": false,
+    "note": "competitors only \u2014 brand absent"
+   },
+   "960278e55aad": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: the word 'grand' alone"
+   },
+   "0795e71cba5f": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: place name sharing the first token"
+   },
+   "d93af72f257b": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: prefix collision with a different brand"
+   },
+   "4a69ef270f9d": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: 'home furnishings' as a generic phrase"
+   },
+   "c8bfd848af9d": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: domain ENDS with client domain but is not it"
+   },
+   "99ca9e755ae9": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: client domain as a subdomain of another host"
+   },
+   "f79018dc60f8": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned from training data, cited nowhere \u2014 the key gap"
+   },
+   "f760bf5058b4": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned but rivals cited instead"
+   },
+   "db1c0f181a82": {
+    "mentioned": true,
+    "cited": true,
+    "note": "www must normalise to the bare domain"
+   },
+   "f36d6861ee72": {
+    "mentioned": false,
+    "cited": false,
+    "note": "empty answer, no sources"
+   },
+   "4c2aa000d8fa": {
+    "mentioned": true,
+    "cited": true,
+    "note": "full brand name + own domain cited"
+   },
+   "18824f831e99": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + SUBDOMAIN must count as cited"
+   },
+   "9110ef8d69ba": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + bare domain"
+   },
+   "dfc95593d6a1": {
+    "mentioned": false,
+    "cited": false,
+    "note": "competitors only \u2014 brand absent"
+   },
+   "d3e24cd9f7f7": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: the word 'grand' alone"
+   },
+   "01c8eb498466": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: place name sharing the first token"
+   },
+   "e4c7bf0201f1": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: prefix collision with a different brand"
+   },
+   "509e0711e0cd": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: 'home furnishings' as a generic phrase"
+   },
+   "256d55c7da9d": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: domain ENDS with client domain but is not it"
+   },
+   "951aa78a7865": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: client domain as a subdomain of another host"
+   },
+   "33de22405c35": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned from training data, cited nowhere \u2014 the key gap"
+   },
+   "9fee7faeb8f1": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned but rivals cited instead"
+   },
+   "8080778b3e67": {
+    "mentioned": true,
+    "cited": true,
+    "note": "www must normalise to the bare domain"
+   },
+   "ae688f05100d": {
+    "mentioned": false,
+    "cited": false,
+    "note": "empty answer, no sources"
+   },
+   "49085dafec5e": {
+    "mentioned": true,
+    "cited": true,
+    "note": "full brand name + own domain cited"
+   },
+   "efeb247ea7b4": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + SUBDOMAIN must count as cited"
+   },
+   "5311196f2d5d": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + bare domain"
+   },
+   "49ac2c8ccee9": {
+    "mentioned": false,
+    "cited": false,
+    "note": "competitors only \u2014 brand absent"
+   },
+   "48b3511495bd": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: the word 'grand' alone"
+   },
+   "e23c0faef10a": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: place name sharing the first token"
+   },
+   "7f2c3b32957f": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: prefix collision with a different brand"
+   },
+   "f1d05828638f": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: 'home furnishings' as a generic phrase"
+   },
+   "f879af4047c7": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: domain ENDS with client domain but is not it"
+   },
+   "c1ec4f8f34a9": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: client domain as a subdomain of another host"
+   },
+   "2a15ac28b537": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned from training data, cited nowhere \u2014 the key gap"
+   }
+  },
+  "chatgpt": {
+   "f8de7571640e": {
+    "mentioned": false,
+    "cited": false,
+    "note": "competitors only \u2014 brand absent"
+   },
+   "170638493fc7": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: the word 'grand' alone"
+   },
+   "a8a48d117339": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: place name sharing the first token"
+   },
+   "787d4afe082c": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: prefix collision with a different brand"
+   },
+   "960278e55aad": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: 'home furnishings' as a generic phrase"
+   },
+   "0795e71cba5f": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: domain ENDS with client domain but is not it"
+   },
+   "d93af72f257b": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: client domain as a subdomain of another host"
+   },
+   "4a69ef270f9d": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned from training data, cited nowhere \u2014 the key gap"
+   },
+   "c8bfd848af9d": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned but rivals cited instead"
+   },
+   "99ca9e755ae9": {
+    "mentioned": true,
+    "cited": true,
+    "note": "www must normalise to the bare domain"
+   },
+   "f79018dc60f8": {
+    "mentioned": false,
+    "cited": false,
+    "note": "empty answer, no sources"
+   },
+   "f760bf5058b4": {
+    "mentioned": true,
+    "cited": true,
+    "note": "full brand name + own domain cited"
+   },
+   "db1c0f181a82": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + SUBDOMAIN must count as cited"
+   },
+   "f36d6861ee72": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + bare domain"
+   },
+   "4c2aa000d8fa": {
+    "mentioned": false,
+    "cited": false,
+    "note": "competitors only \u2014 brand absent"
+   },
+   "18824f831e99": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: the word 'grand' alone"
+   },
+   "9110ef8d69ba": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: place name sharing the first token"
+   },
+   "dfc95593d6a1": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: prefix collision with a different brand"
+   },
+   "d3e24cd9f7f7": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: 'home furnishings' as a generic phrase"
+   },
+   "01c8eb498466": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: domain ENDS with client domain but is not it"
+   },
+   "e4c7bf0201f1": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: client domain as a subdomain of another host"
+   },
+   "509e0711e0cd": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned from training data, cited nowhere \u2014 the key gap"
+   },
+   "256d55c7da9d": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned but rivals cited instead"
+   },
+   "951aa78a7865": {
+    "mentioned": true,
+    "cited": true,
+    "note": "www must normalise to the bare domain"
+   },
+   "33de22405c35": {
+    "mentioned": false,
+    "cited": false,
+    "note": "empty answer, no sources"
+   },
+   "9fee7faeb8f1": {
+    "mentioned": true,
+    "cited": true,
+    "note": "full brand name + own domain cited"
+   },
+   "8080778b3e67": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + SUBDOMAIN must count as cited"
+   },
+   "ae688f05100d": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + bare domain"
+   },
+   "49085dafec5e": {
+    "mentioned": false,
+    "cited": false,
+    "note": "competitors only \u2014 brand absent"
+   },
+   "efeb247ea7b4": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: the word 'grand' alone"
+   },
+   "5311196f2d5d": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: place name sharing the first token"
+   },
+   "49ac2c8ccee9": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: prefix collision with a different brand"
+   },
+   "48b3511495bd": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: 'home furnishings' as a generic phrase"
+   },
+   "e23c0faef10a": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: domain ENDS with client domain but is not it"
+   },
+   "7f2c3b32957f": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: client domain as a subdomain of another host"
+   },
+   "f1d05828638f": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned from training data, cited nowhere \u2014 the key gap"
+   },
+   "f879af4047c7": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned but rivals cited instead"
+   },
+   "c1ec4f8f34a9": {
+    "mentioned": true,
+    "cited": true,
+    "note": "www must normalise to the bare domain"
+   },
+   "2a15ac28b537": {
+    "mentioned": false,
+    "cited": false,
+    "note": "empty answer, no sources"
+   }
+  },
+  "claude": {
+   "f8de7571640e": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: place name sharing the first token"
+   },
+   "170638493fc7": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: prefix collision with a different brand"
+   },
+   "a8a48d117339": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: 'home furnishings' as a generic phrase"
+   },
+   "787d4afe082c": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: domain ENDS with client domain but is not it"
+   },
+   "960278e55aad": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: client domain as a subdomain of another host"
+   },
+   "0795e71cba5f": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned from training data, cited nowhere \u2014 the key gap"
+   },
+   "d93af72f257b": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned but rivals cited instead"
+   },
+   "4a69ef270f9d": {
+    "mentioned": true,
+    "cited": true,
+    "note": "www must normalise to the bare domain"
+   },
+   "c8bfd848af9d": {
+    "mentioned": false,
+    "cited": false,
+    "note": "empty answer, no sources"
+   },
+   "99ca9e755ae9": {
+    "mentioned": true,
+    "cited": true,
+    "note": "full brand name + own domain cited"
+   },
+   "f79018dc60f8": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + SUBDOMAIN must count as cited"
+   },
+   "f760bf5058b4": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + bare domain"
+   },
+   "db1c0f181a82": {
+    "mentioned": false,
+    "cited": false,
+    "note": "competitors only \u2014 brand absent"
+   },
+   "f36d6861ee72": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: the word 'grand' alone"
+   },
+   "4c2aa000d8fa": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: place name sharing the first token"
+   },
+   "18824f831e99": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: prefix collision with a different brand"
+   },
+   "9110ef8d69ba": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: 'home furnishings' as a generic phrase"
+   },
+   "dfc95593d6a1": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: domain ENDS with client domain but is not it"
+   },
+   "d3e24cd9f7f7": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: client domain as a subdomain of another host"
+   },
+   "01c8eb498466": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned from training data, cited nowhere \u2014 the key gap"
+   },
+   "e4c7bf0201f1": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned but rivals cited instead"
+   },
+   "509e0711e0cd": {
+    "mentioned": true,
+    "cited": true,
+    "note": "www must normalise to the bare domain"
+   },
+   "256d55c7da9d": {
+    "mentioned": false,
+    "cited": false,
+    "note": "empty answer, no sources"
+   },
+   "951aa78a7865": {
+    "mentioned": true,
+    "cited": true,
+    "note": "full brand name + own domain cited"
+   },
+   "33de22405c35": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + SUBDOMAIN must count as cited"
+   },
+   "9fee7faeb8f1": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + bare domain"
+   },
+   "8080778b3e67": {
+    "mentioned": false,
+    "cited": false,
+    "note": "competitors only \u2014 brand absent"
+   },
+   "ae688f05100d": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: the word 'grand' alone"
+   },
+   "49085dafec5e": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: place name sharing the first token"
+   },
+   "efeb247ea7b4": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: prefix collision with a different brand"
+   },
+   "5311196f2d5d": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: 'home furnishings' as a generic phrase"
+   },
+   "49ac2c8ccee9": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: domain ENDS with client domain but is not it"
+   },
+   "48b3511495bd": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: client domain as a subdomain of another host"
+   },
+   "e23c0faef10a": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned from training data, cited nowhere \u2014 the key gap"
+   },
+   "7f2c3b32957f": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned but rivals cited instead"
+   },
+   "f1d05828638f": {
+    "mentioned": true,
+    "cited": true,
+    "note": "www must normalise to the bare domain"
+   },
+   "f879af4047c7": {
+    "mentioned": false,
+    "cited": false,
+    "note": "empty answer, no sources"
+   },
+   "c1ec4f8f34a9": {
+    "mentioned": true,
+    "cited": true,
+    "note": "full brand name + own domain cited"
+   },
+   "2a15ac28b537": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + SUBDOMAIN must count as cited"
+   }
+  },
+  "gemini": {
+   "f8de7571640e": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: 'home furnishings' as a generic phrase"
+   },
+   "170638493fc7": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: domain ENDS with client domain but is not it"
+   },
+   "a8a48d117339": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: client domain as a subdomain of another host"
+   },
+   "787d4afe082c": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned from training data, cited nowhere \u2014 the key gap"
+   },
+   "960278e55aad": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned but rivals cited instead"
+   },
+   "0795e71cba5f": {
+    "mentioned": true,
+    "cited": true,
+    "note": "www must normalise to the bare domain"
+   },
+   "d93af72f257b": {
+    "mentioned": false,
+    "cited": false,
+    "note": "empty answer, no sources"
+   },
+   "4a69ef270f9d": {
+    "mentioned": true,
+    "cited": true,
+    "note": "full brand name + own domain cited"
+   },
+   "c8bfd848af9d": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + SUBDOMAIN must count as cited"
+   },
+   "99ca9e755ae9": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + bare domain"
+   },
+   "f79018dc60f8": {
+    "mentioned": false,
+    "cited": false,
+    "note": "competitors only \u2014 brand absent"
+   },
+   "f760bf5058b4": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: the word 'grand' alone"
+   },
+   "db1c0f181a82": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: place name sharing the first token"
+   },
+   "f36d6861ee72": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: prefix collision with a different brand"
+   },
+   "4c2aa000d8fa": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: 'home furnishings' as a generic phrase"
+   },
+   "18824f831e99": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: domain ENDS with client domain but is not it"
+   },
+   "9110ef8d69ba": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: client domain as a subdomain of another host"
+   },
+   "dfc95593d6a1": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned from training data, cited nowhere \u2014 the key gap"
+   },
+   "d3e24cd9f7f7": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned but rivals cited instead"
+   },
+   "01c8eb498466": {
+    "mentioned": true,
+    "cited": true,
+    "note": "www must normalise to the bare domain"
+   },
+   "e4c7bf0201f1": {
+    "mentioned": false,
+    "cited": false,
+    "note": "empty answer, no sources"
+   },
+   "509e0711e0cd": {
+    "mentioned": true,
+    "cited": true,
+    "note": "full brand name + own domain cited"
+   },
+   "256d55c7da9d": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + SUBDOMAIN must count as cited"
+   },
+   "951aa78a7865": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + bare domain"
+   },
+   "33de22405c35": {
+    "mentioned": false,
+    "cited": false,
+    "note": "competitors only \u2014 brand absent"
+   },
+   "9fee7faeb8f1": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: the word 'grand' alone"
+   },
+   "8080778b3e67": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: place name sharing the first token"
+   },
+   "ae688f05100d": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: prefix collision with a different brand"
+   },
+   "49085dafec5e": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: 'home furnishings' as a generic phrase"
+   },
+   "efeb247ea7b4": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: domain ENDS with client domain but is not it"
+   },
+   "5311196f2d5d": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: client domain as a subdomain of another host"
+   },
+   "49ac2c8ccee9": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned from training data, cited nowhere \u2014 the key gap"
+   },
+   "48b3511495bd": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned but rivals cited instead"
+   },
+   "e23c0faef10a": {
+    "mentioned": true,
+    "cited": true,
+    "note": "www must normalise to the bare domain"
+   },
+   "7f2c3b32957f": {
+    "mentioned": false,
+    "cited": false,
+    "note": "empty answer, no sources"
+   },
+   "f1d05828638f": {
+    "mentioned": true,
+    "cited": true,
+    "note": "full brand name + own domain cited"
+   },
+   "f879af4047c7": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + SUBDOMAIN must count as cited"
+   },
+   "c1ec4f8f34a9": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + bare domain"
+   },
+   "2a15ac28b537": {
+    "mentioned": false,
+    "cited": false,
+    "note": "competitors only \u2014 brand absent"
+   }
+  },
+  "ai_overview": {
+   "f8de7571640e": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: client domain as a subdomain of another host"
+   },
+   "170638493fc7": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned from training data, cited nowhere \u2014 the key gap"
+   },
+   "a8a48d117339": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned but rivals cited instead"
+   },
+   "787d4afe082c": {
+    "mentioned": true,
+    "cited": true,
+    "note": "www must normalise to the bare domain"
+   },
+   "960278e55aad": {
+    "mentioned": false,
+    "cited": false,
+    "note": "empty answer, no sources"
+   },
+   "0795e71cba5f": {
+    "mentioned": true,
+    "cited": true,
+    "note": "full brand name + own domain cited"
+   },
+   "d93af72f257b": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + SUBDOMAIN must count as cited"
+   },
+   "4a69ef270f9d": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + bare domain"
+   },
+   "c8bfd848af9d": {
+    "mentioned": false,
+    "cited": false,
+    "note": "competitors only \u2014 brand absent"
+   },
+   "99ca9e755ae9": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: the word 'grand' alone"
+   },
+   "f79018dc60f8": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: place name sharing the first token"
+   },
+   "f760bf5058b4": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: prefix collision with a different brand"
+   },
+   "db1c0f181a82": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: 'home furnishings' as a generic phrase"
+   },
+   "f36d6861ee72": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: domain ENDS with client domain but is not it"
+   },
+   "4c2aa000d8fa": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: client domain as a subdomain of another host"
+   },
+   "18824f831e99": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned from training data, cited nowhere \u2014 the key gap"
+   },
+   "9110ef8d69ba": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned but rivals cited instead"
+   },
+   "dfc95593d6a1": {
+    "mentioned": true,
+    "cited": true,
+    "note": "www must normalise to the bare domain"
+   },
+   "d3e24cd9f7f7": {
+    "mentioned": false,
+    "cited": false,
+    "note": "empty answer, no sources"
+   },
+   "01c8eb498466": {
+    "mentioned": true,
+    "cited": true,
+    "note": "full brand name + own domain cited"
+   },
+   "e4c7bf0201f1": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + SUBDOMAIN must count as cited"
+   },
+   "509e0711e0cd": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + bare domain"
+   },
+   "256d55c7da9d": {
+    "mentioned": false,
+    "cited": false,
+    "note": "competitors only \u2014 brand absent"
+   },
+   "951aa78a7865": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: the word 'grand' alone"
+   },
+   "33de22405c35": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: place name sharing the first token"
+   },
+   "9fee7faeb8f1": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: prefix collision with a different brand"
+   },
+   "8080778b3e67": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: 'home furnishings' as a generic phrase"
+   },
+   "ae688f05100d": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: domain ENDS with client domain but is not it"
+   },
+   "49085dafec5e": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: client domain as a subdomain of another host"
+   },
+   "efeb247ea7b4": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned from training data, cited nowhere \u2014 the key gap"
+   },
+   "5311196f2d5d": {
+    "mentioned": true,
+    "cited": false,
+    "note": "mentioned but rivals cited instead"
+   },
+   "49ac2c8ccee9": {
+    "mentioned": true,
+    "cited": true,
+    "note": "www must normalise to the bare domain"
+   },
+   "48b3511495bd": {
+    "mentioned": false,
+    "cited": false,
+    "note": "empty answer, no sources"
+   },
+   "e23c0faef10a": {
+    "mentioned": true,
+    "cited": true,
+    "note": "full brand name + own domain cited"
+   },
+   "7f2c3b32957f": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + SUBDOMAIN must count as cited"
+   },
+   "f1d05828638f": {
+    "mentioned": true,
+    "cited": true,
+    "note": "alias + bare domain"
+   },
+   "f879af4047c7": {
+    "mentioned": false,
+    "cited": false,
+    "note": "competitors only \u2014 brand absent"
+   },
+   "c1ec4f8f34a9": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: the word 'grand' alone"
+   },
+   "2a15ac28b537": {
+    "mentioned": false,
+    "cited": false,
+    "note": "TRAP: place name sharing the first token"
+   }
+  }
+ }
+}

@@ -1,11 +1,22 @@
-fastapi>=0.110
-uvicorn[standard]>=0.27
-pydantic>=2.6
-requests>=2.31
-beautifulsoup4>=4.12
-lxml>=5.1
+# Core — needed by both the API and the worker.
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.27,<1.0
+pydantic>=2.6,<3.0
 python-multipart>=0.0.9
-playwright>=1.42          # only needed when CRAWL_RENDER_JS=true
-psycopg2-binary>=2.9      # production (Postgres)
-redis>=5.0                # production (queue)
-boto3>=1.34               # production (S3/R2 artifacts)
+requests>=2.31,<3.0
+beautifulsoup4>=4.12,<5.0
+lxml>=5.1
+
+# NOTE: playwright is deliberately NOT listed.
+# The base image (mcr.microsoft.com/playwright/python) already ships it, pinned
+# to the browser build baked into the image. Reinstalling it here can upgrade
+# the Python package past the bundled Chromium and break JS rendering with a
+# confusing "executable doesn't exist" error at runtime.
+# If you move off the Playwright base image, add it back AND run
+# `playwright install --with-deps chromium`.
+
+# Production backends. Safe to install everywhere; only imported when the
+# matching env var is set (see app/config.py), so local dev never touches them.
+psycopg2-binary>=2.9,<3.0     # DATABASE_URL=postgres://...
+redis>=5.0,<6.0               # REDIS_URL=redis://...
+boto3>=1.34,<2.0              # ARTIFACT_STORE=s3://...
