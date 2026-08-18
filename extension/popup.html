@@ -1,0 +1,48 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+:root{color-scheme:light dark}
+body{width:360px;margin:0;padding:14px;background:#fcfcfb;color:#0b0b0b;
+ font:13px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+@media(prefers-color-scheme:dark){body{background:#1a1a19;color:#fff}}
+h1{font-size:14px;margin:0 0 2px;letter-spacing:-.01em}
+.sub{color:#898781;font-size:11.5px;margin-bottom:12px}
+label{display:block;font-size:10.5px;font-weight:640;color:#52514e;
+ text-transform:uppercase;letter-spacing:.06em;margin:9px 0 3px}
+@media(prefers-color-scheme:dark){label{color:#c3c2b7}}
+input{width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #e6e5e1;
+ border-radius:6px;font:inherit;font-size:12.5px;background:#f9f9f7;color:inherit}
+@media(prefers-color-scheme:dark){input{background:#0d0d0d;border-color:#2c2c2a}}
+.row{display:flex;gap:8px}.row>div{flex:1}
+button{width:100%;margin-top:12px;padding:9px;border:0;border-radius:6px;
+ background:#2a78d6;color:#fff;font:inherit;font-weight:640;cursor:pointer}
+button:hover{filter:brightness(1.08)}
+button.stop{background:#d03b3b}
+.bar{height:6px;background:#eceae6;border-radius:3px;margin:11px 0 6px;overflow:hidden}
+.bar>i{display:block;height:100%;background:#2a78d6;width:0;border-radius:3px;
+ transition:width .3s}
+@media(prefers-color-scheme:dark){.bar{background:#262623}}
+#log{margin-top:8px;max-height:150px;overflow:auto;font:11px ui-monospace,Menlo,monospace;
+ color:#52514e;white-space:pre-wrap}
+@media(prefers-color-scheme:dark){#log{color:#c3c2b7}}
+.hint{font-size:11px;color:#898781;margin-top:8px;line-height:1.45}
+</style></head><body>
+<h1>Vici Audit Capture</h1>
+<div class="sub">Captures the real browser render from sites that block server crawlers.</div>
+
+<label>API URL</label>
+<input id="apiBase" placeholder="https://vici-audit-api-xxxx.onrender.com">
+<label>Audit ID</label>
+<input id="auditId" placeholder="paste from the dashboard">
+<div class="row">
+  <div><label>Pages</label><input id="maxPages" type="number" value="30"></div>
+  <div><label>Dwell (ms)</label><input id="dwellMs" type="number" value="2500"></div>
+</div>
+<label>API key (partner mode only)</label>
+<input id="token" placeholder="leave blank for internal mode">
+
+<button id="go">Start capture</button>
+<div class="bar"><i id="bar"></i></div>
+<div id="status" class="sub" style="margin:0">idle</div>
+<div id="log"></div>
+<div class="hint">Open the client site in a tab first. 30 pages at 2.5s ≈ 2 minutes;
+you can leave it running. 83% of checkpoints only need a template sample.</div>
+<script src="popup.js"></script></body></html>

@@ -72,11 +72,19 @@ def run_audit_job(audit_id: str):
         print(f"[worker] {audit_id} TRUNCATED: {art.truncated}", flush=True)
     q = art.quality
     if q.degenerate:
-        # Do not silently produce a report full of false findings.
+        # Do not silently produce a report full of false findings. Park the audit
+        # for browser capture instead — a blocked crawl is a handoff, not a result.
         print(f"[worker] {audit_id} CRAWL DEGENERATE: {q.reason} | {q.likely_cause} "
               f"| signals={q.signals}", flush=True)
-        step("checking", f"crawl blocked ({q.likely_cause}); "
-                         f"content checks will report Need Access")
+        db.update_audit(
+            audit_id, status="needs_capture",
+            progress=f"server crawl blocked ({q.likely_cause}) — "
+                     f"run the Chrome extension against this site",
+            crawl_blocked=1,
+            crawl_note=f"{q.likely_cause} · " + "; ".join(q.signals),
+            completed_at=time.time())
+        print(f"[worker] {audit_id} parked for browser capture", flush=True)
+        return
     else:
         step("checking", f"crawled {len(art.pages)} pages; running checkpoints")
 

@@ -60,7 +60,8 @@ code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
 
 STATUS_COLOR = {"ready": "var(--good)", "failed": "var(--critical)",
                 "queued": "var(--muted)", "crawling": "var(--warning)",
-                "checking": "var(--warning)", "scoring": "var(--warning)"}
+                "checking": "var(--warning)", "scoring": "var(--warning)",
+                "needs_capture": "var(--serious)"}
 
 
 def e(x):
@@ -93,7 +94,13 @@ def dashboard_html(audits, principal, queue_depth):
             + f"</td><td>{bar}</td>"
             f"<td class='num'>{score if score is not None else '—'}</td>"
             f"<td class='num'>{e(a['coverage'] or '—')}</td>"
-            f"<td class='num'>{a['pages_crawled'] or '—'}</td></tr>")
+            f"<td class='num'>{a['pages_crawled'] or '—'}</td></tr>"
+            + (f"<tr><td colspan='6' style='padding-top:0;border:0;"
+               f"color:var(--ink2);font-size:12.5px'>"
+               f"⚠ Server crawl blocked. Open the client site in Chrome, launch "
+               f"<b>Vici Audit Capture</b>, and paste audit id "
+               f"<code>{a['id']}</code>.</td></tr>"
+               if a["status"] == "needs_capture" else ""))
 
     table = ("<table><tr><th>Client</th><th>Status</th><th>Score</th>"
              "<th class='num'>/100</th><th class='num'>Coverage</th>"

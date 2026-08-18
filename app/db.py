@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS audits (
   crawl_blocked  INTEGER DEFAULT 0,  -- crawler could not see the real page
   crawl_note     TEXT,
   crawl_truncated TEXT,
+  capture_method TEXT,
   options        TEXT,               -- JSON: crawl overrides
   created_at     REAL NOT NULL,
   started_at     REAL,
@@ -231,6 +232,7 @@ MIGRATIONS = [
     ("audits", "crawl_note", "TEXT"),
     ("audits", "crawl_truncated", "TEXT"),
     ("jobs", "job_type", "TEXT DEFAULT 'audit'"),
+    ("audits", "capture_method", "TEXT"),
 ]
 
 

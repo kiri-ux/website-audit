@@ -23,6 +23,9 @@ from .artifacts import get_artifact
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from engine.report import render_html
+from engine import checks as engine_checks
+from engine import scoring as engine_scoring
+from .capture import artifact_from_capture
 
 app = FastAPI(title="Vici SEO/GEO Audit", version="1.0")
 Q = get_queue()
@@ -165,8 +168,59 @@ def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
             "crawl_blocked": bool(a.get("crawl_blocked")),
             "crawl_note": a.get("crawl_note"),
             "truncated": a.get("crawl_truncated"),
+            "capture_method": a.get("capture_method"),
             "build": version.label()}
     return render_html(meta, scores, findings, db.catalog())
+
+
+# ==================================================================== BROWSER CAPTURE
+@app.post("/api/audits/{audit_id}/capture")
+def ingest_capture(audit_id: str, payload: dict, x_api_key: str | None = Header(None)):
+    """
+    Accept a browser capture and run the IDENTICAL checkers over it.
+
+    This is the escape hatch for WAF-protected sites. The extension supplies the
+    rendered DOM (which a server fetch cannot get past bot protection, and which
+    is more accurate anyway on JS-rendered sites); the server still contributes
+    TLS and PageSpeed Insights.
+    """
+    p = principal(x_api_key)
+    a = db.get_audit(audit_id, p.scope)
+    if not a:
+        raise HTTPException(404, "audit not found")
+    if not payload.get("pages"):
+        raise HTTPException(400, "payload contained no pages")
+
+    db.update_audit(audit_id, status="checking",
+                    progress=f"ingesting {len(payload['pages'])} browser-captured pages")
+    art = artifact_from_capture(payload)
+
+    ctx = {"psi_key": cfg.psi_key, "skip_psi": cfg.skip_psi}
+    findings = engine_checks.run_all(art, ctx)
+    db.save_findings(audit_id, findings)
+
+    cat = db.catalog()
+    sc = engine_scoring.score(findings, cat, a.get("vertical"))
+    db.save_scores(audit_id, sc)
+
+    from .artifacts import put_artifact
+    put_artifact(audit_id, "crawl_artifact.json", art.to_json().encode())
+
+    db.update_audit(
+        audit_id, status="ready",
+        progress=f"complete — captured in-browser ({len(art.pages)} pages)",
+        crawl_blocked=1 if art.quality.degenerate else 0,
+        crawl_note=(f"{art.quality.likely_cause} · " + "; ".join(art.quality.signals)
+                    if art.quality.degenerate else None),
+        crawl_truncated=None,
+        overall_score=sc["overall"]["score"], overall_rating=sc["overall"]["rating"],
+        pages_crawled=len(art.pages), coverage=f"{len(findings)}/{len(cat)}",
+        capture_method="browser_extension", completed_at=time.time())
+
+    return {"ok": True, "audit_id": audit_id, "pages": len(art.pages),
+            "checkpoints": len(findings),
+            "overall_score": sc["overall"]["score"],
+            "report": f"/audits/{audit_id}"}
 
 
 # ==================================================================== AI VISIBILITY
