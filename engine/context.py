@@ -56,12 +56,13 @@ NOT_A_CATEGORY = {
 @dataclass
 class BusinessContext:
     brand: str = ""
+    self_description: str = ""     # THEIR words, quoted — never our inference
     legal_name: str = ""
     phone: str = ""
     founded: str = ""
     locations: list = field(default_factory=list)      # [{name, city, region}]
     states: list = field(default_factory=list)
-    categories: list = field(default_factory=list)
+    sections: list = field(default_factory=list)   # top-level URL paths
     product_pages: int = 0
     location_pages: int = 0
     blog_pages: int = 0
@@ -76,42 +77,40 @@ class BusinessContext:
     @property
     def is_useful(self) -> bool:
         """Enough to say something specific? Otherwise prose stays generic."""
-        return bool(self.brand or self.locations or self.categories
+        return bool(self.brand or self.locations or self.sections
                     or self.product_pages)
 
     def describe(self) -> str:
         """
-        One sentence about the business, built only from what we found.
+        One sentence about the business, in the site's OWN words where possible.
 
-        Written as clause fragments joined at the end so an absent fact removes
-        a clause instead of leaving "sells  from  stores across ".
+        An earlier version built this from URL path segments and produced, for a
+        junk-removal company in Tennessee: "Junk Bee Gone publishes pages
+        covering service, clinton and knoxville." Those are a service page and
+        two city pages — the sentence is not merely clumsy, it is wrong, and a
+        client reads it in the first line of a report they paid for.
+
+        A URL slug is not a description of a business. So the order is now:
+        quote their own copy, else state a fact schema markup asserts, else say
+        nothing. Saying nothing is a perfectly good outcome here; the paragraph
+        that follows still names the domain, the date and the score.
         """
-        if not self.is_useful:
-            return ""
-        subject = self.brand or "The site"
-        bits = []
-        if self.categories:
-            cats = self.categories[:3]
-            listed = (", ".join(cats[:-1]) + " and " + cats[-1]
-                      if len(cats) > 1 else cats[0])
-            verb = "sells" if self.has_ecommerce else "publishes pages covering"
-            bits.append(f"{verb} {listed.lower()}")
-        elif self.has_ecommerce:
-            bits.append("runs an online catalogue")
+        name = self.brand or "This site"
+        if self.self_description:
+            return f'{name} describes itself as "{self.self_description}"'
         if self.locations:
             n = len(self.locations)
             where = ""
             if self.states:
                 st = self.states[:3]
-                where = (" across " + (", ".join(st[:-1]) + " and " + st[-1]
-                                       if len(st) > 1 else st[0]))
-            bits.append(f"operates {n} location{'s' if n != 1 else ''}{where}")
-        elif self.location_pages > 1:
-            bits.append(f"lists {self.location_pages} store or location pages")
-        if not bits:
-            return ""
-        joined = bits[0] if len(bits) == 1 else " and ".join(bits)
-        return f"{subject} {joined}."
+                where = (" in " + (", ".join(st[:-1]) + " and " + st[-1]
+                                   if len(st) > 1 else st[0]))
+            return (f"{name} lists {n} location{'s' if n != 1 else ''}{where} "
+                    f"in its own markup.")
+        if self.has_ecommerce and self.product_pages:
+            return (f"{name} publishes {self.product_pages} product pages we "
+                    f"could reach.")
+        return ""
 
 
 def _nodes(page) -> list:
@@ -246,15 +245,38 @@ def extract(art) -> BusinessContext:
         seg = path.strip("/").split("/")[0].split("?")[0].split("#")[0].lower()
         if seg:
             healthy.add(seg)
-    ctx.categories = [seg_label[s] for s, n in seg_count.most_common(12)
-                      if n > 1 and s in healthy][:6]
-    if ctx.categories:
-        ctx.evidence["categories"] = "internal navigation"
+    ctx.sections = [seg_label[s] for s, n in seg_count.most_common(12)
+                    if n > 1 and s in healthy][:6]
+    if ctx.sections:
+        ctx.evidence["sections"] = "internal navigation"
+
+    # ---- the site's own words ---------------------------------------------
+    # Preferred over anything we could infer, because it is unarguable: it is
+    # the sentence they chose to describe themselves with. Schema `description`
+    # first (hand-authored), then the homepage meta description (also written
+    # by a person), then the H1.
+    home = next((p for p in pages if p.url.rstrip("/") ==
+                 art.start_url.rstrip("/")), pages[0])
+    for node in _nodes(home):
+        if set(_types(node)) & org_types:
+            d = _text(node.get("description"))
+            if d:
+                ctx.self_description = d
+                ctx.evidence["self_description"] = f"{home.url} (schema description)"
+                break
+    if not ctx.self_description:
+        for cand, where in ((home.meta_description, "meta description"),
+                            (home.h1[0] if home.h1 else "", "H1")):
+            cand = (cand or "").strip()
+            # Too short to be a description, or so long it is a paragraph that
+            # would swamp the opening line.
+            if 25 <= len(cand) <= 180:
+                ctx.self_description = re.sub(r"\s+", " ", cand).rstrip(" .")
+                ctx.evidence["self_description"] = f"{home.url} ({where})"
+                break
 
     # ---- brand fallbacks ---------------------------------------------------
     if not ctx.brand:
-        home = next((p for p in pages if p.url.rstrip("/") ==
-                     art.start_url.rstrip("/")), pages[0])
         title = (home.title or "").strip()
         # "Sofas & Sectionals | Grand Home Furnishings" -> the branded half is
         # whichever side repeats across pages; the last segment is the common

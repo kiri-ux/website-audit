@@ -113,7 +113,8 @@ def main():
     all_ids = [i for t in five for i in t["ids"]]
     check("no checkpoint is headlined twice", len(set(all_ids)) == len(all_ids))
     check("grouping is stated, not hidden",
-          all(("checkpoints" in t["finding"]) or t["count"] == 1 for t in five),
+          all(("separate checks" in t["finding"]) or t["count"] == 1
+              for t in five),
           str([(t["title"][:26], t["count"]) for t in five]))
 
     print("\n2. NO RATIONALE IS PRINTED TWICE ON THE SAME PAGE")
@@ -140,12 +141,18 @@ def main():
     check("overview names the client or their brand",
           "Grand Home" in ov or (bc.brand and bc.brand in ov), ov[:70])
     check("overview names the actual domain", "grandhf.com" in ov)
+    check("the opening quotes the site's own words rather than URL slugs",
+          not bc.self_description or bc.self_description in ov,
+          bc.self_description[:60])
+    # The exact regression: URL path segments presented as business categories.
+    check("no URL slug is passed off as a description of the business",
+          "publishes pages covering" not in ov.lower(), ov[:80])
     check("overview carries real counts", bool(re.search(r"\d+ pages", ov)))
     check("overview leads with the business, not the audit",
           not ov.lower().startswith("this audit"), ov[:48])
     check("business context was extracted from the site",
-          bool(bc.categories or bc.locations or bc.brand),
-          f"brand={bc.brand!r} categories={bc.categories}")
+          bool(bc.sections or bc.locations or bc.brand),
+          f"brand={bc.brand!r} sections={bc.sections}")
 
     print("\n5. NO MARKETING FILLER ANYWHERE IN THE PROSE")
     blob = " ".join([s["overview"], s.get("headline", ""), s["opportunity"],
@@ -160,7 +167,41 @@ def main():
     check("no orphaned punctuation from an empty variable",
           " ," not in blob and " ." not in blob and "()" not in blob)
 
-    print("\n6. ACRONYMS SURVIVE SENTENCE CASING")
+    print("\n6. AMERICAN SPELLING THROUGHOUT")
+    # Vici is a US agency with US clients (see VOICE.md). One British spelling
+    # in a client deliverable is the kind of detail that reads as imported from
+    # somewhere else.
+    import pathlib
+    BRITISH = ["canonicalis", "optimis", "organis", "behaviour", "colour",
+               "centre", "prioritis", "analyse", "recognis", "emphasis" + "e",
+               "normalis", "licence", "defence", "catalogue"]
+    root = pathlib.Path(__file__).resolve().parent.parent
+    offenders = []
+    for f in ("engine/summarise.py", "engine/pdf_report.py", "engine/report.py",
+              "engine/glossary.py", "engine/context.py", "engine/charts.py",
+              "engine/judgment.py", "app/ui.py"):
+        text = (root / f).read_text()
+        # reportlab's own API is spelled drawCentredString. That is a third-party
+        # identifier, not our copy, so it is removed before the scan rather than
+        # bending our spelling rule around it.
+        text = text.replace("drawCentredString", "")
+        for b in BRITISH:
+            if b in text.lower():
+                offenders.append(f"{f}:{b}")
+    check("no British spellings in the report copy", not offenders,
+          str(offenders[:6]))
+    prose = " ".join([s["overview"], s["opportunity"], *working, *titles,
+                      *[t["why"] for t in five]]).lower()
+    check("rendered prose is American too",
+          not any(b in prose for b in BRITISH), "")
+
+    print("\n7. THE READER IS ADDRESSED DIRECTLY")
+    check("the summary talks to the client, not about them",
+          ("you" in prose or "your" in prose), "")
+    check("no 'it is recommended that' constructions",
+          "it is recommended" not in prose and "should be implemented" not in prose)
+
+    print("\n8. ACRONYMS SURVIVE SENTENCE CASING")
     # Checked on the CASED text only: an acronym is allowed to be lowercase
     # inside a URL, but "Https" or "E-e-a-t" in a sentence means something ran
     # .capitalize() over a section name.

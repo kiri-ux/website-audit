@@ -27,7 +27,7 @@ from .scoring import FAILING, top_issues
 SECTION_NAMES = {
     "ANA": "Analytics and tracking", "GSC": "Search Console", "GA4": "Google Analytics",
     "TECH": "Technical SEO", "URL": "URL structure", "SEC": "HTTPS and security",
-    "CANON": "Canonicalisation", "PERF": "Site performance and Core Web Vitals",
+    "CANON": "Canonicalization", "PERF": "Site performance and Core Web Vitals",
     "ONP": "On-page SEO", "MOB": "Mobile SEO", "SCHEMA": "Structured data",
     "INTL": "International SEO", "HTML": "HTML and code quality",
     "EEAT": "E-E-A-T and trust signals", "GEO": "AI search visibility (GEO)",
@@ -38,7 +38,7 @@ VERTICAL_NOTE = {
     "ecommerce": ("Product and Review schema, page speed and mobile experience carry "
                   "disproportionate weight for a retailer."),
     "finance_ymyl": ("As a YMYL brand, author credentials, expert review and "
-                     "organisational trust signals matter far more than they would "
+                     "organizational trust signals matter far more than they would "
                      "in most sectors."),
     "local_service": ("LocalBusiness schema, location pages and call tracking are the "
                       "highest-leverage signals for a service business."),
@@ -56,7 +56,7 @@ VERTICAL_NOTE = {
 # ---------------------------------------------------------------------------
 WHY_IT_MATTERS = {
     "SEC": "Browsers mark insecure pages, and Google has used HTTPS as a ranking "
-           "signal for a decade. This is table stakes rather than optimisation.",
+           "signal for a decade. This is table stakes rather than optimization.",
     "TECH": "Crawl and indexing problems cap everything downstream: content you "
             "cannot get indexed cannot rank, however good it is.",
     "GEO": "Assistants are increasingly answering questions that used to start "
@@ -89,7 +89,7 @@ WHY_IT_MATTERS = {
             "wrong page, which reads as a bounce rather than as a bug.",
     "GSC": "Search Console is the only source of what people actually typed to "
            "reach you. Nothing else substitutes for it.",
-    "GA4": "Behaviour data is what turns a ranking into a decision about where to "
+    "GA4": "Behavior data is what turns a ranking into a decision about where to "
            "spend next.",
 }
 
@@ -197,7 +197,7 @@ THEME_TITLE = {
     "redirects": "Redirects are losing signal",
     "schema": "Structured data is thin or missing",
     "titles": "Titles and headings are not doing their job",
-    "images": "Images are unoptimised",
+    "images": "Images are unoptimized",
     "speed": "The site is slower than the Core Web Vitals thresholds",
     "mobile": "The mobile experience has defects",
     "ai_access": "AI assistants cannot properly cite the site",
@@ -238,6 +238,60 @@ def _theme_of(checkpoint_name: str, prefix: str) -> tuple:
         if any(n in name for n in needles):
             return key, why_prefix
     return f"section:{prefix}", prefix
+
+
+# Plain-English names for what each area actually examines. The section titles
+# are correct but internal ("On-Page SEO"); these are what you would say out
+# loud to the person paying for the audit.
+PLAIN_AREA = {
+    "TECH": "how search engines crawl the site",
+    "PERF": "page speed",
+    "MOB": "how the site renders on a phone",
+    "SCHEMA": "the structured data behind your listings",
+    "ONP": "page titles and headings",
+    "SEC": "whether every page is served securely",
+    "GEO": "whether AI assistants can find and cite you",
+    "EEAT": "the trust signals Google looks for",
+    "URL": "how the site is put together",
+    "CANON": "duplicate versions of the same page",
+    "OFF": "the links pointing at you from other sites",
+    "ANA": "whether your tracking is set up properly",
+    "INTL": "language and region targeting",
+    "HTML": "the quality of the page code",
+    "GSC": "your Search Console data",
+    "GA4": "your Analytics data",
+}
+
+# Named in this order when several qualify, so the list spans different kinds
+# of work rather than three flavours of the same thing.
+PLAIN_ORDER = ["PERF", "MOB", "SCHEMA", "GEO", "ONP", "TECH", "SEC", "EEAT",
+               "URL", "ANA", "CANON", "OFF", "INTL", "HTML"]
+
+
+def _plain_areas(assessed: dict, n: int = 3) -> str:
+    """
+    "everything from page speed and mobile rendering to structured data".
+
+    Note the from/TO construction rather than a comma list. "everything from a,
+    b and c" is not English — the phrase needs both ends of the range.
+    """
+    picked = [PLAIN_AREA[k] for k in PLAIN_ORDER
+              if k in assessed and k in PLAIN_AREA][:n]
+    if not picked:
+        return ""
+    if len(picked) == 1:
+        return picked[0]
+    return f"everything from {_listy(picked[:-1])} to {picked[-1]}"
+
+
+def _nice_date(stamp) -> str:
+    """2026-08-18 14:00 -> 18 August. Nobody says 'on 2026-08-18'."""
+    try:
+        from datetime import datetime
+        d = datetime.strptime(str(stamp).split(" ")[0], "%Y-%m-%d")
+        return f"{d.day} {d.strftime('%B')}"
+    except Exception:
+        return str(stamp).split(" ")[0]
 
 
 def _midsentence(name: str) -> str:
@@ -294,7 +348,7 @@ def _group_issues(findings: dict, catalog: dict, meta: dict, limit: int = 5) -> 
         short = (f.get("evidence") or "").strip().rstrip(".") + "."
         finding = short
         if others:
-            finding += (f" This shows up across {len(g['members'])} checkpoints, "
+            finding += (f" It shows up in {len(g['members'])} separate checks, "
                         f"including {_listy(others[:3])}.")
         action = (f.get("recommendation") or "").strip()
         if not action:
@@ -355,19 +409,17 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
         total_pass = sum(n for _, n in clean)
         names = _listy([n for n, _ in clean])
         working.append(
-            f"{names} came back clean — {total_pass} checkpoints across those "
-            f"areas with nothing outstanding." if len(clean) > 1 else
-            f"{names} came back clean, with all {total_pass} assessed "
-            f"checkpoints passing.")
+            f"{names} came back clean — {total_pass} checks across those areas "
+            f"with nothing outstanding." if len(clean) > 1 else
+            f"{names} came back clean, with all {total_pass} checks passing.")
     for code, v, passes in notable[:2]:
         working.append(
-            f"{SECTION_NAMES.get(code, code)} is in good shape at {v['score']}"
-            f"/100, with {v['failing']} open item"
+            f"{SECTION_NAMES.get(code, code)} is in good shape at {v['score']} out "
+            f"of 100 — {v['failing']} open item"
             f"{'s' if v['failing'] != 1 else ''} against {passes} passing.")
     if not working:
-        working.append("No area reached a Strong rating, which is unusual and "
-                       "means the fixes below are foundational rather than "
-                       "incremental.")
+        working.append("No area came back Strong. That's unusual, and it means "
+                       "the fixes below are foundations rather than tuning.")
 
     # ---------- Priority Issues ----------
     issues = []
@@ -384,11 +436,10 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
                 if (catalog.get(cid, {}) or {}).get("prefix") == code
                 and f["status"] in FAILING]
         names = [catalog.get(c, {}).get("checkpoint", c) for c in gaps[:5]]
-        opp = (f"The most ground to make up is in "
-               f"{_midsentence(SECTION_NAMES.get(code, code))}, which scores "
-               f"{v['score']}/100 with {v['failing']} of {v['checked']} assessed "
-               f"checkpoints needing work"
-               + (f", including {_listy(names[:3])}." if names else "."))
+        opp = (f"{SECTION_NAMES.get(code, code)} has the most ground to make up. "
+               f"It scores {v['score']} out of 100, and {v['failing']} of the "
+               f"{v['checked']} checks we could run need work"
+               + (f" — {_listy(names[:3])} among them." if names else "."))
         why = _why(code, meta.get("vertical"))
         if why:
             opp += " " + why
@@ -414,24 +465,41 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
     lead = (ctx.get("describe") or "").strip()
     parts = []
     if lead:
-        parts.append(lead)
+        # The quoted form ends with a closing quote, so the sentence-ending
+        # period has to go inside it or the next sentence runs on.
+        parts.append(lead[:-1] + '."' if lead.endswith('"')
+                     else lead.rstrip(".") + ".")
+    # WHAT WE CHECKED, in words that mean something.
+    #
+    # The previous line read "worked through 159 checkpoints across 13 areas",
+    # which tells a business owner nothing — it is a unit only we use. Name the
+    # actual subjects instead, drawn from the areas we really assessed, so the
+    # sentence is both meaningful and specific to this run.
+    checked = _plain_areas(assessed)
     parts.append(
         f"We crawled {meta.get('pages_crawled') or 0} pages of "
         f"{_host(meta.get('url'))}"
-        + (f" on {meta['generated'].split(' ')[0]}" if meta.get("generated") else "")
-        + f" and worked through {len(findings)} checkpoints across "
-          f"{len(secs)} areas.")
+        + (f" on {_nice_date(meta.get('generated'))}" if meta.get("generated") else "")
+        + (f" and looked at {checked}." if checked else "."))
     if o.get("score") is not None:
-        parts.append(f"The site scores {o['score']}/100 overall ({o['rating']}), "
-                     f"with {n_fail} items open.")
+        urgent = sum(1 for f in findings.values()
+                     if f["status"] in FAILING
+                     and f.get("severity") in ("Critical", "High"))
+        parts.append(
+            f"It scores {o['score']} out of 100 ({str(o['rating']).lower()}). "
+            + (f"{n_fail} things are worth fixing, and {urgent} of those should "
+               f"be dealt with this month."
+               if urgent else
+               f"{n_fail} things are worth fixing, none of them urgent."))
     else:
-        parts.append(f"We are not publishing an overall score: too few areas could "
-                     f"be assessed for the number to mean anything. "
-                     f"{n_fail} items are open in the areas we could assess.")
+        parts.append(f"We are not publishing an overall score: too few areas "
+                     f"could be assessed for the number to mean anything. "
+                     f"{n_fail} things are worth fixing in the areas we could "
+                     f"check.")
     if n_na:
-        parts.append(f"A further {n_na} checkpoints could not be assessed without "
-                     f"access to your own accounts; those are listed as Need "
-                     f"Access, not counted against you.")
+        parts.append(f"Another {n_na} checks need access to your own Search "
+                     f"Console and Analytics — those are marked Need Access, not "
+                     f"counted against you.")
     overview = " ".join(parts)
 
     # The single most consequential finding, said plainly and once.
@@ -441,7 +509,8 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
         # The SHORT form here on purpose: the pull quote sits a few inches
         # above the same item written out in full, and repeating the grouping
         # clause verbatim in both places is its own kind of machine tell.
-        headline = (f"The single most consequential finding: {top['title']} — "
+        headline = (f"The biggest thing we found: {top['title'].lower()[0]}"
+                    f"{top['title'][1:]} — "
                     f"{top.get('finding_short', top['finding']).rstrip('.')}.")
 
     return {"overview": overview, "headline": headline, "working": working,
@@ -480,25 +549,25 @@ def build_roadmap(findings: dict, catalog: dict) -> list:
     if buckets["Critical"] or buckets["High"]:
         phases.append({
             "phase": "Phase 1 — Immediate (0–30 days)",
-            "rationale": "Issues that block indexing, create risk, or have broad "
-                         "sitewide impact. Fix these before any content work.",
+            "rationale": "These block indexing, create risk, or affect the whole "
+                         "site. Get them done before any content work.",
             "actions": (buckets["Critical"] + buckets["High"])[:10]})
     if buckets["Medium"]:
         phases.append({
             "phase": "Phase 2 — Short term (30–90 days)",
-            "rationale": "Meaningful improvements with moderate effort, including "
-                         "structured data and on-page optimisation.",
+            "rationale": "Real gains for moderate effort — structured data and "
+                         "on-page work, mostly.",
             "actions": buckets["Medium"][:12]})
     if buckets["Low"]:
         phases.append({
             "phase": "Phase 3 — Ongoing (90+ days)",
-            "rationale": "Cleanup and best-practice work, best folded into normal "
-                         "release cycles.",
+            "rationale": "Cleanup. Fold this into your normal release cycle "
+                         "rather than making a project of it.",
             "actions": buckets["Low"][:10]})
     if buckets["Opportunity"]:
         phases.append({
             "phase": "Growth initiatives",
-            "rationale": "Beyond defect remediation — where new visibility is won.",
+            "rationale": "Not fixes — this is where new visibility gets won.",
             "actions": buckets["Opportunity"][:8]})
     return phases
 
@@ -527,7 +596,7 @@ def polish_with_llm(summary: dict, meta: dict) -> dict:
         "owner.\n\n"
         "STRICT RULES:\n"
         "- Do NOT add any finding, number, or claim that is not below.\n"
-        "- Do NOT soften or dramatise the severity.\n"
+        "- Do NOT soften or dramatize the severity.\n"
         "- Keep every number exactly as given.\n"
         "- Do NOT merge or split the items you are given.\n"
         "\n"

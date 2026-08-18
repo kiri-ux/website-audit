@@ -13,7 +13,7 @@ Design notes:
   * Severity uses the SAME validated ordinal blue ramp as the HTML report and
     dashboard — severity is an ordered scale, not a set of categories, so a
     single-hue ramp is the correct encoding and there is no CVD gate to clear.
-  * Status colours are the reserved status palette and ALWAYS ship with a text
+  * Status colors are the reserved status palette and ALWAYS ship with a text
     label, never as the sole carrier of meaning.
 """
 from __future__ import annotations
@@ -161,6 +161,120 @@ def _meter(score, width=1.15 * inch, height=6):
     return wrap
 
 
+# ---------------------------------------------------------------------------
+# SYMBOL FONT.
+#
+# The built-in PDF fonts (Helvetica et al.) have no pictographs at all, and a
+# missing codepoint in reportlab renders as a solid black box — worse than
+# having no icon. Color emoji fonts cannot be embedded into a PDF this way
+# either. So: find a DejaVu build, which every mainstream Linux image carries
+# and which covers the U+2600 symbol block, verify each codepoint against the
+# font we actually loaded, and drop any icon that would not render.
+# ---------------------------------------------------------------------------
+_SYMBOL_PATHS = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    "/usr/local/share/fonts/DejaVuSans.ttf",
+    "/System/Library/Fonts/Supplemental/DejaVuSans.ttf",
+]
+_SYM = {"name": None, "cmap": set(), "tried": False}
+
+
+def _symbol_font():
+    """(font_name or None, supported_codepoints)."""
+    if _SYM["tried"]:
+        return _SYM["name"], _SYM["cmap"]
+    _SYM["tried"] = True
+    import os as _os
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    for path in [_os.getenv("SYMBOL_FONT_PATH") or ""] + _SYMBOL_PATHS:
+        if not path or not _os.path.exists(path):
+            continue
+        try:
+            f = TTFont("ViciSymbols", path)
+            pdfmetrics.registerFont(f)
+            _SYM["name"] = "ViciSymbols"
+            _SYM["cmap"] = set(f.face.charToGlyph.keys())
+            break
+        except Exception:
+            continue
+    return _SYM["name"], _SYM["cmap"]
+
+
+def _icon(ch: str) -> str:
+    """The glyph wrapped in its font, or "" when it would render as a box."""
+    name, cmap = _symbol_font()
+    if not name or not ch:
+        return ""
+    if any(ord(c) not in cmap for c in ch):
+        from .glossary import FALLBACK_GLYPH
+        ch = FALLBACK_GLYPH
+        if any(ord(c) not in cmap for c in ch):
+            return ""
+    return f"<font name='{name}'>{ch}</font>"
+
+
+BUBBLE_BG = colors.HexColor("#eef4fd")     # soft tint of the sequential blue
+BUBBLE_EDGE = colors.HexColor("#cfe0f8")
+
+
+def _bubble(term, definition, icon="", S=None, width=6.55 * inch, indent=0.0):
+    """
+    A rounded, tinted definition bubble.
+
+    Placed beside the finding that used the word, never collected into a
+    glossary — that is Kiri's own habit in the AdLib guides ("On AdLib,
+    **audiences** are created first and then added to a campaign"), and it is
+    the difference between a reader who understands the finding and one who
+    skips it.
+
+    Rounded and tinted rather than a bordered table row, because a bubble reads
+    as an aside; a bordered row reads as more of the same table.
+    """
+    ic = _icon(icon) if icon else ""
+    body = ((f"{ic}  " if ic else "")
+            + f"<b>{_p(term)}</b> — {_p(definition)}")
+    t = Table([[Paragraph(body, S["cellsm"])]], colWidths=[width - indent])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), BUBBLE_BG),
+        ("BOX", (0, 0), (-1, -1), 0.6, BUBBLE_EDGE),
+        ("ROUNDEDCORNERS", [7, 7, 7, 7]),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 11),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 11),
+        ("TOPPADDING", (0, 0), (-1, -1), 9),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
+    ]))
+    if not indent:
+        return t
+    wrap = Table([["", t]], colWidths=[indent, width - indent])
+    wrap.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+    return wrap
+
+
+def _bubbles_for(text, S, seen, width=6.55 * inch, indent=0.0, limit=2):
+    """
+    Definition bubbles for jargon in `text` that has not been defined yet.
+
+    `seen` is mutated. A term is explained ONCE, at its first appearance — the
+    same word defined on four pages is the tell of a document assembled rather
+    than written.
+    """
+    from .glossary import terms_used, entry
+    out = []
+    for key in terms_used(text, limit=99):
+        if key in seen or len(out) >= limit:
+            continue
+        seen.add(key)
+        e = entry(key, medium="pdf")
+        out.append(_bubble(e["name"], e["definition"], e["icon"], S, width, indent))
+    return out
+
+
 def _severity_counts(findings: dict) -> dict:
     """Severity of OPEN issues only. A passing checkpoint has no severity."""
     out = {}
@@ -235,7 +349,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     story.append(_kv_table(prepared + [
         [Paragraph("<b>Website</b>", S["cell"]), Paragraph(_p(meta.get("url")), S["cell"])],
         [Paragraph("<b>Audit date</b>", S["cell"]), Paragraph(_p(meta.get("generated")), S["cell"])],
-        [Paragraph("<b>Pages analysed</b>", S["cell"]),
+        [Paragraph("<b>Pages analyzed</b>", S["cell"]),
          Paragraph(_p(meta.get("pages_crawled")), S["cell"])],
         [Paragraph("<b>Checkpoints evaluated</b>", S["cell"]),
          Paragraph(_p(meta.get("coverage")), S["cell"])],
@@ -251,8 +365,11 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     # to correct — which turns the report into a conversation.
     ctx = ((meta.get("extras") or {}).get("context") or {})
     facts = []
-    if ctx.get("categories"):
-        facts.append(("Main sections", ", ".join(ctx["categories"][:5])))
+    if ctx.get("sections"):
+        # Labelled as URL structure, which is what it is. The earlier label
+        # "Main sections" implied we knew their business lines; we do not, we
+        # know their top-level paths.
+        facts.append(("Top-level URL paths", ", ".join(ctx["sections"][:5])))
     if ctx.get("locations"):
         where = ", ".join(sorted({l.get("region") for l in ctx["locations"]
                                   if l.get("region")}))
@@ -269,10 +386,10 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     if ctx.get("entity_types"):
         facts.append(("Schema entities", ", ".join(ctx["entity_types"][:5])))
     if facts:
-        story.append(Paragraph("What we understand about your business", S["h3"]))
+        story.append(Paragraph("Your site, as we found it", S["h3"]))
         story.append(Paragraph(
-            "Read from your own pages during the crawl. If anything here is "
-            "wrong, tell us — it usually means search engines have it wrong too.",
+            "All of this came off your own pages. If any of it is wrong, tell "
+            "us — when we read it wrong, search engines usually do too.",
             S["small"]))
         story.append(Spacer(1, 5))
         story.append(_kv_table(
@@ -303,19 +420,19 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     hero = Table([[
         ScoreGauge(o.get("score"), _p(o.get("rating", "Not Assessed"))),
         Paragraph(
-            ("<b>No overall score.</b> Too few sections could be assessed to "
-             "produce a figure worth quoting — the sections below still stand "
-             "on their own."
+            ("<b>No overall score.</b> We couldn't assess enough areas to give "
+             "you a number worth quoting. The areas below still stand on their "
+             "own."
              if o.get("score") is None else
-             "Mean of assessed section scores. Sections with no assessable data "
-             "are excluded, never scored zero.")
+             "The average of the areas we could score. Areas we couldn't "
+             "measure are left out, never counted as zero.")
             + f"<br/><br/><font size=15 color='#0b0b0b'><b>{open_issues}</b></font>"
               f"<font size=8.5 color='#52514e'> open issues, of which </font>"
               f"<font size=15 color='#0b0b0b'><b>{urgent}</b></font>"
-              f"<font size=8.5 color='#52514e'> are Critical or High and should be "
-              f"actioned this month.</font>"
-              f"<br/><font size=8.5 color='#52514e'><b>{cov[0]}</b> of "
-              f"<b>{sum(cov)}</b> checkpoints were measured directly.</font>",
+              f"<font size=8.5 color='#52514e'> are Critical or High and worth "
+              f"handling this month.</font>"
+              f"<br/><font size=8.5 color='#52514e'>We measured <b>{cov[0]}</b> "
+              f"of <b>{sum(cov)}</b> checks directly.</font>",
             S["small"])]],
         colWidths=[2.0 * inch, 4.6 * inch])
     hero.setStyle(TableStyle([
@@ -329,12 +446,12 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     story.append(Spacer(1, 14))
 
     # ---- severity distribution + coverage, side by side -----------------
-    left = [Paragraph("Where the issues sit", S["h3"]),
+    left = [Paragraph("Where your issues sit", S["h3"]),
             SegmentBar(severity_segments(sev_counts), width=3.05 * inch,
-                       note="Severity is what to fix first, not how many.")]
-    right = [Paragraph("What we were able to measure", S["h3"]),
+                       note="Severity tells you what to fix first, not how much there is.")]
+    right = [Paragraph("What we could measure", S["h3"]),
              SegmentBar(coverage_segments(*cov), width=3.05 * inch,
-                        note="“Need client access” is not a defect.")]
+                        note="“Need client access” isn’t a mark against you.")]
     grid = Table([[left, right]], colWidths=[3.3 * inch, 3.3 * inch])
     grid.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -353,7 +470,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             story.append(_banner("", summary["headline"], SEQ, S))
             story.append(Spacer(1, 8))
         for key, title in (("working", "What's Working"),
-                           ("opportunity", "Where the Ground Is")):
+                           ("opportunity", "Where the Biggest Gap Is")):
             items = summary.get(key)
             if not items:
                 continue
@@ -367,15 +484,16 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                     story.append(Paragraph(_p(it), S["body"]))
 
     # ------------------------------------------------ the five things
+    # One definition per term, at first use, document-wide.
+    defined = set()
+
     five = (summary or {}).get("five_things") or []
     if five:
         story.append(Spacer(1, 6))
-        story.append(Paragraph("The Five Things That Matter Most", S["h2"]))
+        story.append(Paragraph("Top Findings", S["h2"]))
         story.append(Paragraph(
-            f"This audit checked {_p(meta.get('coverage'))} checkpoints. These "
-            f"five are the ones we would fix first, in this order. Everything "
-            f"else is in the detail section and the appendix — real, but not "
-            f"where the return is.", S["small"]))
+            f"In the order we'd fix them. Everything else is in the appendix "
+            f"— real, but not where your money goes furthest.", S["small"]))
         story.append(Spacer(1, 10))
         for i, t in enumerate(five, start=1):
             block = [Paragraph(f"{i}. {_p(t.get('title'))}", S["h3"])]
@@ -393,14 +511,23 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             if t.get("action"):
                 block.append(Paragraph(f"<b>What to do.</b> {_p(t['action'])}",
                                        S["body"]))
-            block.append(Spacer(1, 9))
+            # KeepTogether covers the finding itself. The definition bubbles are
+            # appended OUTSIDE it: bundling them made the block tall enough to
+            # jump a page break, leaving half of page 2 blank.
             story.append(KeepTogether(block))
+            for b in _bubbles_for(
+                    " ".join([t.get("title", ""), t.get("finding", ""),
+                              t.get("why", ""), t.get("action", "") or ""]),
+                    S, defined, width=6.55 * inch, indent=0.16 * inch):
+                story.append(Spacer(1, 3))
+                story.append(b)
+            story.append(Spacer(1, 12))
 
     # ------------------------------------------------ area snapshot
     # No forced page break here: the exec summary rarely fills a page, and a
     # break left a third of page 2 blank. KeepTogether keeps the chart intact.
     story.append(Spacer(1, 6))
-    story.append(Paragraph("Audit Area Snapshot", S["h2"]))
+    story.append(Paragraph("Scores by Area", S["h2"]))
 
     secs = [(k, v) for k in ORDER if (v := (scores.get("sections") or {}).get(k))]
     # Ranked worst-first: the reader should not have to scan a table to find
@@ -409,16 +536,15 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                                           kv[1].get("score") if kv[1].get("score")
                                           is not None else 0))
     story.append(Paragraph(
-        "All areas ranked weakest first. The three weakest are emphasised; "
-        "hollow bars are areas we could not assess, which is not the same as "
-        "an area that scored badly.", S["small"]))
+        "Weakest first. The three worst are bolded. A hollow bar means we "
+        "couldn't assess that area — not that it scored badly.", S["small"]))
     story.append(Spacer(1, 8))
     story.append(KeepTogether(
         SectionBars([(SHORT_NAMES.get(k, SECTION_NAMES[k]), v.get("score"),
                       v.get("rating")) for k, v in ranked], width=6.55 * inch)))
     story.append(Spacer(1, 16))
 
-    story.append(Paragraph("Coverage by area", S["h3"]))
+    story.append(Paragraph("Every area, and what we could check", S["h3"]))
     rows = [[Paragraph("<b>Section</b>", S["cellsm"]),
              Paragraph("<b>Score</b>", S["cellsm"]),
              "", Paragraph("<b>Rating</b>", S["cellsm"]),
@@ -540,12 +666,11 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     story.append(PageBreak())
     story.append(Paragraph("Appendix — Full Checkpoint Detail", S["h2"]))
     story.append(Paragraph(
-        "The complete record, area by area. This is here so any finding above "
-        "can be checked and so nothing is hidden — not because we expect it to "
-        "be read start to finish. Every row carries its source and a raw value, "
-        "so a disputed finding can be traced to the collector that produced it. "
-        "<b>Need Access</b> means the check could not run — not that it failed.",
-        S["small"]))
+        "Every check, area by area. It's here so you can trace anything above "
+        "back to where it came from — not because you need to read it start to "
+        "finish. Each row carries its source and the raw value. "
+        "<b>Need Access</b> means we couldn't run the check, not that you "
+        "failed it.", S["small"]))
 
     for k in ORDER:
         rows_f = [(cid, f) for cid, f in findings.items()
@@ -597,15 +722,22 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         t.setStyle(TableStyle(st))
         story.append(Spacer(1, 8))
         story.append(head)
+        # Any jargon this section introduces that the reader has not met yet.
+        for b in _bubbles_for(
+                SECTION_NAMES[k] + " " + " ".join(
+                    (catalog.get(cid, {}) or {}).get("checkpoint", "")
+                    for cid, _f in rows_f[:12]),
+                S, defined, width=6.55 * inch, limit=1):
+            story.append(b)
+            story.append(Spacer(1, 5))
         story.append(t)
 
     # ------------------------------------------------ method & sign-off
     story.append(PageBreak())
-    story.append(Paragraph("How This Audit Was Carried Out", S["h2"]))
+    story.append(Paragraph("How We Ran This Audit", S["h2"]))
     story.append(Paragraph(
-        "Stating the method is part of the finding. A number without a method "
-        "behind it cannot be argued with, checked, or repeated next quarter.",
-        S["small"]))
+        "How we got these numbers, so you can check them or repeat this next "
+        "quarter.", S["small"]))
     story.append(Spacer(1, 8))
 
     m, need, na = _coverage_counts(findings, catalog)
@@ -620,19 +752,19 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
          f"{len(catalog)} checkpoints across {len(SECTION_NAMES)} areas, covering "
          f"technical SEO, on-page, structured data, performance, security, "
          f"E-E-A-T and generative-engine visibility."),
-        ("What we measured", f"{m} checkpoints answered from direct observation "
-                             f"of your site and third-party data."),
-        ("What we could not measure",
-         f"{need} checkpoints need access to accounts only you control — Search "
-         f"Console and Analytics, chiefly. They are reported as Need Access and "
-         f"are excluded from scoring rather than counted as failures. Granting "
-         f"read-only access closes most of that gap."),
-        ("Not applicable", f"{na} checkpoints do not apply to a site of this "
-                           f"shape and are excluded."),
-        ("Scoring", "Each area scores out of 100 from its assessed checkpoints, "
-                    "weighted by severity. Areas with too little assessable data "
-                    "are marked Not Assessed rather than scored low — an "
-                    "unmeasured area is not a failing one."),
+        ("What we measured", f"{m} checks answered from your live site plus "
+                             f"third-party data."),
+        ("What we couldn't measure",
+         f"{need} checks need access to accounts only you control — mostly "
+         f"Search Console and Analytics. Those are marked Need Access and left "
+         f"out of the scoring instead of counted against you. Give us read-only "
+         f"access and most of that gap closes."),
+        ("Not applicable", f"{na} checks don't apply to a site built like "
+                           f"yours, so they're left out."),
+        ("Scoring", "Each area scores out of 100 from the checks we could run, "
+                    "weighted by severity. If there wasn't enough to go on, the "
+                    "area is marked Not Assessed instead of scored low. An area "
+                    "we couldn't measure is not a failing one."),
     ]
     if meta.get("truncated"):
         method.append(("Coverage limit", _p(meta["truncated"])))
@@ -653,9 +785,10 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             line += f"<br/>{_p(analyst['email'])}"
         story.append(_banner(
             "Questions about this report",
-            "Any finding here can be walked through line by line, and anything "
-            "you disagree with is worth raising — a wrong finding usually means "
-            "we saw something a search engine also saw.", SEQ, S))
+            "Happy to walk through any of this line by line. If something looks "
+            "wrong, tell us — nine times out of ten it means a search engine saw "
+            "the same odd thing we did, which is worth knowing either way.",
+            SEQ, S))
         story.append(Spacer(1, 8))
         story.append(Paragraph(line, S["body"]))
 
@@ -663,7 +796,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     return buf.getvalue()
 
 
-def _banner(title, body, colour, S):
+def _banner(title, body, color, S):
     # Title is optional: used with one for warnings, without one for a pulled
     # quote. An empty <b></b> would leave a stray blank line.
     head = f"<b>{_p(title)}</b><br/>" if title else ""
@@ -673,7 +806,7 @@ def _banner(title, body, colour, S):
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), SURFACE),
         ("BOX", (0, 0), (-1, -1), 0.5, LINE),
-        ("LINEBEFORE", (0, 0), (0, -1), 3, colour),
+        ("LINEBEFORE", (0, 0), (0, -1), 3, color),
         ("LEFTPADDING", (0, 0), (-1, -1), 10), ("RIGHTPADDING", (0, 0), (-1, -1), 10),
         ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
     ]))

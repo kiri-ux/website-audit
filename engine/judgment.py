@@ -18,7 +18,7 @@ The orchestrator does the RETRIEVAL. The model only judges what it is handed.
 That is what keeps it from inventing pages that do not exist.
 
 Cost: ~29 calls x ~6k input tokens. A few dollars per audit against $2,950.
-Do not optimise it; optimise accuracy.
+Do not optimize it; optimize accuracy.
 
 No API key -> every row returns Need Access with confidence 0. Same rule as
 everywhere else: unmeasured is never reported as a defect.
@@ -106,11 +106,11 @@ SPECS = [
     ("EEAT-08", "Author credentials",
      lambda a: _slice(_pages_matching(a, r"/author|/team|/staff|/about|/bio|/our-people")),
      "For any named author or team member, are professional credentials stated — "
-     "certifications, licences, titles, years of experience? Do not infer "
+     "certifications, licenses, titles, years of experience? Do not infer "
      "credentials that are not explicitly written."),
     ("EEAT-09", "Organization authority",
      lambda a: _slice(_pages_matching(a, r"/about|/company|/our-story|/history")),
-     "Does the site establish organisational authority — years in business, scale, "
+     "Does the site establish organizational authority — years in business, scale, "
      "locations, accreditations, industry memberships?"),
     ("EEAT-10", "Industry mentions",
      lambda a: _all_text(a),
@@ -146,7 +146,7 @@ SPECS = [
      lambda a: "SITE STRUCTURE:\n" + "\n".join(
          f"{p.url}  (depth {p.depth}, {len(p.links_internal)} internal links)"
          for p in sorted(OK(a), key=lambda x: x.depth)[:40]),
-     "Is the site organised into a clear topical hierarchy that an AI system could "
+     "Is the site organized into a clear topical hierarchy that an AI system could "
      "follow to understand what the business does and how its content relates?"),
     ("GEO-07", "AI-friendly content formatting",
      lambda a: _all_text(a),
@@ -198,12 +198,12 @@ SPECS = [
      lambda a: (_slice(_pages_matching(a, r"/about|/contact")) +
                 "\n\nSCHEMA TYPES FOUND: " +
                 ", ".join(sorted({t for p in OK(a) for t in p.schema_types})) ),
-     "Is the organisation established as a clear entity — consistent name, "
+     "Is the organization established as a clear entity — consistent name, "
      "address, description, Organization schema, external profile links?"),
     ("GEO-22", "Brand entity optimization",
      lambda a: _all_text(a),
      "Is the brand presented consistently enough across the site that an AI system "
-     "would treat it as a single recognisable entity?"),
+     "would treat it as a single recognizable entity?"),
 ]
 
 CHECKPOINT_IDS = [s[0] for s in SPECS]

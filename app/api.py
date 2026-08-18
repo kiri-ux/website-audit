@@ -151,6 +151,35 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
     return RedirectResponse(f"/audits/{aid}", status_code=303)
 
 
+# ROUTE ORDER IS LOAD-BEARING. Starlette matches routes in registration order
+# and a path parameter matches any character except "/", so the generic
+# /audits/{audit_id} route below happily swallows "/audits/abc123.pdf" with
+# audit_id="abc123.pdf" — which then 404s as "audit not found". That is exactly
+# what shipped: the PDF link on every report page returned a JSON error.
+# The specific route must be registered first. Guarded by tests/test_routes.py.
+@app.get("/audits/{audit_id}.pdf")
+def audit_pdf(audit_id: str, polish: bool = False,
+              x_api_key: str | None = Header(None)):
+    """The client-facing deliverable."""
+    p = principal(x_api_key)
+    a = db.get_audit(audit_id, p.scope)
+    if not a:
+        raise HTTPException(404, "audit not found")
+    if a["status"] not in ("ready",):
+        raise HTTPException(409, f"audit is {a['status']}, not ready")
+    findings, scores, cat = (db.get_findings(audit_id), db.get_scores(audit_id),
+                             db.catalog())
+    meta = _report_meta(a)
+    summary = build_summary(findings, scores, cat, meta)
+    if polish:
+        summary = polish_with_llm(summary, meta)
+    pdf = build_pdf(meta, scores, findings, cat, summary,
+                    logo_path=os.getenv("REPORT_LOGO_PATH") or None)
+    fname = (a["client_name"] or "audit").replace(" ", "-").lower()
+    return Response(pdf, media_type="application/pdf", headers={
+        "Content-Disposition": f'inline; filename="{fname}-seo-geo-audit.pdf"'})
+
+
 @app.get("/audits/{audit_id}", response_class=HTMLResponse)
 def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
     p = principal(x_api_key)
@@ -201,29 +230,6 @@ def audit_summary(audit_id: str, polish: bool = False,
     if polish:
         s = polish_with_llm(s, _report_meta(a))
     return s
-
-
-@app.get("/audits/{audit_id}.pdf")
-def audit_pdf(audit_id: str, polish: bool = False,
-              x_api_key: str | None = Header(None)):
-    """The client-facing deliverable."""
-    p = principal(x_api_key)
-    a = db.get_audit(audit_id, p.scope)
-    if not a:
-        raise HTTPException(404, "audit not found")
-    if a["status"] not in ("ready",):
-        raise HTTPException(409, f"audit is {a['status']}, not ready")
-    findings, scores, cat = (db.get_findings(audit_id), db.get_scores(audit_id),
-                             db.catalog())
-    meta = _report_meta(a)
-    summary = build_summary(findings, scores, cat, meta)
-    if polish:
-        summary = polish_with_llm(summary, meta)
-    pdf = build_pdf(meta, scores, findings, cat, summary,
-                    logo_path=os.getenv("REPORT_LOGO_PATH") or None)
-    fname = (a["client_name"] or "audit").replace(" ", "-").lower()
-    return Response(pdf, media_type="application/pdf", headers={
-        "Content-Disposition": f'inline; filename="{fname}-seo-geo-audit.pdf"'})
 
 
 # ==================================================================== BROWSER CAPTURE

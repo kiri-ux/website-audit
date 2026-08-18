@@ -6,7 +6,7 @@ library. Three reasons:
 
   * They stay vector. A client zooms into the PDF and the arc is still smooth,
     and the whole chart set costs a couple of KB rather than a megabyte of
-    rasterised PNG.
+    rasterized PNG.
   * No new runtime dependency. reportlab is already here; matplotlib is not,
     and adding it to the worker image for four charts is a bad trade.
   * We control the honesty rules. An unassessed section MUST NOT draw as a
@@ -17,7 +17,7 @@ library. Three reasons:
 Encoding rules, carried over from the HTML report and dashboard:
   * Severity is an ORDERED scale, so it gets a single-hue ordinal ramp.
   * Score magnitude is sequential, so it gets one hue and varies length only.
-  * Status colours never carry meaning alone — every segment ships a text label.
+  * Status colors never carry meaning alone — every segment ships a text label.
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ ORD = {"Critical": colors.HexColor("#104281"), "High": colors.HexColor("#256abf"
        "Medium": colors.HexColor("#3987e5"), "Low": colors.HexColor("#86b6ef")}
 
 # Rating bands, used only to place the marker on the gauge track. The number
-# and the word are both printed, so colour is never the sole carrier.
+# and the word are both printed, so color is never the sole carrier.
 BANDS = [(0, 50), (50, 70), (70, 85), (85, 100)]
 
 
@@ -94,7 +94,7 @@ class ScoreGauge(Flowable):
                 c.setStrokeColor(SEQ)
                 c.arc(x1, y1, x2, y2, 225, -270 * frac)
 
-        # centred readout
+        # centered readout
         c.setFillColor(INK if self.score is not None else MUTED)
         num = str(self.score) if self.score is not None else "—"
         c.setFont("Helvetica-Bold", s * 0.27)
@@ -190,7 +190,7 @@ class SegmentBar(Flowable):
     A single stacked bar with a labelled legend beneath.
 
     Used for the severity distribution and the coverage strip. `segments` is
-    [(label, count, colour)]. Segments with a zero count are dropped from the
+    [(label, count, color)]. Segments with a zero count are dropped from the
     bar but KEPT in the legend showing 0, so the reader can tell "none of these"
     apart from "we didn't look".
     """
@@ -225,7 +225,7 @@ class SegmentBar(Flowable):
                 c.drawCentredString(x + w / 2, y + self.bar_h * 0.32, str(n))
             x += w
 
-        # legend — every segment gets its word, so colour is never load-bearing
+        # legend — every segment gets its word, so color is never load-bearing
         lx, ly = 0.0, y - 15
         c.setFont("Helvetica", 7.5)
         for label, n, col in self.segments:
@@ -274,7 +274,7 @@ class MiniMeter(Flowable):
 
 
 def severity_segments(counts: dict) -> list:
-    """[(label, n, colour)] in ordinal order, worst first."""
+    """[(label, n, color)] in ordinal order, worst first."""
     return [(k, int(counts.get(k, 0) or 0), ORD[k])
             for k in ("Critical", "High", "Medium", "Low")]
 

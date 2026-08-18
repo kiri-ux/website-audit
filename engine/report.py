@@ -122,6 +122,16 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .ev{color:var(--ink2);font-size:13px}
 .rec{color:var(--muted);font-size:12.5px;margin-top:3px;font-style:italic}
 code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
+/* plain-English definition cards — jargon defined where the reader meets it */
+/* definition bubbles — soft, rounded, and sitting beside the finding that
+   used the word, the way a Confluence info panel does */
+.bubble{background:#eef4fd;border:1px solid #cfe0f8;border-radius:16px;
+ padding:11px 16px;margin:10px 0;font-size:13px;color:var(--ink2);
+ display:flex;gap:10px;align-items:flex-start;line-height:1.5}
+@media (prefers-color-scheme:dark){:root:where(:not([data-theme=light])) .bubble{
+ background:#152436;border-color:#24405e}}
+.bubble .bi{font-size:17px;line-height:1.25;flex:none}
+.bubble b{color:var(--ink)}
 .note{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--seq);
  border-radius:8px;padding:14px 18px;font-size:13.5px;color:var(--ink2);margin:14px 0}
 """
@@ -131,6 +141,21 @@ STATUS_COLOR = {"Pass": "var(--good)", "Warning": "var(--warning)",
                 "Need Access": "var(--muted)", "N/A": "var(--muted)"}
 SEV_RAMP = {"Critical": "var(--o4)", "High": "var(--o3)",
             "Medium": "var(--o2)", "Low": "var(--o1)", "Opportunity": "var(--track)"}
+
+
+def _bubbles(text, seen, limit=2):
+    """Definition bubbles for jargon in `text` not yet defined. Mutates `seen`."""
+    from .glossary import terms_used, entry
+    out = []
+    for key in terms_used(text, limit=99):
+        if key in seen or len(out) >= limit:
+            continue
+        seen.add(key)
+        g = entry(key, medium="html")
+        out.append(f"<div class='bubble'><span class='bi' aria-hidden='true'>"
+                   f"{g['icon']}</span><div><b>{e(g['name'])}</b> — "
+                   f"{e(g['definition'])}</div></div>")
+    return out
 
 
 def render_html(meta, sc, findings, catalog, summary=None):
@@ -256,10 +281,18 @@ def render_html(meta, sc, findings, catalog, summary=None):
     P.append("</table>")
 
     # PRIORITY ISSUES
+    # One definition per term, at first use, document-wide.
+    defined = set()
     from .scoring import top_issues
-    P.append("<h2>Priority issues</h2><table><tr><th>ID</th><th>Checkpoint</th>"
+    _top = top_issues(findings, catalog, 12)
+    P.append("<h2>Top findings</h2>")
+    for b in _bubbles(" ".join(
+            (catalog.get(cid, {}) or {}).get("checkpoint", "") + " " +
+            (f.get("evidence") or "") for cid, f in _top[:5]), defined, limit=3):
+        P.append(b)
+    P.append("<table><tr><th>ID</th><th>Checkpoint</th>"
              "<th>Severity</th><th>Finding</th></tr>")
-    for cid, f in top_issues(findings, catalog, 12):
+    for cid, f in _top:
         m = catalog[cid]
         P.append(f"<tr><td><code>{cid}</code></td><td>{e(m['checkpoint'])}</td>"
                  f"<td><span class='chip'><b style='background:"
@@ -316,6 +349,10 @@ def render_html(meta, sc, findings, catalog, summary=None):
         P.append(f"<h2 style='margin-top:34px'>{SECTION_NAMES[k]} "
                  f"<span style='color:var(--ink2);text-transform:none;letter-spacing:0'>"
                  f"— {v.get('score','—')}/100 · {e(v.get('rating',''))}</span></h2>")
+        for b in _bubbles(SECTION_NAMES[k] + " " + " ".join(
+                catalog.get(cid, {}).get("checkpoint", "") for cid, _f in rows[:12]),
+                defined, limit=1):
+            P.append(b)
         P.append("<table><tr><th style='width:78px'>ID</th><th>Checkpoint</th>"
                  "<th style='width:135px'>Status</th><th>Evidence</th></tr>")
         for cid, f in rows:
