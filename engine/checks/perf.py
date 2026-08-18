@@ -164,15 +164,59 @@ def perf03(a, c):
 @check("PERF-04")
 @check("PERF-15")
 def perf04(a, c):
-    unc = [p.url for p in OK(a)
-           if "gzip" not in (p.headers.get("content-encoding") or "").lower()
-           and "br" not in (p.headers.get("content-encoding") or "").lower()]
-    return finding("Fail" if unc else "Pass", {"count": len(unc), "total": len(OK(a))},
-                   f"{len(unc)} of {len(OK(a))} pages are served without GZIP/Brotli "
-                   f"compression." if unc
-                   else f"All {len(OK(a))} pages served with GZIP/Brotli compression.",
-                   unc[:30], escalate(len(unc), [(1, "Medium"), (50, "High")]) if unc else "Low",
-                   "Enable Brotli or GZIP compression at the server or CDN." if unc else "")
+    """
+    Compression, with corroboration.
+
+    A missing Content-Encoding header is suggestive but not conclusive — some
+    CDNs strip it after decompressing at the edge. So we cross-check the
+    transferred byte count (Content-Length) against the decoded document size.
+    If they are close, the bytes really did travel uncompressed. If
+    Content-Length is far smaller, compression happened and only the header is
+    absent, which is a very different (and much less urgent) finding.
+    """
+    pages = OK(a)
+    unc, corroborated, header_only = [], 0, 0
+    for p in pages:
+        enc = (p.headers.get("content-encoding") or "").lower()
+        if "gzip" in enc or "br" in enc or "deflate" in enc:
+            continue
+        unc.append(p.url)
+        try:
+            clen = int(p.headers.get("content-length") or 0)
+        except ValueError:
+            clen = 0
+        if clen and p.bytes_html and clen < p.bytes_html * 0.75:
+            header_only += 1        # far smaller on the wire => it WAS compressed
+        elif clen and p.bytes_html:
+            corroborated += 1       # wire size ~= document size => genuinely raw
+
+    if not unc:
+        return finding("Pass", {"count": 0, "total": len(pages)},
+                       f"All {len(pages)} pages served with GZIP/Brotli compression.",
+                       [], "Low")
+
+    if header_only and header_only >= corroborated:
+        return finding("Warning",
+                       {"count": len(unc), "total": len(pages),
+                        "wire_smaller_than_document": header_only},
+                       f"{len(unc)} pages send no Content-Encoding header, but on "
+                       f"{header_only} of them the transferred size is well below the "
+                       f"document size — so the content WAS compressed and only the "
+                       f"header is missing. Verify at the CDN before reporting this.",
+                       unc[:20], "Low", confidence=0.5,
+                       recommendation="Confirm edge compression settings; the header "
+                                      "may be stripped after edge decompression.")
+
+    return finding("Fail",
+                   {"count": len(unc), "total": len(pages),
+                    "size_corroborated": corroborated},
+                   f"{len(unc)} of {len(pages)} pages are served without GZIP/Brotli "
+                   f"compression"
+                   + (f" — confirmed on {corroborated} by comparing transferred bytes "
+                      f"against document size." if corroborated else "."),
+                   unc[:30],
+                   escalate(len(unc), [(1, "Medium"), (50, "High")]),
+                   "Enable Brotli or GZIP compression at the server or CDN.")
 
 
 @check("PERF-06")

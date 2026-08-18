@@ -16,6 +16,22 @@ from . import check, finding, escalate
 
 OK = lambda a: [p for p in a.pages.values() if not p.error and 200 <= p.status_code < 300]
 
+def _sampled(a):
+    """Return a Need Access finding when the crawl was only a sample."""
+    known = len(a.sitemap_status.get("_all_urls", []) or [])
+    crawled = len(OK(a))
+    return finding(
+        "Need Access",
+        {"pages_crawled": crawled, "sitemap_urls": known,
+         "coverage": round(a.coverage_ratio, 3)},
+        f"Not assessed — this check needs full-site coverage, but only "
+        f"{crawled} of {known} known URLs were crawled ({a.coverage_ratio:.0%}). "
+        f"Reporting the {max(0, known - crawled)} uncrawled pages as a defect "
+        f"would be arithmetic, not analysis.",
+        [], "Medium", confidence=0.0,
+        recommendation=f"Re-run with max_pages >= {known} for a definitive answer.")
+
+
 def _unreachable(status) -> bool:
     """
     HTTP 0 means the request raised (DNS failure, timeout, refused). HTTP -1 is
@@ -242,6 +258,11 @@ def tech24(a, c):
 @check("TECH-36")
 @check("ONP-48")
 def tech25(a, c):
+    # A page is only "orphaned" if NOTHING on the site links to it. On a sampled
+    # crawl every uncrawled URL trivially satisfies that, which is why this must
+    # refuse to answer rather than report the sample gap as thousands of orphans.
+    if a.is_sample:
+        return _sampled(a)
     linked = {p.url.rstrip("/") for p in a.pages.values() if p.inbound_internal_links > 0}
     linked |= {a.start_url.rstrip("/")}
     sm = a.sitemap_status.get("_all_urls", [])
@@ -717,6 +738,8 @@ def onp45(a, c):
 
 @check("ONP-15")  # [SEMRUSH-SPIKE]
 def onp15(a, c):
+    if a.is_sample:
+        return _sampled(a)
     bad = [p.url for p in OK(a) if p.inbound_internal_links == 1]
     return finding("Warning" if bad else "Pass", {"count": len(bad)},
                    f"{len(bad)} pages have only one inbound internal link." if bad
@@ -735,11 +758,34 @@ def onp16(a, c):
 
 @check("ONP-17")  # [SEMRUSH-SPIKE]
 def onp17(a, c):
-    n = sum(1 for p in OK(a) for l in p.links_internal if not l["anchor"])
-    aff = [p.url for p in OK(a) if any(not l["anchor"] for l in p.links_internal)]
-    return finding("Fail" if n else "Pass", {"count": n},
-                   f"{n} internal links have no anchor text." if n
-                   else "All internal links carry anchor text.", aff[:30], "Low")
+    """
+    A link wrapping an image has no anchor TEXT by definition — its accessible
+    name comes from the image's alt attribute. Counting those as defects
+    inflated this to 3,052 on a real retail site, where product thumbnails and
+    the logo are all image links. Only flag links with neither text nor an
+    image the crawler saw.
+    """
+    img_srcs = {i["src"] for p in OK(a) for i in p.images if i.get("src")}
+    n, aff = 0, []
+    for p in OK(a):
+        bare = [l for l in p.links_internal
+                if not l.get("anchor") and l.get("href") not in img_srcs
+                and not l.get("has_image")]
+        # Heuristic: on pages with many images, unlabelled links are very likely
+        # image links. Report the count but never as a hard defect.
+        if bare:
+            n += len(bare)
+            aff.append(p.url)
+    total = sum(len(p.links_internal) for p in OK(a))
+    if not n:
+        return finding("Pass", {"count": 0}, "All internal links carry anchor text.",
+                       [], "Low")
+    return finding("Warning", {"count": n, "total_internal_links": total},
+                   f"{n} of {total} internal links expose no anchor text. Many are "
+                   f"likely image links, whose accessible name comes from alt text — "
+                   f"verify a sample before reporting this to a client.",
+                   aff[:30], "Low", confidence=0.5,
+                   recommendation="Confirm image links carry descriptive alt text.")
 
 
 @check("ONP-18")  # [SEMRUSH-SPIKE]

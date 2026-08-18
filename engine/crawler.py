@@ -138,6 +138,28 @@ class SiteArtifact:
     crawled_at: float = 0.0
     truncated: str | None = None   # set when a time budget cut work short
 
+    @property
+    def coverage_ratio(self) -> float:
+        """
+        Fraction of the site actually crawled, measured against the sitemap.
+
+        Checks whose answer depends on the WHOLE corpus — orphan detection,
+        duplicate sweeps, sitewide totals — are meaningless below 1.0 and must
+        say so rather than reporting the shortfall as a defect. A 50-page crawl
+        of a 3,108-URL sitemap will always "find" 3,058 orphans; that is
+        subtraction, not analysis.
+        """
+        known = len(self.sitemap_status.get("_all_urls", []) or [])
+        crawled = sum(1 for p in self.pages.values()
+                      if not p.error and 200 <= p.status_code < 300)
+        if not known:
+            return 1.0 if crawled else 0.0
+        return min(1.0, crawled / known)
+
+    @property
+    def is_sample(self) -> bool:
+        return self.coverage_ratio < 0.9
+
     def to_json(self) -> str:
         d = asdict(self)
         d["pages"] = {k: asdict(v) if not isinstance(v, dict) else v
