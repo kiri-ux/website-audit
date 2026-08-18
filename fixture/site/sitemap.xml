@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<url><loc>http://localhost:8099/</loc></url>
+<url><loc>http://localhost:8099/living-room/</loc></url>
+<url><loc>http://localhost:8099/bedroom/</loc></url>
+<url><loc>http://localhost:8099/dining-room/</loc></url>
+<url><loc>http://localhost:8099/mattresses/</loc></url>
+<url><loc>http://localhost:8099/outdoor/</loc></url>
+<url><loc>http://localhost:8099/kids/</loc></url>
+<url><loc>http://localhost:8099/decor/</loc></url>
+<url><loc>http://localhost:8099/home-office/</loc></url>
+<url><loc>http://localhost:8099/sale/</loc></url>
+<url><loc>http://localhost:8099/Store_Locations/</loc></url>
+<url><loc>http://localhost:8099/about/</loc></url>
+<url><loc>http://localhost:8099/contact/</loc></url>
+<url><loc>http://localhost:8099/privacy/</loc></url>
+<url><loc>http://localhost:8099/terms/</loc></url>
+<url><loc>http://localhost:8099/clearance-warehouse/</loc></url>
+</urlset>

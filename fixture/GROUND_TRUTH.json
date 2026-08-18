@@ -1,0 +1,171 @@
+{
+ "ONP-01": {
+  "expect": "Fail",
+  "pages_affected": 3,
+  "note": "3 category pages share one title"
+ },
+ "ONP-08": {
+  "expect": "Fail",
+  "count": 2,
+  "note": "mattresses + outdoor have 2 H1s"
+ },
+ "ONP-06": {
+  "expect": "Fail",
+  "count": 2,
+  "note": "kids + decor missing meta description"
+ },
+ "ONP-31": {
+  "expect": "Fail",
+  "count": 1,
+  "note": "home-office has no H1"
+ },
+ "ONP-10": {
+  "expect": "Fail",
+  "count": 1,
+  "note": "home-office is thin (<200 words)"
+ },
+ "ONP-04": {
+  "expect": "Fail",
+  "count": 2,
+  "note": "Store_Locations (93ch) + homepage (61ch) exceed 60 chars"
+ },
+ "MOB-01": {
+  "expect": "Fail",
+  "count": 1,
+  "note": "sale page has no viewport"
+ },
+ "HTML-01": {
+  "expect": "Fail",
+  "count": 1,
+  "note": "sale page has no charset"
+ },
+ "HTML-02": {
+  "expect": "Fail",
+  "count": 1,
+  "note": "sale page has no doctype"
+ },
+ "INTL-04": {
+  "expect": "Fail",
+  "count": 1,
+  "note": "sale page has no lang attribute"
+ },
+ "URL-09": {
+  "expect": "Fail",
+  "count": 1,
+  "note": "/Store_Locations/ uses underscore"
+ },
+ "URL-12": {
+  "expect": "Fail",
+  "count": 1,
+  "note": "/Store_Locations/ has uppercase"
+ },
+ "URL-18": {
+  "expect": "Fail",
+  "count": 1,
+  "note": "Store_Locations missing canonical"
+ },
+ "TECH-02": {
+  "expect": "Fail",
+  "min_count": 1,
+  "note": "/broken-page/ linked in every footer"
+ },
+ "TECH-06": {
+  "expect": "Fail",
+  "min_count": 1,
+  "note": "broken internal link to /broken-page/"
+ },
+ "GEO-01": {
+  "expect": "Not Implemented",
+  "note": "no llms.txt published"
+ },
+ "GEO-04": {
+  "expect": "Fail",
+  "blocked": [
+   "GPTBot",
+   "ClaudeBot"
+  ],
+  "note": "robots blocks 2 AI crawlers"
+ },
+ "GEO-10": {
+  "expect": "Not Implemented",
+  "note": "no FAQPage schema anywhere"
+ },
+ "SCHEMA-02": {
+  "expect": "Pass",
+  "note": "Organization schema on homepage"
+ },
+ "SCHEMA-06": {
+  "expect": "Not Implemented",
+  "note": "no Product schema"
+ },
+ "SCHEMA-07": {
+  "expect": "Not Implemented",
+  "note": "no FAQ schema"
+ },
+ "SCHEMA-09": {
+  "expect": "Not Implemented",
+  "note": "no LocalBusiness schema"
+ },
+ "ANA-01": {
+  "expect": "Pass",
+  "note": "GTM container present"
+ },
+ "ANA-02": {
+  "expect": "Pass",
+  "note": "GA4 gtag present"
+ },
+ "ANA-04": {
+  "expect": "Pass",
+  "note": "Clarity present"
+ },
+ "ANA-06": {
+  "expect": "Not Implemented",
+  "note": "no Meta Pixel"
+ },
+ "ANA-10": {
+  "expect": "Not Implemented",
+  "note": "no call tracking"
+ },
+ "ANA-12": {
+  "expect": "Not Implemented",
+  "note": "no cookie consent"
+ },
+ "EEAT-12": {
+  "expect": "Pass",
+  "note": "/contact/ exists"
+ },
+ "EEAT-13": {
+  "expect": "Pass",
+  "note": "/about/ exists"
+ },
+ "EEAT-15": {
+  "expect": "Pass",
+  "note": "/privacy/ exists"
+ },
+ "EEAT-17": {
+  "expect": "Not Implemented",
+  "note": "no refund/return policy page"
+ },
+ "EEAT-07": {
+  "expect": "Not Implemented",
+  "note": "no author/team pages"
+ },
+ "ONP-14": {
+  "expect": "Fail",
+  "min_count": 20,
+  "note": "many images lack alt"
+ },
+ "TECH-25": {
+  "expect": "Fail",
+  "min_count": 1,
+  "note": "/clearance-warehouse/ is orphaned"
+ },
+ "TECH-22": {
+  "expect": "Pass",
+  "note": "sitemap.xml exists"
+ },
+ "TECH-23": {
+  "expect": "Pass",
+  "note": "sitemap declared in robots.txt"
+ }
+}

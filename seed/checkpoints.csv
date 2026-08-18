@@ -1,0 +1,314 @@
+id,prefix,section,checkpoint,template_tool,template_priority,tier,collector
+ANA-01,ANA,"01. Analytics, Tracking & Measurement",Google Tag Manager,Manual Review,Medium,A,tagdetect: GTM container id in HTML
+ANA-02,ANA,"01. Analytics, Tracking & Measurement",Google Analytics,Manual Review,Medium,A,tagdetect: gtag/GA4 measurement id
+ANA-03,ANA,"01. Analytics, Tracking & Measurement",Google Search Console,Manual Review,Medium,A,gsc_api: property verified
+ANA-04,ANA,"01. Analytics, Tracking & Measurement",Microsoft Clarity,Manual Review,Medium,A,tagdetect: clarity.ms script
+ANA-05,ANA,"01. Analytics, Tracking & Measurement",Microsoft Bing Webmaster Tools,Manual Review,Medium,A,tagdetect: bing verification meta / manual flag
+ANA-06,ANA,"01. Analytics, Tracking & Measurement",Meta Pixel,Manual Review,Medium,A,tagdetect: connect.facebook.net pixel
+ANA-07,ANA,"01. Analytics, Tracking & Measurement",LinkedIn Insight Tag,Manual Review,Medium,A,tagdetect: snap.licdn.com insight tag
+ANA-08,ANA,"01. Analytics, Tracking & Measurement",Google Ads Conversion Tracking,Manual Review,Medium,A,tagdetect: googleads conversion snippet
+ANA-09,ANA,"01. Analytics, Tracking & Measurement",Google Ads Remarketing Tag,Manual Review,Medium,A,tagdetect: google_remarketing tag
+ANA-10,ANA,"01. Analytics, Tracking & Measurement",Call Tracking,Manual Review,Medium,A,tagdetect: known call-tracking vendor scripts
+ANA-11,ANA,"01. Analytics, Tracking & Measurement",Heatmap implementation,Manual Review,Medium,A,tagdetect: hotjar/clarity/ms heatmap scripts
+ANA-12,ANA,"01. Analytics, Tracking & Measurement",Cookie Consent implementation,Manual Review,Medium,A,"tagdetect: CMP vendor (OneTrust, Cookiebot, etc.)"
+GSC-01,GSC,01. Analytics — Google Search Console,Total clicks,Google Search Console,Medium,A,Google Search Console
+GSC-02,GSC,01. Analytics — Google Search Console,Total impressions,Google Search Console,Medium,A,Google Search Console
+GSC-03,GSC,01. Analytics — Google Search Console,Average CTR,Google Search Console,Medium,A,Google Search Console
+GSC-04,GSC,01. Analytics — Google Search Console,Average position,Google Search Console,Medium,A,Google Search Console
+GSC-05,GSC,01. Analytics — Google Search Console,Indexed pages,Google Search Console,Medium,A,Google Search Console
+GSC-06,GSC,01. Analytics — Google Search Console,Excluded pages,Google Search Console,Medium,A,Google Search Console
+GSC-07,GSC,01. Analytics — Google Search Console,Crawled - currently not indexed,Google Search Console,Medium,A,Google Search Console
+GSC-08,GSC,01. Analytics — Google Search Console,Discovered - currently not indexed,Google Search Console,Medium,A,Google Search Console
+GSC-09,GSC,01. Analytics — Google Search Console,Soft 404,Google Search Console,Medium,A,Google Search Console
+GSC-10,GSC,01. Analytics — Google Search Console,Server errors,Google Search Console,Medium,A,Google Search Console
+GSC-11,GSC,01. Analytics — Google Search Console,Redirect errors,Google Search Console,Medium,A,Google Search Console
+GSC-12,GSC,01. Analytics — Google Search Console,Core Web Vitals,Google Search Console,Medium,A,Google Search Console
+GSC-13,GSC,01. Analytics — Google Search Console,HTTPS report,Google Search Console,Medium,A,Google Search Console
+GSC-14,GSC,01. Analytics — Google Search Console,Rich Results,Google Search Console,Medium,A,Google Search Console
+GSC-15,GSC,01. Analytics — Google Search Console,Breadcrumbs,Google Search Console,Medium,A,Google Search Console
+GSC-16,GSC,01. Analytics — Google Search Console,Product results,Google Search Console,Medium,A,Google Search Console
+GSC-17,GSC,01. Analytics — Google Search Console,FAQ results,Google Search Console,Medium,A,Google Search Console
+GSC-18,GSC,01. Analytics — Google Search Console,Video pages,Google Search Console,Medium,A,Google Search Console
+GSC-19,GSC,01. Analytics — Google Search Console,Internal links,Google Search Console,Medium,A,Google Search Console
+GSC-20,GSC,01. Analytics — Google Search Console,External links,Google Search Console,Medium,A,Google Search Console
+GSC-21,GSC,01. Analytics — Google Search Console,Top linking sites,Google Search Console,Medium,A,Google Search Console
+GSC-22,GSC,01. Analytics — Google Search Console,Top linked pages,Google Search Console,Medium,A,Google Search Console
+GA4-01,GA4,01. Analytics — Google Analytics 4,GA4 installed,Google Analytics 4,Medium,A,Google Analytics 4
+GA4-02,GA4,01. Analytics — Google Analytics 4,Data collection,Google Analytics 4,Medium,A,Google Analytics 4
+GA4-03,GA4,01. Analytics — Google Analytics 4,Enhanced Measurement,Google Analytics 4,Medium,A,Google Analytics 4
+GA4-04,GA4,01. Analytics — Google Analytics 4,Events,Google Analytics 4,Medium,A,Google Analytics 4
+GA4-05,GA4,01. Analytics — Google Analytics 4,Conversions,Google Analytics 4,Medium,A,Google Analytics 4
+GA4-06,GA4,01. Analytics — Google Analytics 4,Key Events,Google Analytics 4,Medium,A,Google Analytics 4
+GA4-07,GA4,01. Analytics — Google Analytics 4,Cross-domain tracking,Google Analytics 4,Medium,A,Google Analytics 4
+GA4-08,GA4,01. Analytics — Google Analytics 4,Internal traffic filters,Google Analytics 4,Medium,A,Google Analytics 4
+GA4-09,GA4,01. Analytics — Google Analytics 4,Organic sessions,Google Analytics 4,Medium,A,Google Analytics 4
+GA4-10,GA4,01. Analytics — Google Analytics 4,Engagement rate,Google Analytics 4,Medium,A,Google Analytics 4
+GA4-11,GA4,01. Analytics — Google Analytics 4,Bounce rate,Google Analytics 4,Medium,A,Google Analytics 4
+GA4-12,GA4,01. Analytics — Google Analytics 4,Average engagement time,Google Analytics 4,Medium,A,Google Analytics 4
+GA4-13,GA4,01. Analytics — Google Analytics 4,Landing pages,Google Analytics 4,Medium,A,Google Analytics 4
+GA4-14,GA4,01. Analytics — Google Analytics 4,Exit pages,Google Analytics 4,Medium,A,Google Analytics 4
+GA4-15,GA4,01. Analytics — Google Analytics 4,Conversion rate,Google Analytics 4,Medium,A,Google Analytics 4
+GA4-16,GA4,01. Analytics — Google Analytics 4,Revenue tracking (if applicable),Google Analytics 4,Medium,A,Google Analytics 4
+TECH-01,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Pages returned 5XX status code,SEMrush,High,A,SEMrush
+TECH-02,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Pages returned 4XX status code,SEMrush,High,A,SEMrush
+TECH-03,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Pages couldn't be crawled,SEMrush,High,A,SEMrush
+TECH-04,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Pages couldn't be crawled (DNS resolution issues),SEMrush,High,A,SEMrush
+TECH-05,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Pages couldn't be crawled (Incorrect URL formats),SEMrush,Medium,A,SEMrush
+TECH-06,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Internal links are broken,SEMrush,High,A,SEMrush
+TECH-07,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",External links are broken,SEMrush,Medium,A,SEMrush
+TECH-08,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Internal image is broken,SEMrush,Medium,A,SEMrush
+TECH-09,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",External images are broken,SEMrush,Low,A,SEMrush
+TECH-10,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Issues with broken internal JavaScript and CSS files,SEMrush,High,A,SEMrush
+TECH-11,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Issues with broken external JavaScript and CSS files,SEMrush,Medium,A,SEMrush
+TECH-12,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Links couldn't be crawled (Incorrect URL formats),SEMrush,Medium,A,SEMrush
+TECH-13,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Robots.txt file has format errors,SEMrush,High,A,SEMrush
+TECH-14,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Robots.txt not found,SEMrush,High,A,SEMrush
+TECH-15,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Pages are blocked from crawling,SEMrush,High,A,SEMrush
+TECH-16,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Issues with blocked internal resources in robots.txt,SEMrush,Medium,A,SEMrush
+TECH-17,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Issues with blocked external resources in robots.txt,SEMrush,Low,A,SEMrush
+TECH-18,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",robots.txt exists,Browser,High,A,Browser
+TECH-19,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",robots.txt syntax is valid,Robots Tester,High,A,Robots Tester
+TECH-20,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Important pages are crawlable,GSC URL Inspection,High,A,GSC URL Inspection
+TECH-21,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Sitemap.xml files have format errors,SEMrush,High,A,SEMrush
+TECH-22,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Sitemap.xml not found,SEMrush,High,A,SEMrush
+TECH-23,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Sitemap.xml not indicated in robots.txt,SEMrush,Medium,A,SEMrush
+TECH-24,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Incorrect pages found in sitemap.xml,SEMrush,High,A,SEMrush
+TECH-25,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Orphaned pages in sitemap,SEMrush,Medium,A,SEMrush
+TECH-26,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",HTTP URLs in sitemap.xml for HTTPS site,SEMrush,High,A,SEMrush
+TECH-27,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Sitemap.xml files are too large,SEMrush Site Audit,Medium,A,SEMrush Site Audit
+TECH-28,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",XML sitemap exists,Browser,High,A,Browser
+TECH-29,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",XML sitemap submitted in Search Console,Google Search Console,High,A,Google Search Console
+TECH-30,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",XML sitemap referenced in robots.txt,Browser,Medium,A,Browser
+TECH-31,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Pages blocked by X-Robots-Tag (noindex HTTP header),SEMrush,Medium,A,SEMrush
+TECH-32,TECH,"02. Technical SEO: Crawlability, Robots & Indexability","Indexable pages use index,follow",Screaming Frog,High,A,Screaming Frog
+TECH-33,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Non-indexable pages use noindex,Screaming Frog,High,A,Screaming Frog
+TECH-34,TECH,"02. Technical SEO: Crawlability, Robots & Indexability","Meta robots directives reviewed (index, noindex, follow, nofollow)",Screaming Frog,High,A,Screaming Frog
+TECH-35,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Search Console Index Coverage reviewed,Google Search Console,High,A,Google Search Console
+TECH-36,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Orphan pages identified,Screaming Frog,Medium,A,Screaming Frog
+TECH-37,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",AMP-related issues (Advanced plan only),SEMrush Site Audit,High,A,SEMrush Site Audit
+TECH-38,TECH,"02. Technical SEO: Crawlability, Robots & Indexability",Link URLs are too long,SEMrush Site Audit,Low,A,SEMrush Site Audit
+URL-01,URL,03. URL Structure & Site Architecture,Pages have a WWW resolve issue,SEMrush,High,A,SEMrush
+URL-02,URL,03. URL Structure & Site Architecture,URLs with a temporary redirect,SEMrush,Medium,A,SEMrush
+URL-03,URL,03. URL Structure & Site Architecture,URL with a permanent redirect,SEMrush,Low,A,SEMrush
+URL-04,URL,03. URL Structure & Site Architecture,Redirect chains and loops,SEMrush,High,A,SEMrush
+URL-05,URL,03. URL Structure & Site Architecture,Pages have a meta refresh tag,SEMrush,Medium,A,SEMrush
+URL-06,URL,03. URL Structure & Site Architecture,No redirect or canonical to HTTPS homepage from HTTP version,SEMrush,High,A,SEMrush
+URL-07,URL,03. URL Structure & Site Architecture,Page URLs are longer than 200 characters,SEMrush,Medium,A,SEMrush
+URL-08,URL,03. URL Structure & Site Architecture,Pages have too many parameters in their URLs,SEMrush,Medium,A,SEMrush
+URL-09,URL,03. URL Structure & Site Architecture,Pages have underscores in the URL,SEMrush,Low,A,SEMrush
+URL-10,URL,03. URL Structure & Site Architecture,SEO-friendly URLs,Screaming Frog,High,A,Screaming Frog
+URL-11,URL,03. URL Structure & Site Architecture,URL hierarchy is logical,Screaming Frog,Medium,A,Screaming Frog
+URL-12,URL,03. URL Structure & Site Architecture,Lowercase URLs,Screaming Frog,Medium,A,Screaming Frog
+URL-13,URL,03. URL Structure & Site Architecture,Hyphens instead of underscores,Screaming Frog,Low,A,Screaming Frog
+URL-14,URL,03. URL Structure & Site Architecture,URL length optimized,Screaming Frog,Medium,A,Screaming Frog
+URL-15,URL,03. URL Structure & Site Architecture,WWW/non-WWW consistency,Browser,High,A,Browser
+URL-16,URL,03. URL Structure & Site Architecture,HTTPS consistency,Browser,High,A,Browser
+URL-17,URL,03. URL Structure & Site Architecture,Redirect consistency,Screaming Frog,High,A,Screaming Frog
+URL-18,URL,03. URL Structure & Site Architecture,Canonical consistency,Screaming Frog,High,A,Screaming Frog
+SEC-01,SEC,04. HTTPS & Security,Homepage does not use HTTPS encryption,SEMrush,High,A,SEMrush
+SEC-02,SEC,04. HTTPS & Security,Issues with old security protocol,SEMrush,High,A,SEMrush
+SEC-03,SEC,04. HTTPS & Security,Issues with incorrect certificate name,SEMrush,High,A,SEMrush
+SEC-04,SEC,04. HTTPS & Security,Issues with expiring or expired certificate,SEMrush,High,A,SEMrush
+SEC-05,SEC,04. HTTPS & Security,Issues with mixed content,SEMrush,High,A,SEMrush
+SEC-06,SEC,04. HTTPS & Security,Subdomains don't support HSTS,SEMrush,Medium,A,SEMrush
+SEC-07,SEC,04. HTTPS & Security,Subdomains don't support secure encryption algorithms,SEMrush,Medium,A,SEMrush
+SEC-08,SEC,04. HTTPS & Security,Entire website uses HTTPS,Browser / Screaming Frog,High,A,Browser / Screaming Frog
+SEC-09,SEC,04. HTTPS & Security,SSL certificate valid,SSL Checker,High,A,SSL Checker
+SEC-10,SEC,04. HTTPS & Security,HSTS enabled,SecurityHeaders.com,Medium,A,SecurityHeaders.com
+SEC-11,SEC,04. HTTPS & Security,Secure TLS version,SSL Labs,High,A,SSL Labs
+SEC-12,SEC,04. HTTPS & Security,No mixed content,Browser DevTools,High,A,Browser DevTools
+SEC-13,SEC,04. HTTPS & Security,Non-secure pages,SEMrush Site Audit,High,A,SEMrush Site Audit
+SEC-14,SEC,04. HTTPS & Security,Links on HTTPS pages lead to HTTP pages,SEMrush Site Audit,Medium,A,SEMrush Site Audit
+SEC-15,SEC,04. HTTPS & Security,Subdomains don't support SNI,SEMrush Site Audit,Medium,A,SEMrush Site Audit
+CANON-01,CANON,05. Canonicalization,Pages with a broken canonical link,SEMrush,High,A,SEMrush
+CANON-02,CANON,05. Canonicalization,Pages have multiple canonical URLs,SEMrush,High,A,SEMrush
+CANON-03,CANON,05. Canonicalization,AMP pages have no canonical tag,SEMrush,Medium,A,SEMrush
+CANON-04,CANON,05. Canonicalization,Self-referencing canonical,Screaming Frog,High,A,Screaming Frog
+CANON-05,CANON,05. Canonicalization,Canonicals point to indexable pages,Screaming Frog,High,A,Screaming Frog
+CANON-06,CANON,05. Canonicalization,Pagination canonicals verified,Screaming Frog,Medium,A,Screaming Frog
+PERF-01,PERF,06. Website Performance & Core Web Vitals,Pages have slow load speed,SEMrush,High,A,SEMrush
+PERF-02,PERF,06. Website Performance & Core Web Vitals,Pages have low Text-to-HTML ratio,SEMrush,Low,A,SEMrush
+PERF-03,PERF,06. Website Performance & Core Web Vitals,Pages have too large HTML size,SEMrush,Medium,A,SEMrush
+PERF-04,PERF,06. Website Performance & Core Web Vitals,Uncompressed pages,SEMrush,High,A,SEMrush
+PERF-05,PERF,06. Website Performance & Core Web Vitals,Issues with uncompressed JavaScript and CSS files,SEMrush,Medium,A,SEMrush
+PERF-06,PERF,06. Website Performance & Core Web Vitals,Issues with uncached JavaScript and CSS files,SEMrush,Medium,A,SEMrush
+PERF-07,PERF,06. Website Performance & Core Web Vitals,Issues with unminified JavaScript and CSS files,SEMrush,Medium,A,SEMrush
+PERF-08,PERF,06. Website Performance & Core Web Vitals,Pages use too many JavaScript and CSS files,SEMrush,Medium,A,SEMrush
+PERF-09,PERF,06. Website Performance & Core Web Vitals,Pages have a JavaScript and CSS total size that is too large,SEMrush,Medium,A,SEMrush
+PERF-10,PERF,06. Website Performance & Core Web Vitals,Core Web Vitals evaluated,PageSpeed Insights,High,A,PageSpeed Insights
+PERF-11,PERF,06. Website Performance & Core Web Vitals,Largest Contentful Paint (LCP),PageSpeed Insights,High,A,PageSpeed Insights
+PERF-12,PERF,06. Website Performance & Core Web Vitals,Interaction to Next Paint (INP),PageSpeed Insights,High,A,PageSpeed Insights
+PERF-13,PERF,06. Website Performance & Core Web Vitals,Cumulative Layout Shift (CLS),PageSpeed Insights,High,A,PageSpeed Insights
+PERF-14,PERF,06. Website Performance & Core Web Vitals,Time To First Byte,PageSpeed Insights,High,A,PageSpeed Insights
+PERF-15,PERF,06. Website Performance & Core Web Vitals,GZIP/Brotli compression,GTmetrix,Medium,A,GTmetrix
+PERF-16,PERF,06. Website Performance & Core Web Vitals,Browser caching,GTmetrix,Medium,A,GTmetrix
+PERF-17,PERF,06. Website Performance & Core Web Vitals,CDN usage,Cloudflare / Headers,Medium,A,Cloudflare / Headers
+PERF-18,PERF,06. Website Performance & Core Web Vitals,Lazy loading,Browser DevTools,Medium,A,Browser DevTools
+PERF-19,PERF,06. Website Performance & Core Web Vitals,Image optimization,PageSpeed Insights,High,A,PageSpeed Insights
+ONP-01,ONP,07. On-Page SEO,Issues with duplicate title tags,SEMrush,High,A,SEMrush
+ONP-02,ONP,07. On-Page SEO,Pages don't have title tags,SEMrush,High,A,SEMrush
+ONP-03,ONP,07. On-Page SEO,Pages don't have enough text within the title tags,SEMrush,High,A,SEMrush
+ONP-04,ONP,07. On-Page SEO,Pages have too much text within the title tags,SEMrush,High,A,SEMrush
+ONP-05,ONP,07. On-Page SEO,Pages have duplicate meta descriptions,SEMrush,High,A,SEMrush
+ONP-06,ONP,07. On-Page SEO,Pages don't have meta descriptions,SEMrush,High,A,SEMrush
+ONP-07,ONP,07. On-Page SEO,Pages have duplicate H1 and title tags,SEMrush,High,A,SEMrush
+ONP-08,ONP,07. On-Page SEO,Pages have more than one H1 tag,SEMrush,High,A,SEMrush
+ONP-09,ONP,07. On-Page SEO,Pages have duplicate content issues,SEMrush,High,A,SEMrush
+ONP-10,ONP,07. On-Page SEO,Pages have a low word count,SEMrush,High,A,SEMrush
+ONP-11,ONP,07. On-Page SEO,Pages contain too much content,SEMrush,High,A,SEMrush
+ONP-12,ONP,07. On-Page SEO,Pages have low semantic HTML usage,SEMrush,High,A,SEMrush
+ONP-13,ONP,07. On-Page SEO,Pages require content optimization,SEMrush,High,A,SEMrush
+ONP-14,ONP,07. On-Page SEO,Images don't have alt attributes,SEMrush,High,A,SEMrush
+ONP-15,ONP,07. On-Page SEO,Pages have only one incoming internal link,SEMrush,Medium,A,SEMrush
+ONP-16,ONP,07. On-Page SEO,Pages need more than 3 clicks to be reached,SEMrush,Medium,A,SEMrush
+ONP-17,ONP,07. On-Page SEO,Links have no anchor text,SEMrush,Medium,A,SEMrush
+ONP-18,ONP,07. On-Page SEO,Links have non-descriptive anchor text,SEMrush,Medium,A,SEMrush
+ONP-19,ONP,07. On-Page SEO,Outgoing internal links contain nofollow attribute,SEMrush,Medium,A,SEMrush
+ONP-20,ONP,07. On-Page SEO,Pages have too many on-page links,SEMrush Site Audit,Low,A,SEMrush Site Audit
+ONP-21,ONP,07. On-Page SEO,Outgoing external links contain nofollow attributes,SEMrush,Medium,A,SEMrush
+ONP-22,ONP,07. On-Page SEO,Links to external pages/resources returned a 403 HTTP status code,SEMrush,Medium,A,SEMrush
+ONP-23,ONP,07. On-Page SEO,Unique title on every page,Screaming Frog,High,A,Screaming Frog
+ONP-24,ONP,07. On-Page SEO,Primary keyword included,Manual Review,High,C,needs client target-keyword map as input
+ONP-25,ONP,07. On-Page SEO,Brand placement reviewed,Manual Review,Medium,C,needs client target-keyword map as input
+ONP-26,ONP,07. On-Page SEO,Title length optimized,Screaming Frog,Medium,A,Screaming Frog
+ONP-27,ONP,07. On-Page SEO,Unique meta description,Screaming Frog,High,A,Screaming Frog
+ONP-28,ONP,07. On-Page SEO,CTA included,Manual Review,Medium,C,needs client target-keyword map as input
+ONP-29,ONP,07. On-Page SEO,Target keyword included,Manual Review,Medium,C,needs client target-keyword map as input
+ONP-30,ONP,07. On-Page SEO,Proper length,Screaming Frog,Medium,A,Screaming Frog
+ONP-31,ONP,07. On-Page SEO,Pages don't have an H1 heading,SEMrush Site Audit,High,A,SEMrush Site Audit
+ONP-32,ONP,07. On-Page SEO,One H1 per page,Screaming Frog,High,A,Screaming Frog
+ONP-33,ONP,07. On-Page SEO,Logical H2-H6 hierarchy,Screaming Frog,Medium,A,Screaming Frog
+ONP-34,ONP,07. On-Page SEO,Search intent satisfied,Manual Review,Medium,B,LLM judgment over crawl artifact
+ONP-35,ONP,07. On-Page SEO,Keyword optimization,Manual Review,Medium,C,needs client target-keyword map as input
+ONP-36,ONP,07. On-Page SEO,Semantic keywords,Manual Review,Medium,C,needs client target-keyword map as input
+ONP-37,ONP,07. On-Page SEO,EEAT signals,Manual Review,Medium,B,LLM judgment over crawl artifact
+ONP-38,ONP,07. On-Page SEO,Internal linking,Manual Review,Medium,B,LLM judgment over crawl artifact
+ONP-39,ONP,07. On-Page SEO,External references,Manual Review,Medium,B,LLM judgment over crawl artifact
+ONP-40,ONP,07. On-Page SEO,Freshness,Manual Review,Medium,B,LLM judgment over crawl artifact
+ONP-41,ONP,07. On-Page SEO,Duplicate content check,Manual Review,Medium,B,LLM judgment over crawl artifact
+ONP-42,ONP,07. On-Page SEO,Descriptive filenames,Screaming Frog / PageSpeed,Medium,A,Screaming Frog / PageSpeed
+ONP-43,ONP,07. On-Page SEO,Proper compression,Screaming Frog / PageSpeed,Medium,A,Screaming Frog / PageSpeed
+ONP-44,ONP,07. On-Page SEO,Responsive images,Screaming Frog / PageSpeed,Medium,A,Screaming Frog / PageSpeed
+ONP-45,ONP,07. On-Page SEO,Lazy loading,Screaming Frog / PageSpeed,Medium,A,Screaming Frog / PageSpeed
+ONP-46,ONP,07. On-Page SEO,Logical internal linking,Screaming Frog,Medium,A,Screaming Frog
+ONP-47,ONP,07. On-Page SEO,Contextual anchors,Screaming Frog,Medium,A,Screaming Frog
+ONP-48,ONP,07. On-Page SEO,No orphan pages,Screaming Frog,Medium,A,Screaming Frog
+ONP-49,ONP,07. On-Page SEO,Relevant outbound links,Manual Review,Medium,B,LLM judgment over crawl artifact
+ONP-50,ONP,07. On-Page SEO,Authority references,Manual Review,Medium,B,LLM judgment over crawl artifact
+MOB-01,MOB,08. Mobile SEO,Pages have no viewport tag,SEMrush,High,A,SEMrush
+MOB-02,MOB,08. Mobile SEO,Pages are missing the viewport width value,SEMrush,High,A,SEMrush
+MOB-03,MOB,08. Mobile SEO,Mobile Friendly Test,Google Mobile-Friendly Test,High,A,Google Mobile-Friendly Test
+MOB-04,MOB,08. Mobile SEO,Responsive design,Google Mobile-Friendly Test,High,A,Google Mobile-Friendly Test
+MOB-05,MOB,08. Mobile SEO,Touch elements,Google Mobile-Friendly Test,High,A,Google Mobile-Friendly Test
+MOB-06,MOB,08. Mobile SEO,Font readability,Google Mobile-Friendly Test,High,A,Google Mobile-Friendly Test
+MOB-07,MOB,08. Mobile SEO,Mobile viewport configured,Google Mobile-Friendly Test,High,A,Google Mobile-Friendly Test
+SCHEMA-01,SCHEMA,09. Structured Data (Schema),Structured data items are invalid,SEMrush,High,A,SEMrush
+SCHEMA-02,SCHEMA,09. Structured Data (Schema),Organization Schema,Google Rich Results Test,High,A,Google Rich Results Test
+SCHEMA-03,SCHEMA,09. Structured Data (Schema),Website Schema,Google Rich Results Test,High,A,Google Rich Results Test
+SCHEMA-04,SCHEMA,09. Structured Data (Schema),Breadcrumb Schema,Google Rich Results Test,High,A,Google Rich Results Test
+SCHEMA-05,SCHEMA,09. Structured Data (Schema),Article Schema,Google Rich Results Test,High,A,Google Rich Results Test
+SCHEMA-06,SCHEMA,09. Structured Data (Schema),Product Schema,Google Rich Results Test,High,A,Google Rich Results Test
+SCHEMA-07,SCHEMA,09. Structured Data (Schema),FAQ Schema,Google Rich Results Test,High,A,Google Rich Results Test
+SCHEMA-08,SCHEMA,09. Structured Data (Schema),Review Schema,Google Rich Results Test,High,A,Google Rich Results Test
+SCHEMA-09,SCHEMA,09. Structured Data (Schema),LocalBusiness Schema,Google Rich Results Test,High,A,Google Rich Results Test
+SCHEMA-10,SCHEMA,09. Structured Data (Schema),Rich Results validation,Google Rich Results Test,High,A,Google Rich Results Test
+INTL-01,INTL,10. International SEO,Issues with hreflang values,SEMrush,High,A,SEMrush
+INTL-02,INTL,10. International SEO,Hreflang conflicts within page source code,SEMrush,High,A,SEMrush
+INTL-03,INTL,10. International SEO,Issues with incorrect hreflang links,SEMrush,High,A,SEMrush
+INTL-04,INTL,10. International SEO,Pages have no hreflang and lang attributes,SEMrush,High,A,SEMrush
+INTL-05,INTL,10. International SEO,Pages have hreflang language mismatch issues,SEMrush,High,A,SEMrush
+INTL-06,INTL,10. International SEO,hreflang implementation,Screaming Frog,High,A,Screaming Frog
+INTL-07,INTL,10. International SEO,Language targeting,Screaming Frog,High,A,Screaming Frog
+INTL-08,INTL,10. International SEO,Country targeting,Screaming Frog,High,A,Screaming Frog
+HTML-01,HTML,11. HTML & Code Quality,Pages don't have character encoding declared,SEMrush,Medium,A,SEMrush
+HTML-02,HTML,11. HTML & Code Quality,Pages don't have doctype declared,SEMrush,Medium,A,SEMrush
+HTML-03,HTML,11. HTML & Code Quality,Pages contain frames,SEMrush,Medium,A,SEMrush
+HTML-04,HTML,11. HTML & Code Quality,Pages have incompatible plugin content,SEMrush,Medium,A,SEMrush
+HTML-05,HTML,11. HTML & Code Quality,Resources are formatted as page links,SEMrush,Medium,A,SEMrush
+HTML-06,HTML,11. HTML & Code Quality,Valid HTML,W3C Validator,Medium,A,W3C Validator
+HTML-07,HTML,11. HTML & Code Quality,Character encoding declared,W3C Validator,Medium,A,W3C Validator
+HTML-08,HTML,11. HTML & Code Quality,Proper doctype,W3C Validator,Medium,A,W3C Validator
+HTML-09,HTML,11. HTML & Code Quality,Accessibility basics reviewed,W3C Validator,Medium,A,W3C Validator
+EEAT-01,EEAT,12. E-E-A-T Audit,First-hand experience demonstrated,Manual Review,Medium,B,LLM judgment over crawl artifact
+EEAT-02,EEAT,12. E-E-A-T Audit,Real examples included,Manual Review,Medium,B,LLM judgment over crawl artifact
+EEAT-03,EEAT,12. E-E-A-T Audit,Original insights included,Manual Review,Medium,B,LLM judgment over crawl artifact
+EEAT-04,EEAT,12. E-E-A-T Audit,Subject matter expertise,Manual Review,Medium,B,LLM judgment over crawl artifact
+EEAT-05,EEAT,12. E-E-A-T Audit,Expert-written content,Manual Review,Medium,B,LLM judgment over crawl artifact
+EEAT-06,EEAT,12. E-E-A-T Audit,Expert review process,Manual Review,Medium,B,LLM judgment over crawl artifact
+EEAT-07,EEAT,12. E-E-A-T Audit,Author pages,Manual Review,Medium,A,crawl: author page URL patterns + Person schema
+EEAT-08,EEAT,12. E-E-A-T Audit,Author credentials,Manual Review,Medium,B,LLM judgment over crawl artifact
+EEAT-09,EEAT,12. E-E-A-T Audit,Organization authority,Manual Review,Medium,B,LLM judgment over crawl artifact
+EEAT-10,EEAT,12. E-E-A-T Audit,Industry mentions,Manual Review,Medium,B,LLM judgment over crawl artifact
+EEAT-11,EEAT,12. E-E-A-T Audit,Brand authority,Manual Review,Medium,B,LLM judgment over crawl artifact
+EEAT-12,EEAT,12. E-E-A-T Audit,Contact page,Manual Review,Medium,A,crawl: contact page detection
+EEAT-13,EEAT,12. E-E-A-T Audit,About page,Manual Review,Medium,A,crawl: about page detection
+EEAT-14,EEAT,12. E-E-A-T Audit,Editorial policy,Manual Review,Medium,B,LLM judgment over crawl artifact
+EEAT-15,EEAT,12. E-E-A-T Audit,Privacy Policy,Manual Review,Medium,A,crawl: privacy policy page detection
+EEAT-16,EEAT,12. E-E-A-T Audit,Terms & Conditions,Manual Review,Medium,A,crawl: terms page detection
+EEAT-17,EEAT,12. E-E-A-T Audit,Refund Policy (if applicable),Manual Review,Medium,A,crawl: refund/return policy page detection
+EEAT-18,EEAT,12. E-E-A-T Audit,Disclosure pages,Manual Review,Medium,A,crawl: disclosure/disclaimer page detection
+EEAT-19,EEAT,12. E-E-A-T Audit,HTTPS trust,Manual Review,Medium,A,TLS check (dupe of SEC-09)
+EEAT-20,EEAT,12. E-E-A-T Audit,Business information,Manual Review,Medium,B,LLM judgment over crawl artifact
+EEAT-21,EEAT,12. E-E-A-T Audit,Customer support information,Manual Review,Medium,B,LLM judgment over crawl artifact
+EEAT-22,EEAT,12. E-E-A-T Audit,Testimonials,Manual Review,Medium,B,LLM judgment over crawl artifact
+EEAT-23,EEAT,12. E-E-A-T Audit,Reviews,Manual Review,Medium,B,LLM judgment over crawl artifact
+EEAT-24,EEAT,12. E-E-A-T Audit,Trust badges,Manual Review,Medium,A,crawl: trust badge image/alt heuristics
+GEO-01,GEO,13. AI SEO / GEO,llms.txt not found,SEMrush Site Audit,Low,A,fetch /llms.txt
+GEO-02,GEO,13. AI SEO / GEO,llms.txt file has formatting issues,SEMrush Site Audit,Low,A,parse /llms.txt structure
+GEO-03,GEO,13. AI SEO / GEO,llms.txt implementation,Manual Review,Medium,A,fetch + parse /llms.txt
+GEO-04,GEO,13. AI SEO / GEO,AI crawler accessibility,Manual Review,Medium,A,"robots.txt parse: GPTBot, ClaudeBot, PerplexityBot, Google-Extended, CCBot, Bingbot"
+GEO-05,GEO,13. AI SEO / GEO,AI-friendly site architecture,Manual Review,Medium,B,LLM judgment over crawl artifact
+GEO-06,GEO,13. AI SEO / GEO,AI-readable HTML,Manual Review,Medium,A,"crawl: semantic HTML ratio, JS-dependency of main content"
+GEO-07,GEO,13. AI SEO / GEO,AI-friendly content formatting,Manual Review,Medium,B,LLM judgment over crawl artifact
+GEO-08,GEO,13. AI SEO / GEO,Clear heading hierarchy,Manual Review,Medium,A,crawl: heading hierarchy validity
+GEO-09,GEO,13. AI SEO / GEO,Question-answer content,Manual Review,Medium,B,LLM judgment over crawl artifact
+GEO-10,GEO,13. AI SEO / GEO,FAQ optimization,Manual Review,Medium,A,crawl: FAQPage schema + Q&A block detection
+GEO-11,GEO,13. AI SEO / GEO,Conversational content,Manual Review,Medium,B,LLM judgment over crawl artifact
+GEO-12,GEO,13. AI SEO / GEO,Entity optimization,Manual Review,Medium,B,LLM judgment over crawl artifact
+GEO-13,GEO,13. AI SEO / GEO,Knowledge Graph optimization,Manual Review,Medium,B,LLM judgment over crawl artifact
+GEO-14,GEO,13. AI SEO / GEO,Semantic relationships,Manual Review,Medium,B,LLM judgment over crawl artifact
+GEO-15,GEO,13. AI SEO / GEO,Citation-worthy content,Manual Review,Medium,B,LLM judgment over crawl artifact
+GEO-16,GEO,13. AI SEO / GEO,Original research,Manual Review,Medium,B,LLM judgment over crawl artifact
+GEO-17,GEO,13. AI SEO / GEO,Statistics & data usage,Manual Review,Medium,B,LLM judgment over crawl artifact
+GEO-18,GEO,13. AI SEO / GEO,Expert quotes,Manual Review,Medium,B,LLM judgment over crawl artifact
+GEO-19,GEO,13. AI SEO / GEO,Structured data completeness,Manual Review,Medium,A,schema coverage matrix from crawl
+GEO-20,GEO,13. AI SEO / GEO,Author entity optimization,Manual Review,Medium,B,LLM judgment over crawl artifact
+GEO-21,GEO,13. AI SEO / GEO,Organization entity optimization,Manual Review,Medium,B,LLM judgment over crawl artifact
+GEO-22,GEO,13. AI SEO / GEO,Brand entity optimization,Manual Review,Medium,B,LLM judgment over crawl artifact
+GEO-23,GEO,13. AI SEO / GEO,AI Overview optimization,Manual Review,Medium,A*,ai_visibility: scripted query panel vs each platform
+GEO-24,GEO,13. AI SEO / GEO,Featured Snippet optimization,Manual Review,Medium,A*,ai_visibility: scripted query panel vs each platform
+GEO-25,GEO,13. AI SEO / GEO,Passage Ranking optimization,Manual Review,Medium,A*,ai_visibility: scripted query panel vs each platform
+GEO-26,GEO,13. AI SEO / GEO,Bing Copilot optimization,Manual Review,Medium,A*,ai_visibility: scripted query panel vs each platform
+GEO-27,GEO,13. AI SEO / GEO,ChatGPT visibility,Manual Review,Medium,A*,ai_visibility: scripted query panel vs each platform
+GEO-28,GEO,13. AI SEO / GEO,Perplexity visibility,Manual Review,Medium,A*,ai_visibility: scripted query panel vs each platform
+GEO-29,GEO,13. AI SEO / GEO,Gemini visibility,Manual Review,Medium,A*,ai_visibility: scripted query panel vs each platform
+GEO-30,GEO,13. AI SEO / GEO,Claude visibility,Manual Review,Medium,A*,ai_visibility: scripted query panel vs each platform
+OFF-01,OFF,14. Off-Page SEO & Authority,Total backlinks,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-02,OFF,14. Off-Page SEO & Authority,Referring domains,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-03,OFF,14. Off-Page SEO & Authority,Referring IPs,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-04,OFF,14. Off-Page SEO & Authority,Referring subnets,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-05,OFF,14. Off-Page SEO & Authority,Domain Authority,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-06,OFF,14. Off-Page SEO & Authority,Authority Score,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-07,OFF,14. Off-Page SEO & Authority,Trust Score,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-08,OFF,14. Off-Page SEO & Authority,Spam Score,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-09,OFF,14. Off-Page SEO & Authority,Toxic backlinks,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-10,OFF,14. Off-Page SEO & Authority,Lost backlinks,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-11,OFF,14. Off-Page SEO & Authority,New backlinks,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-12,OFF,14. Off-Page SEO & Authority,Broken backlinks,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-13,OFF,14. Off-Page SEO & Authority,Follow/Nofollow ratio,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-14,OFF,14. Off-Page SEO & Authority,Anchor text diversity,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-15,OFF,14. Off-Page SEO & Authority,Branded anchors,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-16,OFF,14. Off-Page SEO & Authority,Exact match anchors,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-17,OFF,14. Off-Page SEO & Authority,Naked URL anchors,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-18,OFF,14. Off-Page SEO & Authority,Image backlinks,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-19,OFF,14. Off-Page SEO & Authority,Homepage backlinks,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-20,OFF,14. Off-Page SEO & Authority,Deep page backlinks,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-21,OFF,14. Off-Page SEO & Authority,Link gap analysis,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-22,OFF,14. Off-Page SEO & Authority,Competitor backlinks,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-23,OFF,14. Off-Page SEO & Authority,Guest posting opportunities,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-24,OFF,14. Off-Page SEO & Authority,Digital PR opportunities,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-25,OFF,14. Off-Page SEO & Authority,Resource page opportunities,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-26,OFF,14. Off-Page SEO & Authority,Broken link building,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-27,OFF,14. Off-Page SEO & Authority,HARO opportunities,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-28,OFF,14. Off-Page SEO & Authority,Brand mention opportunities,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+OFF-29,OFF,14. Off-Page SEO & Authority,Unlinked brand mentions,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush

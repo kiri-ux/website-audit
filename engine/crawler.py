@@ -1,0 +1,446 @@
+"""
+Vici SEO/GEO Audit — Crawler
+=============================
+The keystone collector. Runs ONCE per audit and produces the crawl artifact
+that ~190 of the 313 checkpoints are answered from.
+
+Design principles (see spec §3):
+  * Crawl once, answer many. Nothing here evaluates a checkpoint; it only
+    captures facts. All judgment lives in checks/.
+  * Everything a checkpoint might need is captured on the first pass, because
+    re-crawling to answer a forgotten question is the main cost sink.
+  * Politeness is non-negotiable: robots.txt respected, per-host rate limit,
+    honest user-agent.
+"""
+from __future__ import annotations
+
+import re
+import time
+import json
+import gzip
+import socket
+import ssl
+from dataclasses import dataclass, field, asdict
+from urllib.parse import urljoin, urlparse, urldefrag
+from urllib.robotparser import RobotFileParser
+
+import requests
+from bs4 import BeautifulSoup
+
+USER_AGENT = "ViciAuditBot/0.1 (+https://vicimediainc.com/bot; SEO audit crawler)"
+
+SKIP_EXT = re.compile(
+    r"\.(jpg|jpeg|png|gif|webp|avif|svg|ico|css|js|pdf|zip|gz|mp4|webm|mp3|"
+    r"woff2?|ttf|eot|dmg|exe|xlsx?|docx?|pptx?)(\?|$)", re.I)
+
+
+# --------------------------------------------------------------------------
+# Artifact records
+# --------------------------------------------------------------------------
+@dataclass
+class Page:
+    url: str
+    final_url: str = ""
+    status_code: int = 0
+    depth: int = 0
+    elapsed_ms: int = 0
+    content_type: str = ""
+    bytes_html: int = 0
+
+    # response-level
+    headers: dict = field(default_factory=dict)
+    redirect_chain: list = field(default_factory=list)
+
+    # head
+    title: str | None = None
+    meta_description: str | None = None
+    meta_robots: str | None = None
+    x_robots_tag: str | None = None
+    canonical: str | None = None
+    viewport: str | None = None
+    charset: str | None = None
+    doctype: str | None = None
+    lang: str | None = None
+    hreflang: list = field(default_factory=list)
+
+    # body
+    h1: list = field(default_factory=list)
+    headings: list = field(default_factory=list)      # [(level, text)]
+    word_count: int = 0
+    text_html_ratio: float = 0.0
+    rendered_text: str = ""
+
+    # assets & relationships
+    images: list = field(default_factory=list)        # {src, alt, loading, width, height}
+    links_internal: list = field(default_factory=list)  # {href, anchor, rel}
+    links_external: list = field(default_factory=list)
+    scripts: list = field(default_factory=list)       # src URLs + inline snippets
+    inline_script_text: str = ""
+
+    # structured data
+    schema_types: list = field(default_factory=list)
+    schema_raw: list = field(default_factory=list)
+
+    # computed post-crawl
+    inbound_internal_links: int = 0
+
+    error: str | None = None
+
+
+@dataclass
+class SiteArtifact:
+    start_url: str
+    host: str
+    scheme: str
+    pages: dict = field(default_factory=dict)          # url -> Page
+    robots_txt: str | None = None
+    robots_status: int = 0
+    sitemap_urls: list = field(default_factory=list)
+    sitemap_status: dict = field(default_factory=dict)
+    llms_txt: str | None = None
+    llms_txt_status: int = 0
+    tls: dict = field(default_factory=dict)
+    broken_links: list = field(default_factory=list)   # {from, to, status}
+    external_checked: dict = field(default_factory=dict)
+    www_resolve: dict = field(default_factory=dict)
+    http_to_https: dict = field(default_factory=dict)
+    crawled_at: float = 0.0
+
+    def to_json(self) -> str:
+        d = asdict(self)
+        d["pages"] = {k: asdict(v) if not isinstance(v, dict) else v
+                      for k, v in self.pages.items()}
+        return json.dumps(d, indent=1, default=str)
+
+
+# --------------------------------------------------------------------------
+# Crawler
+# --------------------------------------------------------------------------
+class Crawler:
+    def __init__(self, start_url: str, max_pages: int = 150, max_depth: int = 4,
+                 delay: float = 0.3, render_js: bool = False, timeout: int = 20,
+                 respect_robots: bool = True, verbose: bool = True):
+        self.start_url = start_url.rstrip("/") + "/" if start_url.count("/") < 3 else start_url
+        p = urlparse(self.start_url)
+        self.host, self.scheme = p.netloc, p.scheme
+        self.max_pages, self.max_depth = max_pages, max_depth
+        self.delay, self.timeout = delay, timeout
+        self.render_js, self.verbose = render_js, verbose
+        self.respect_robots = respect_robots
+
+        self.art = SiteArtifact(start_url=self.start_url, host=self.host, scheme=self.scheme)
+        self.sess = requests.Session()
+        self.sess.headers.update({"User-Agent": USER_AGENT,
+                                  "Accept-Encoding": "gzip, deflate, br"})
+        self.rp: RobotFileParser | None = None
+        self._browser = None
+        self._pw = None
+
+    # ---------------- infrastructure probes ----------------
+    def _fetch_text(self, url, **kw):
+        try:
+            r = self.sess.get(url, timeout=self.timeout, **kw)
+            return r.status_code, r.text, r
+        except Exception as e:
+            return 0, "", e
+
+    def probe_robots(self):
+        url = f"{self.scheme}://{self.host}/robots.txt"
+        code, text, _ = self._fetch_text(url)
+        self.art.robots_status, self.art.robots_txt = code, text if code == 200 else None
+        self.rp = RobotFileParser()
+        if code == 200:
+            self.rp.parse(text.splitlines())
+        else:
+            self.rp.parse([])
+        # sitemap discovery from robots
+        for line in (text or "").splitlines():
+            if line.lower().startswith("sitemap:"):
+                self.art.sitemap_urls.append(line.split(":", 1)[1].strip())
+
+    def probe_llms_txt(self):
+        code, text, _ = self._fetch_text(f"{self.scheme}://{self.host}/llms.txt")
+        self.art.llms_txt_status = code
+        self.art.llms_txt = text if code == 200 else None
+
+    def probe_sitemaps(self):
+        if not self.art.sitemap_urls:
+            self.art.sitemap_urls = [f"{self.scheme}://{self.host}/sitemap.xml"]
+        found = []
+        for sm in list(self.art.sitemap_urls)[:5]:
+            code, text, r = self._fetch_text(sm)
+            size = len(text.encode()) if text else 0
+            entry = {"status": code, "bytes": size, "urls": [], "format_error": False}
+            if code == 200:
+                try:
+                    soup = BeautifulSoup(text, "xml")
+                    if soup.find("sitemapindex"):
+                        for loc in soup.find_all("loc")[:5]:
+                            self.art.sitemap_urls.append(loc.text.strip())
+                    entry["urls"] = [l.text.strip() for l in soup.find_all("loc")]
+                    if not entry["urls"]:
+                        entry["format_error"] = True
+                except Exception:
+                    entry["format_error"] = True
+            self.art.sitemap_status[sm] = entry
+            found.extend(entry["urls"])
+        self.art.sitemap_status["_all_urls"] = sorted(set(found))
+
+    def probe_tls(self):
+        try:
+            ctx = ssl.create_default_context()
+            with socket.create_connection((self.host, 443), timeout=self.timeout) as s:
+                with ctx.wrap_socket(s, server_hostname=self.host) as ss:
+                    cert = ss.getpeercert()
+                    self.art.tls = {
+                        "version": ss.version(),
+                        "cipher": ss.cipher()[0] if ss.cipher() else None,
+                        "not_after": cert.get("notAfter"),
+                        "subject": dict(x[0] for x in cert.get("subject", [])).get("commonName"),
+                        "san": [v for k, v in cert.get("subjectAltName", []) if k == "DNS"],
+                        "valid": True,
+                    }
+        except Exception as e:
+            self.art.tls = {"valid": False, "error": str(e)}
+
+    def probe_www_and_http(self):
+        """URL-01 (www resolve) and URL-06 / SEC-01 (HTTP→HTTPS)."""
+        bare = self.host[4:] if self.host.startswith("www.") else self.host
+        for label, u in (("www", f"https://www.{bare}/"), ("nonwww", f"https://{bare}/")):
+            try:
+                r = self.sess.get(u, timeout=self.timeout, allow_redirects=True)
+                self.art.www_resolve[label] = {"final": r.url, "status": r.status_code,
+                                               "hops": len(r.history)}
+            except Exception as e:
+                self.art.www_resolve[label] = {"error": str(e)}
+        try:
+            r = self.sess.get(f"http://{self.host}/", timeout=self.timeout, allow_redirects=True)
+            self.art.http_to_https = {"final": r.url, "status": r.status_code,
+                                      "upgraded": r.url.startswith("https://"),
+                                      "hops": len(r.history)}
+        except Exception as e:
+            self.art.http_to_https = {"error": str(e)}
+
+    # ---------------- page parsing ----------------
+    def _is_internal(self, url: str) -> bool:
+        n = urlparse(url).netloc.lower()
+        h = self.host.lower()
+        return n == h or n == h.replace("www.", "") or n == "www." + h.replace("www.", "")
+
+    def parse(self, url: str, resp, html: str, depth: int, rendered: str = "") -> Page:
+        soup = BeautifulSoup(html, "html.parser")
+        pg = Page(url=url, final_url=resp.url, status_code=resp.status_code, depth=depth,
+                  elapsed_ms=int(resp.elapsed.total_seconds() * 1000),
+                  content_type=resp.headers.get("Content-Type", ""),
+                  bytes_html=len(html.encode("utf-8", "ignore")),
+                  headers={k.lower(): v for k, v in resp.headers.items()},
+                  redirect_chain=[{"url": h.url, "status": h.status_code} for h in resp.history])
+
+        pg.x_robots_tag = pg.headers.get("x-robots-tag")
+        pg.doctype = "html5" if re.match(r"\s*<!doctype html>", html[:200], re.I) else (
+            "other" if re.match(r"\s*<!doctype", html[:200], re.I) else None)
+
+        # charset
+        m = soup.find("meta", attrs={"charset": True})
+        if m:
+            pg.charset = m.get("charset")
+        else:
+            m = soup.find("meta", attrs={"http-equiv": re.compile("content-type", re.I)})
+            if m and "charset=" in (m.get("content") or ""):
+                pg.charset = m["content"].split("charset=")[-1].strip()
+
+        if soup.title and soup.title.string:
+            pg.title = soup.title.string.strip()
+        md = soup.find("meta", attrs={"name": re.compile(r"^description$", re.I)})
+        pg.meta_description = (md.get("content") or "").strip() if md else None
+        mr = soup.find("meta", attrs={"name": re.compile(r"^robots$", re.I)})
+        pg.meta_robots = (mr.get("content") or "").strip() if mr else None
+        cn = soup.find("link", attrs={"rel": lambda v: v and "canonical" in [x.lower() for x in (v if isinstance(v, list) else [v])]})
+        pg.canonical = urljoin(url, cn["href"]) if cn and cn.get("href") else None
+        vp = soup.find("meta", attrs={"name": re.compile(r"^viewport$", re.I)})
+        pg.viewport = (vp.get("content") or "").strip() if vp else None
+        html_tag = soup.find("html")
+        pg.lang = html_tag.get("lang") if html_tag else None
+        pg.hreflang = [{"lang": l.get("hreflang"), "href": urljoin(url, l.get("href", ""))}
+                       for l in soup.find_all("link", attrs={"hreflang": True})]
+
+        # headings
+        for lvl in range(1, 7):
+            for h in soup.find_all(f"h{lvl}"):
+                t = h.get_text(" ", strip=True)
+                pg.headings.append((lvl, t))
+                if lvl == 1:
+                    pg.h1.append(t)
+
+        # text
+        for bad in soup(["script", "style", "noscript"]):
+            bad.decompose()
+        text = soup.get_text(" ", strip=True)
+        pg.rendered_text = (rendered or text)[:20000]
+        pg.word_count = len(text.split())
+        pg.text_html_ratio = round(len(text) / max(1, len(html)), 4)
+
+        # images
+        for img in BeautifulSoup(html, "html.parser").find_all("img"):
+            pg.images.append({"src": urljoin(url, img.get("src") or img.get("data-src") or ""),
+                              "alt": img.get("alt"), "loading": img.get("loading"),
+                              "width": img.get("width"), "height": img.get("height"),
+                              "srcset": bool(img.get("srcset"))})
+
+        # links
+        s2 = BeautifulSoup(html, "html.parser")
+        for a in s2.find_all("a", href=True):
+            href = urldefrag(urljoin(url, a["href"]))[0]
+            if href.startswith(("mailto:", "tel:", "javascript:")):
+                continue
+            rec = {"href": href, "anchor": a.get_text(" ", strip=True)[:120],
+                   "rel": " ".join(a.get("rel", []))}
+            (pg.links_internal if self._is_internal(href) else pg.links_external).append(rec)
+
+        # scripts  → powers all ANA tag-detection rows
+        inline = []
+        for sc in s2.find_all("script"):
+            if sc.get("src"):
+                pg.scripts.append(urljoin(url, sc["src"]))
+            elif sc.string:
+                inline.append(sc.string[:4000])
+        pg.inline_script_text = "\n".join(inline)[:40000]
+
+        # structured data
+        for sc in s2.find_all("script", attrs={"type": re.compile("ld\\+json", re.I)}):
+            try:
+                data = json.loads(sc.string or "{}")
+                pg.schema_raw.append(data)
+                for node in (data if isinstance(data, list) else [data]):
+                    if isinstance(node, dict):
+                        t = node.get("@type")
+                        for tt in (t if isinstance(t, list) else [t]):
+                            if tt:
+                                pg.schema_types.append(tt)
+                        for g in node.get("@graph", []) or []:
+                            gt = g.get("@type") if isinstance(g, dict) else None
+                            for tt in (gt if isinstance(gt, list) else [gt]):
+                                if tt:
+                                    pg.schema_types.append(tt)
+            except Exception:
+                pg.schema_types.append("__INVALID_JSONLD__")
+        # microdata / RDFa signal
+        for el in s2.find_all(attrs={"itemtype": True}):
+            pg.schema_types.append(el["itemtype"].rsplit("/", 1)[-1])
+        pg.schema_types = sorted(set(pg.schema_types))
+        return pg
+
+    # ---------------- main loop ----------------
+    def crawl(self) -> SiteArtifact:
+        self.art.crawled_at = time.time()
+        self.probe_robots()
+        self.probe_llms_txt()
+        self.probe_sitemaps()
+        self.probe_tls()
+        self.probe_www_and_http()
+
+        if self.render_js:
+            from playwright.sync_api import sync_playwright
+            self._pw = sync_playwright().start()
+            self._browser = self._pw.chromium.launch()
+
+        # Seed from the start URL AND the sitemap. Sitemap seeding is what makes
+        # orphan detection (TECH-25/36) meaningful: a URL that is in the sitemap
+        # but never reached by following links is by definition orphaned.
+        queue = [(self.start_url, 0)]
+        seen = {self.start_url}
+        for u in self.art.sitemap_status.get("_all_urls", []):
+            if u not in seen and self._is_internal(u) and not SKIP_EXT.search(u):
+                seen.add(u)
+                queue.append((u, 1))
+        while queue and len(self.art.pages) < self.max_pages:
+            url, depth = queue.pop(0)
+            if self.respect_robots and self.rp and not self.rp.can_fetch(USER_AGENT, url):
+                continue
+            try:
+                r = self.sess.get(url, timeout=self.timeout, allow_redirects=True)
+                ctype = r.headers.get("Content-Type", "")
+                if "html" not in ctype.lower():
+                    continue
+                rendered = ""
+                if self.render_js and self._browser:
+                    try:
+                        p = self._browser.new_page(user_agent=USER_AGENT)
+                        p.goto(url, timeout=self.timeout * 1000, wait_until="domcontentloaded")
+                        rendered = p.inner_text("body")[:20000]
+                        p.close()
+                    except Exception:
+                        pass
+                pg = self.parse(url, r, r.text, depth, rendered)
+            except Exception as e:
+                pg = Page(url=url, depth=depth, error=str(e))
+            self.art.pages[url] = pg
+            if self.verbose:
+                print(f"  [{len(self.art.pages):3}] d{depth} {pg.status_code} {url[:88]}")
+
+            if depth < self.max_depth and not pg.error:
+                for l in pg.links_internal:
+                    h = l["href"]
+                    if h not in seen and not SKIP_EXT.search(h) and self._is_internal(h):
+                        seen.add(h)
+                        queue.append((h, depth + 1))
+            time.sleep(self.delay)
+
+        self._post_process(seen)
+        if self._browser:
+            self._browser.close()
+            self._pw.stop()
+        return self.art
+
+    def _post_process(self, seen):
+        # inbound internal link counts (ONP-15, ONP-48, TECH-36)
+        counts = {u: 0 for u in self.art.pages}
+        for pg in self.art.pages.values():
+            for l in pg.links_internal:
+                t = l["href"].rstrip("/")
+                for cand in (l["href"], t, t + "/"):
+                    if cand in counts and cand != pg.url:
+                        counts[cand] += 1
+                        break
+        for u, c in counts.items():
+            self.art.pages[u].inbound_internal_links = c
+
+        # broken internal links (TECH-06)
+        # (a) targets we already crawled that returned an error status
+        linked_targets = set()
+        for pg in self.art.pages.values():
+            linked_targets.update(l["href"] for l in pg.links_internal)
+        for u in linked_targets:
+            tgt = self.art.pages.get(u)
+            if tgt and tgt.status_code >= 400:
+                self.art.broken_links.append({"to": u, "status": tgt.status_code,
+                                              "kind": "internal"})
+        # (b) targets we never crawled — HEAD-check them
+        to_check = {u for u in linked_targets if u not in self.art.pages}
+        for u in list(to_check)[:120]:
+            if SKIP_EXT.search(u):
+                continue
+            try:
+                r = self.sess.head(u, timeout=10, allow_redirects=True)
+                if r.status_code >= 400:
+                    r = self.sess.get(u, timeout=10, allow_redirects=True)
+                if r.status_code >= 400:
+                    self.art.broken_links.append({"to": u, "status": r.status_code,
+                                                  "kind": "internal"})
+            except Exception as e:
+                self.art.broken_links.append({"to": u, "status": 0, "kind": "internal",
+                                              "error": str(e)[:80]})
+
+        # external link sampling (TECH-07, ONP-22)
+        ext = []
+        for pg in self.art.pages.values():
+            ext.extend(l["href"] for l in pg.links_external)
+        for u in sorted(set(ext))[:60]:
+            try:
+                r = self.sess.head(u, timeout=8, allow_redirects=True)
+                self.art.external_checked[u] = r.status_code
+                if r.status_code >= 400:
+                    self.art.broken_links.append({"to": u, "status": r.status_code,
+                                                  "kind": "external"})
+            except Exception:
+                self.art.external_checked[u] = 0

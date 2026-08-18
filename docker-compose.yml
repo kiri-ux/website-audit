@@ -1,0 +1,60 @@
+# Local mirror of the production topology: separate API and worker processes,
+# Postgres, Redis. Use this when you want to exercise the real architecture.
+#
+#   docker compose up --build
+#   open http://localhost:8000
+#
+# For the fastest possible look at it, skip Docker entirely:
+#   pip install -r requirements.txt && python3 -m app.dev
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vici
+      POSTGRES_PASSWORD: vici
+      POSTGRES_DB: vici
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vici"]
+      interval: 3s
+      retries: 15
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      retries: 15
+
+  api:
+    build: .
+    command: uvicorn app.api:app --host 0.0.0.0 --port 8000
+    environment: &env
+      DATABASE_URL: postgresql://vici:vici@db:5432/vici
+      REDIS_URL: redis://redis:6379/0
+      ARTIFACT_STORE: local:///srv/data/artifacts
+      APP_MODE: internal
+    ports: ["8000:8000"]
+    volumes: [artifacts:/srv/data]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  worker:
+    build: .
+    command: python3 -m app.worker
+    environment: *env
+    volumes: [artifacts:/srv/data]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    # Chromium is memory-hungry. Give a worker headroom before enabling
+    # CRAWL_RENDER_JS; ~1GB per concurrent browser is a realistic floor.
+    deploy:
+      resources:
+        limits: {memory: 2G}
+
+volumes:
+  pgdata:
+  artifacts:
