@@ -17,7 +17,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from pydantic import BaseModel, Field
 
 from .config import cfg
-from . import db, tenancy
+from . import db, tenancy, version
 from .queue import get_queue
 from .artifacts import get_artifact
 
@@ -31,7 +31,7 @@ Q = get_queue()
 @app.on_event("startup")
 def _startup():
     db.init_db()
-    print(f"[api] up · {cfg.summary()}", flush=True)
+    print(f"[api] up · {version.label()} · {cfg.summary()}", flush=True)
 
 
 def principal(x_api_key: str | None):
@@ -57,7 +57,8 @@ class AuditRequest(BaseModel):
 # ------------------------------------------------------------------ API
 @app.get("/healthz")
 def healthz():
-    return {"ok": True, "mode": cfg.mode, "queue_depth": Q.depth()}
+    return {"ok": True, "mode": cfg.mode, "queue_depth": Q.depth(),
+            **version.info()}
 
 
 @app.post("/api/audits", status_code=202)
@@ -162,7 +163,8 @@ def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
                                        time.localtime(a["completed_at"] or time.time())),
             "duration_s": round((a["completed_at"] or 0) - (a["started_at"] or 0), 1),
             "crawl_blocked": bool(a.get("crawl_blocked")),
-            "crawl_note": a.get("crawl_note")}
+            "crawl_note": a.get("crawl_note"),
+            "build": version.label()}
     return render_html(meta, scores, findings, db.catalog())
 
 

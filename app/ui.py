@@ -9,6 +9,7 @@ from __future__ import annotations
 import html as _h
 
 from .config import cfg
+from . import version
 
 CSS = """
 :root{color-scheme:light dark}
@@ -106,6 +107,11 @@ def dashboard_html(audits, principal, queue_depth):
     <h1>SEO &amp; GEO Audit Engine</h1>
     <div class='sub'>{e(principal.name)} · mode <code>{e(cfg.mode)}</code>
       · queue depth {queue_depth}</div>
+    <div style='margin-top:10px'>
+      <span class='chip' style='background:var(--seq);color:#fff;border-color:var(--seq);
+        font-size:12px;padding:4px 12px'>{e(version.label())}</span>
+      <span style='color:var(--muted);font-size:12px;margin-left:8px'>
+        {e(version.BUILD_NOTES)}</span></div>
 
     <h2>New audit</h2>
     <div class='card'><form method='post' action='/audits' id='auditform'>

@@ -16,7 +16,7 @@ import time
 import traceback
 
 from .config import cfg
-from . import db
+from . import db, version
 from .queue import get_queue
 from .artifacts import put_artifact
 
@@ -203,7 +203,8 @@ def main():
         signal.signal(signal.SIGINT, _sig)
     db.init_db()
     q = get_queue()
-    print(f"[worker] up · {cfg.summary()} · waiting for jobs", flush=True)
+    print(f"[worker] up · {version.label()} · {cfg.summary()} · waiting for jobs",
+          flush=True)
 
     idle = 0
     while not _stop:

@@ -122,6 +122,9 @@ class SiteArtifact:
     pages: dict = field(default_factory=dict)          # url -> Page
     robots_txt: str | None = None
     robots_status: int = 0
+    robots_served_html: bool = False
+    llms_served_html: bool = False
+    sitemap_served_html: bool = False
     sitemap_urls: list = field(default_factory=list)
     sitemap_status: dict = field(default_factory=dict)
     llms_txt: str | None = None
@@ -170,9 +173,29 @@ class Crawler:
         self._pw = None
 
     # ---------------- infrastructure probes ----------------
+    @staticmethod
+    def _is_html(body: str) -> bool:
+        """
+        Is this response HTML rather than the plain-text file we asked for?
+
+        Bot protection commonly answers EVERY path with an HTML challenge page
+        and a 200 status. Without this check the crawler happily parses that page
+        as robots.txt (producing imaginary Disallow rules) or reports it as a
+        valid llms.txt. Both were observed in production against the same site
+        minutes apart, with contradictory results — the tell that the responses
+        were synthetic.
+        """
+        head = (body or "").lstrip()[:400].lower()
+        return head.startswith(("<!doctype", "<html", "<?xml-stylesheet")) or \
+            "<html" in head or "<head" in head or "<script" in head
+
     def _fetch_text(self, url, **kw):
+        """Fetch a plain-text resource. HTML in the body means we were served a
+        challenge/error page, not the file — report it as unavailable."""
         try:
             r = self.sess.get(url, timeout=self.timeout, **kw)
+            if r.status_code == 200 and self._is_html(r.text):
+                return -1, "", r          # -1 == "answered with HTML, not the file"
             return r.status_code, r.text, r
         except Exception as e:
             return 0, "", e
@@ -180,7 +203,10 @@ class Crawler:
     def probe_robots(self):
         url = f"{self.scheme}://{self.host}/robots.txt"
         code, text, _ = self._fetch_text(url)
-        self.art.robots_status, self.art.robots_txt = code, text if code == 200 else None
+        self.art.robots_status = code
+        self.art.robots_txt = text if code == 200 else None
+        if code == -1:
+            self.art.robots_served_html = True
         self.rp = RobotFileParser()
         if code == 200:
             self.rp.parse(text.splitlines())
@@ -195,6 +221,8 @@ class Crawler:
         code, text, _ = self._fetch_text(f"{self.scheme}://{self.host}/llms.txt")
         self.art.llms_txt_status = code
         self.art.llms_txt = text if code == 200 else None
+        if code == -1:
+            self.art.llms_served_html = True
 
     def probe_sitemaps(self):
         if not self.art.sitemap_urls:
@@ -203,7 +231,14 @@ class Crawler:
         for sm in list(self.art.sitemap_urls)[:5]:
             code, text, r = self._fetch_text(sm)
             size = len(text.encode()) if text else 0
-            entry = {"status": code, "bytes": size, "urls": [], "format_error": False}
+            entry = {"status": code, "bytes": size, "urls": [], "format_error": False,
+                     "served_html": code == -1}
+            if code == -1:
+                # An HTML page returned for sitemap.xml is bot protection, not a
+                # malformed sitemap. Do not report it as a format error.
+                self.art.sitemap_served_html = True
+                self.art.sitemap_status[sm] = entry
+                continue
             if code == 200:
                 try:
                     soup = BeautifulSoup(text, "xml")
@@ -455,6 +490,10 @@ class Crawler:
             sig.append(f"homepage has {home.word_count} words of text")
         if not home.images:
             sig.append("homepage contains no images")
+
+        if (self.art.robots_served_html or self.art.llms_served_html
+                or self.art.sitemap_served_html):
+            sig.append("plain-text paths (robots.txt / llms.txt) answered with HTML")
 
         if len(sig) < 3:
             return CrawlQuality(False, "crawl looks healthy", [],

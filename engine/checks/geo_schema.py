@@ -89,6 +89,11 @@ AI_CRAWLERS = ["GPTBot", "ClaudeBot", "Claude-Web", "anthropic-ai", "PerplexityB
 @check("GEO-01")
 @check("GEO-03")
 def geo01(a, c):
+    if getattr(a, "llms_served_html", False):
+        return finding("Need Access", {"status": "html_response"},
+                       "/llms.txt could not be read — the server returned an HTML "
+                       "page rather than a text file. This indicates bot protection, "
+                       "not a published llms.txt.", [], "Medium", confidence=0.0)
     ok = a.llms_txt_status == 200
     return finding("Pass" if ok else "Not Implemented",
                    {"status": a.llms_txt_status, "bytes": len(a.llms_txt or "")},
@@ -101,6 +106,10 @@ def geo01(a, c):
 
 @check("GEO-02")
 def geo02(a, c):
+    if getattr(a, "llms_served_html", False):
+        return finding("Need Access", {},
+                       "/llms.txt formatting not assessed — an HTML page was "
+                       "returned instead of the file.", [], "Low", confidence=0.0)
     if a.llms_txt_status != 200:
         return finding("N/A", evidence="No /llms.txt to validate.", severity="Low")
     t = a.llms_txt or ""

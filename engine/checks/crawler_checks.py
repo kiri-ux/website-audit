@@ -96,6 +96,12 @@ def tech13(a, c):
 @check("TECH-14")
 @check("TECH-18")
 def tech14(a, c):
+    if getattr(a, "robots_served_html", False):
+        return finding("Need Access", {"status": "html_response"},
+                       "robots.txt could not be read — the server returned an HTML "
+                       "page instead of a text file, which indicates bot protection "
+                       "rather than a missing robots.txt.",
+                       [f"{a.scheme}://{a.host}/robots.txt"], "Medium", confidence=0.0)
     ok = a.robots_status == 200
     return finding("Pass" if ok else "Fail", {"status": a.robots_status},
                    f"robots.txt present and served with HTTP {a.robots_status}." if ok
@@ -119,6 +125,10 @@ def tech15(a, c):
 
 @check("TECH-19")
 def tech19(a, c):
+    if getattr(a, "robots_served_html", False):
+        return finding("Need Access", {},
+                       "robots.txt syntax not assessed — an HTML page was returned "
+                       "instead of the file.", [], "Medium", confidence=0.0)
     if a.robots_status != 200:
         return finding("Fail", {"status": a.robots_status},
                        "No robots.txt to validate.", [], "Medium")
@@ -131,6 +141,11 @@ def tech19(a, c):
 
 @check("TECH-21")
 def tech21(a, c):
+    if getattr(a, "sitemap_served_html", False) or getattr(a, "robots_served_html", False):
+        return finding("Need Access", {},
+                       "Sitemap XML validity not assessed — the server returned HTML for "
+                       "plain-text paths, indicating bot protection.",
+                       [], "Medium", confidence=0.0)
     errs = [k for k, v in a.sitemap_status.items()
             if k != "_all_urls" and isinstance(v, dict) and v.get("format_error")]
     return finding("Fail" if errs else "Pass", {"count": len(errs)},
@@ -142,6 +157,11 @@ def tech21(a, c):
 @check("TECH-22")
 @check("TECH-28")
 def tech22(a, c):
+    if getattr(a, "sitemap_served_html", False) or getattr(a, "robots_served_html", False):
+        return finding("Need Access", {},
+                       "XML sitemap presence not assessed — the server returned HTML for "
+                       "plain-text paths, indicating bot protection.",
+                       [], "Medium", confidence=0.0)
     found = [k for k, v in a.sitemap_status.items()
              if k != "_all_urls" and isinstance(v, dict) and v.get("status") == 200]
     n = len(a.sitemap_status.get("_all_urls", []))
@@ -155,6 +175,11 @@ def tech22(a, c):
 @check("TECH-23")
 @check("TECH-30")
 def tech23(a, c):
+    if getattr(a, "sitemap_served_html", False) or getattr(a, "robots_served_html", False):
+        return finding("Need Access", {},
+                       "Sitemap declaration in robots.txt not assessed — the server returned HTML for "
+                       "plain-text paths, indicating bot protection.",
+                       [], "Medium", confidence=0.0)
     ref = bool(a.robots_txt and "sitemap:" in a.robots_txt.lower())
     return finding("Pass" if ref else "Fail", {"referenced": ref},
                    "Sitemap location is declared in robots.txt." if ref
