@@ -28,6 +28,14 @@ RUN python3 -m pip install --upgrade pip \
 
 COPY . .
 
+# Import the app AT BUILD TIME. A missing dependency is otherwise invisible
+# until the container starts and uvicorn dies on ModuleNotFoundError — which
+# looks like a deploy failure rather than a one-line requirements omission,
+# and costs a full build cycle to diagnose. This turns it into a build error
+# with the same traceback, minutes earlier. It is safe because importing
+# app.api has no side effects: no DB connection, no queue, no network.
+RUN python3 -c "import app.api, app.worker; print('import check passed')"
+
 # Non-root. The base image provides the `pwuser` account.
 RUN mkdir -p /srv/data && chown -R pwuser:pwuser /srv
 USER pwuser
