@@ -16,6 +16,16 @@ from . import check, finding, escalate
 
 OK = lambda a: [p for p in a.pages.values() if not p.error and 200 <= p.status_code < 300]
 
+def _unreachable(status) -> bool:
+    """
+    HTTP 0 means the request raised (DNS failure, timeout, refused). HTTP -1 is
+    our sentinel for "answered with HTML instead of the file". Neither means the
+    resource is absent — we simply could not ask. Reporting either as a defect
+    invents a finding out of an infrastructure failure.
+    """
+    return status is None or status <= 0
+
+
 
 # ===================== TECHNICAL / CRAWLABILITY =====================
 @check("TECH-01")  # [SEMRUSH-SPIKE] Pages returned 5XX
@@ -102,6 +112,12 @@ def tech14(a, c):
                        "page instead of a text file, which indicates bot protection "
                        "rather than a missing robots.txt.",
                        [f"{a.scheme}://{a.host}/robots.txt"], "Medium", confidence=0.0)
+    if _unreachable(a.robots_status):
+        return finding("Need Access", {"status": a.robots_status},
+                       "robots.txt could not be fetched — the request failed to "
+                       "complete. This is a connectivity/blocking problem, not a "
+                       "missing robots.txt.",
+                       [f"{a.scheme}://{a.host}/robots.txt"], "Medium", confidence=0.0)
     ok = a.robots_status == 200
     return finding("Pass" if ok else "Fail", {"status": a.robots_status},
                    f"robots.txt present and served with HTTP {a.robots_status}." if ok
@@ -129,6 +145,10 @@ def tech19(a, c):
         return finding("Need Access", {},
                        "robots.txt syntax not assessed — an HTML page was returned "
                        "instead of the file.", [], "Medium", confidence=0.0)
+    if _unreachable(a.robots_status):
+        return finding("Need Access", {"status": a.robots_status},
+                       "robots.txt syntax not assessed — the file could not be "
+                       "fetched.", [], "Medium", confidence=0.0)
     if a.robots_status != 200:
         return finding("Fail", {"status": a.robots_status},
                        "No robots.txt to validate.", [], "Medium")
@@ -146,6 +166,12 @@ def tech21(a, c):
                        "Sitemap XML validity not assessed — the server returned HTML for "
                        "plain-text paths, indicating bot protection.",
                        [], "Medium", confidence=0.0)
+    parsed = [v for k, v in a.sitemap_status.items()
+              if k != "_all_urls" and isinstance(v, dict) and v.get("status") == 200]
+    if not parsed:
+        return finding("N/A", {},
+                       "No sitemap was retrieved, so XML validity could not be "
+                       "assessed.", [], "Low", confidence=0.0)
     errs = [k for k, v in a.sitemap_status.items()
             if k != "_all_urls" and isinstance(v, dict) and v.get("format_error")]
     return finding("Fail" if errs else "Pass", {"count": len(errs)},
@@ -161,6 +187,13 @@ def tech22(a, c):
         return finding("Need Access", {},
                        "XML sitemap presence not assessed — the server returned HTML for "
                        "plain-text paths, indicating bot protection.",
+                       [], "Medium", confidence=0.0)
+    entries = [v for k, v in a.sitemap_status.items()
+               if k != "_all_urls" and isinstance(v, dict)]
+    if entries and all(_unreachable(v.get("status")) for v in entries):
+        return finding("Need Access", {},
+                       "XML sitemap could not be fetched — the request failed to "
+                       "complete. Not evidence that a sitemap is missing.",
                        [], "Medium", confidence=0.0)
     found = [k for k, v in a.sitemap_status.items()
              if k != "_all_urls" and isinstance(v, dict) and v.get("status") == 200]
@@ -180,6 +213,10 @@ def tech23(a, c):
                        "Sitemap declaration in robots.txt not assessed — the server returned HTML for "
                        "plain-text paths, indicating bot protection.",
                        [], "Medium", confidence=0.0)
+    if _unreachable(a.robots_status):
+        return finding("Need Access", {},
+                       "Sitemap declaration not assessed — robots.txt could not be "
+                       "fetched.", [], "Low", confidence=0.0)
     ref = bool(a.robots_txt and "sitemap:" in a.robots_txt.lower())
     return finding("Pass" if ref else "Fail", {"referenced": ref},
                    "Sitemap location is declared in robots.txt." if ref
@@ -220,6 +257,9 @@ def tech25(a, c):
 @check("TECH-26")
 def tech26(a, c):
     urls = a.sitemap_status.get("_all_urls", [])
+    if not urls:
+        return finding("N/A", {}, "No sitemap URLs were retrieved.", [], "Low",
+                       confidence=0.0)
     bad = [u for u in urls if u.startswith("http://")]
     return finding("Fail" if bad else "Pass", {"count": len(bad)},
                    f"{len(bad)} sitemap URLs use HTTP on an HTTPS site." if bad
@@ -229,9 +269,12 @@ def tech26(a, c):
 
 @check("TECH-27")
 def tech27(a, c):
+    n = len(a.sitemap_status.get("_all_urls", []))
+    if not n:
+        return finding("N/A", {}, "No sitemap was retrieved.", [], "Low",
+                       confidence=0.0)
     big = [k for k, v in a.sitemap_status.items()
            if k != "_all_urls" and isinstance(v, dict) and v.get("bytes", 0) > 50_000_000]
-    n = len(a.sitemap_status.get("_all_urls", []))
     return finding("Fail" if (big or n > 50000) else "Pass", {"urls": n},
                    f"Sitemap contains {n} URLs (limit 50,000)." if n else "Sitemap size within limits.",
                    big, "Low")
@@ -330,6 +373,11 @@ def url04(a, c):
 @check("URL-06")
 def url06(a, c):
     h = a.http_to_https
+    if h.get("error") or "upgraded" not in h:
+        return finding("Need Access", h,
+                       "HTTP-to-HTTPS behaviour could not be tested — the request "
+                       "to the HTTP origin failed to complete.", [], "Medium",
+                       confidence=0.0)
     ok = h.get("upgraded")
     return finding("Pass" if ok else "Fail", h,
                    "HTTP homepage correctly redirects to HTTPS." if ok
@@ -387,6 +435,10 @@ def url10(a, c):
 
 @check("URL-16")
 def url16(a, c):
+    if not OK(a):
+        return finding("Need Access", {},
+                       "No pages were successfully retrieved, so HTTPS consistency "
+                       "could not be assessed.", [], "Medium", confidence=0.0)
     http = [p.url for p in OK(a) if p.final_url.startswith("http://")]
     return finding("Fail" if http else "Pass", {"count": len(http)},
                    f"{len(http)} pages served over HTTP." if http

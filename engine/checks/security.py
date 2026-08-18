@@ -12,6 +12,16 @@ def _https_origin(a) -> bool:
     return a.scheme == "https"
 
 
+def _tls_unreachable(a, label):
+    """A handshake that never completed tells us nothing about the certificate."""
+    if (a.tls or {}).get("error"):
+        return finding("Need Access", {"error": a.tls.get("error")},
+                       f"{label} not assessed — the TLS handshake could not be "
+                       f"completed (host unreachable or refusing connections).",
+                       [], "Medium", confidence=0.0)
+    return None
+
+
 def _cascade(a, dependent_label):
     """
     Dependency cascade. If the origin is plain HTTP there is no certificate to
@@ -29,7 +39,14 @@ def _cascade(a, dependent_label):
 
 @check("SEC-01")
 def sec01(a, c):
-    ok = a.start_url.startswith("https://") and a.http_to_https.get("upgraded", False)
+    h = a.http_to_https or {}
+    if h.get("error") or "upgraded" not in h:
+        return finding("Need Access", h,
+                       "HTTPS enforcement could not be tested — the request to the "
+                       "HTTP origin failed to complete. This is a connectivity or "
+                       "blocking problem, not evidence that HTTPS is unenforced.",
+                       [], "Medium", confidence=0.0)
+    ok = a.start_url.startswith("https://") and h.get("upgraded", False)
     return finding("Pass" if ok else "Fail", {"https": ok},
                    "Homepage is served over HTTPS and HTTP upgrades correctly." if ok
                    else "Homepage does not enforce HTTPS.", [],
@@ -41,6 +58,8 @@ def sec01(a, c):
 def sec02(a, c):
     _c = _cascade(a, "TLS version check")
     if _c: return _c
+    _u = _tls_unreachable(a, "TLS version")
+    if _u: return _u
     v = (a.tls or {}).get("version")
     good = v in ("TLSv1.3", "TLSv1.2")
     return finding("Pass" if good else "Fail", {"tls_version": v},
@@ -54,6 +73,8 @@ def sec02(a, c):
 def sec03(a, c):
     _c = _cascade(a, "Certificate name check")
     if _c: return _c
+    _u = _tls_unreachable(a, "Certificate name")
+    if _u: return _u
     t = a.tls or {}
     san, host = t.get("san") or [], a.host.lower()
     match = any(host == s.lower() or (s.startswith("*.") and host.endswith(s[1:].lower()))
@@ -70,6 +91,8 @@ def sec03(a, c):
 def sec04(a, c):
     _c = _cascade(a, "Certificate expiry check")
     if _c: return _c
+    _u = _tls_unreachable(a, "Certificate expiry")
+    if _u: return _u
     na = (a.tls or {}).get("not_after")
     if not na:
         return finding("Fail", {"error": (a.tls or {}).get("error")},
@@ -114,10 +137,12 @@ def sec05(a, c):
 def sec10(a, c):
     _c = _cascade(a, "HSTS check")
     if _c: return _c
-    hdrs = {}
-    for p in OK(a):
-        hdrs.update(p.headers or {})
-        break
+    pages = OK(a)
+    if not pages:
+        return finding("Need Access", {},
+                       "HSTS not assessed — no page response headers were received.",
+                       [], "Medium", confidence=0.0)
+    hdrs = dict(pages[0].headers or {})
     hsts = hdrs.get("strict-transport-security")
     return finding("Pass" if hsts else "Fail", {"hsts": hsts},
                    f"HSTS enabled: {hsts}" if hsts else "Strict-Transport-Security header absent.",

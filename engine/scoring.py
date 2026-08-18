@@ -17,6 +17,10 @@ FAILING = {"Fail", "Not Implemented", "Warning"}
 EXCLUDED = {"N/A", "Need Access"}
 CAP = 70  # max penalty a single section can accrue
 
+# A section must have at least this fraction of its checkpoints assessable
+# before we publish a score for it.
+MIN_SECTION_COVERAGE = 0.5
+
 BANDS = [(90, "Excellent"), (75, "Strong"), (60, "Needs Improvement"),
          (40, "Weak"), (0, "Critical")]
 
@@ -75,6 +79,21 @@ def score(findings: dict, catalog: dict, vertical: str | None = None):
                 fails.append(cid)
         pen = min(pen, CAP)
         s = max(0, min(100, round(100 - pen)))
+
+        # A score computed from a small minority of a section's checkpoints is
+        # not a verdict on that section — it is a verdict on whichever handful
+        # happened to be measurable. "E-E-A-T 100/100 Excellent" off a single
+        # TLS check out of nine is actively misleading, and flattering errors
+        # are the dangerous kind.
+        if len(applicable) / max(1, len(rows)) < MIN_SECTION_COVERAGE:
+            per_section[sec] = {"score": None, "rating": "Not Assessed",
+                                "checked": len(applicable), "total": len(rows),
+                                "failing": len(fails),
+                                "need_access": sum(1 for _, f, _ in rows
+                                                   if f["status"] == "Need Access"),
+                                "insufficient_coverage": True}
+            continue
+
         per_section[sec] = {
             "score": s, "rating": rating(s), "checked": len(applicable),
             "total": len(rows), "failing": len(fails),

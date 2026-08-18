@@ -94,6 +94,11 @@ def geo01(a, c):
                        "/llms.txt could not be read — the server returned an HTML "
                        "page rather than a text file. This indicates bot protection, "
                        "not a published llms.txt.", [], "Medium", confidence=0.0)
+    if a.llms_txt_status is None or a.llms_txt_status <= 0:
+        return finding("Need Access", {"status": a.llms_txt_status},
+                       "/llms.txt could not be fetched — the request failed to "
+                       "complete. Not evidence that llms.txt is missing.",
+                       [], "Medium", confidence=0.0)
     ok = a.llms_txt_status == 200
     return finding("Pass" if ok else "Not Implemented",
                    {"status": a.llms_txt_status, "bytes": len(a.llms_txt or "")},
@@ -125,6 +130,13 @@ def geo02(a, c):
 
 @check("GEO-04")
 def geo04(a, c):
+    # "No robots.txt therefore all AI crawlers are allowed" is a vacuous truth
+    # when robots.txt was simply unreachable. Only assert it when we actually
+    # read the file.
+    if a.robots_status is None or a.robots_status <= 0:
+        return finding("Need Access", {"robots_status": a.robots_status},
+                       "AI crawler policy not assessed — robots.txt could not be "
+                       "fetched.", [], "Medium", confidence=0.0)
     txt = a.robots_txt or ""
     blocked, allowed = [], []
     for bot in AI_CRAWLERS:
@@ -236,7 +248,13 @@ for _cid, (_l, _p) in TRUST_PAGES.items():
 
 @check("EEAT-19")
 def eeat19(a, c):
-    ok = (a.tls or {}).get("valid")
+    tls = a.tls or {}
+    if tls.get("error"):
+        return finding("Need Access", {"error": tls.get("error")},
+                       "HTTPS trust not assessed — the TLS handshake could not be "
+                       "completed, which means the host was unreachable rather than "
+                       "insecure.", [], "Medium", confidence=0.0)
+    ok = tls.get("valid")
     return finding("Pass" if ok else "Fail", {"tls_valid": bool(ok)},
                    "Site served over valid HTTPS — baseline trust signal met." if ok
                    else "TLS validation failed.", [], "Low" if ok else "Critical")
