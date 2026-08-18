@@ -145,6 +145,11 @@ def render_html(meta, sc, findings, catalog):
          f"<title>SEO/GEO Audit — {e(meta['client'])}</title><style>{CSS}</style>",
          "</head><body class='viz-root'><div class='wrap'>"]
 
+    if meta.get("truncated"):
+        P.append(f"<div class='note' style='border-left-color:var(--warning)'>"
+                 f"<b>Partial crawl.</b> {e(meta['truncated'])} — coverage below "
+                 f"reflects only the pages reached within the time budget.</div>")
+
     if meta.get("crawl_blocked"):
         P.append(
             "<div class='note' style='border-left-color:var(--critical);"

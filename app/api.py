@@ -164,6 +164,7 @@ def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
             "duration_s": round((a["completed_at"] or 0) - (a["started_at"] or 0), 1),
             "crawl_blocked": bool(a.get("crawl_blocked")),
             "crawl_note": a.get("crawl_note"),
+            "truncated": a.get("crawl_truncated"),
             "build": version.label()}
     return render_html(meta, scores, findings, db.catalog())
 

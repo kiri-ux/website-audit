@@ -60,6 +60,9 @@ class Config:
     max_pages: int = int(_s("CRAWL_MAX_PAGES", "150"))
     max_depth: int = int(_s("CRAWL_MAX_DEPTH", "4"))
     crawl_delay: float = float(_s("CRAWL_DELAY", "0.25"))
+    # Wall-clock ceiling for one crawl. A worker held for 45 minutes by a slow
+    # or hostile host is indistinguishable from a hang.
+    crawl_max_seconds: int = int(_s("CRAWL_MAX_SECONDS", "600"))
     render_js: bool = _b("CRAWL_RENDER_JS", False)
     # Honest bot identification is the right default. Some WAFs answer it with an
     # empty shell, which the crawl-quality gate now detects; BROWSER_UA is the

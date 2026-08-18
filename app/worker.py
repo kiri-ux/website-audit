@@ -52,6 +52,10 @@ def run_audit_job(audit_id: str):
     db.update_audit(audit_id, started_at=time.time(), error=None)
     step("crawling", "crawling site")
 
+    def crawl_progress(msg, done, total):
+        # Live progress is what makes "slow" distinguishable from "hung".
+        db.update_audit(audit_id, progress=f"crawling — {msg}")
+
     cr = Crawler(
         a["target_url"],
         max_pages=int(opts.get("max_pages", cfg.max_pages)),
@@ -59,9 +63,13 @@ def run_audit_job(audit_id: str):
         delay=float(opts.get("delay", cfg.crawl_delay)),
         render_js=bool(opts.get("render_js", cfg.render_js)),
         user_agent=opts.get("user_agent") or cfg.user_agent,
+        max_seconds=int(opts.get("max_seconds", cfg.crawl_max_seconds)),
+        progress=crawl_progress,
         verbose=False,
     )
     art = cr.crawl()
+    if art.truncated:
+        print(f"[worker] {audit_id} TRUNCATED: {art.truncated}", flush=True)
     q = art.quality
     if q.degenerate:
         # Do not silently produce a report full of false findings.
@@ -93,6 +101,7 @@ def run_audit_job(audit_id: str):
         crawl_blocked=1 if art.quality.degenerate else 0,
         crawl_note=(f"{art.quality.likely_cause} · " + "; ".join(art.quality.signals)
                     if art.quality.degenerate else None),
+        crawl_truncated=art.truncated,
         overall_score=sc["overall"]["score"], overall_rating=sc["overall"]["rating"],
         pages_crawled=len(art.pages), coverage=f"{len(findings)}/{len(cat)}",
         completed_at=time.time())

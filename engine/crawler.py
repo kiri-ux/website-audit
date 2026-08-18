@@ -136,6 +136,7 @@ class SiteArtifact:
     www_resolve: dict = field(default_factory=dict)
     http_to_https: dict = field(default_factory=dict)
     crawled_at: float = 0.0
+    truncated: str | None = None   # set when a time budget cut work short
 
     def to_json(self) -> str:
         d = asdict(self)
@@ -149,9 +150,10 @@ class SiteArtifact:
 # --------------------------------------------------------------------------
 class Crawler:
     def __init__(self, start_url: str, max_pages: int = 150, max_depth: int = 4,
-                 delay: float = 0.3, render_js: bool = False, timeout: int = 20,
+                 delay: float = 0.3, render_js: bool = False, timeout: int = 15,
                  respect_robots: bool = True, verbose: bool = True,
-                 user_agent: str | None = None):
+                 user_agent: str | None = None, max_seconds: int = 600,
+                 progress=None):
         self.start_url = start_url.rstrip("/") + "/" if start_url.count("/") < 3 else start_url
         p = urlparse(self.start_url)
         self.host, self.scheme = p.netloc, p.scheme
@@ -168,6 +170,12 @@ class Crawler:
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
             "Accept-Encoding": "gzip, deflate, br"})
+        # Hard wall-clock budget. Without it a slow or hostile host can hold a
+        # worker for 45+ minutes (50 pages x 15s, then up to 180 link probes),
+        # which is indistinguishable from a hang to whoever is watching.
+        self.max_seconds = max_seconds
+        self._deadline = None
+        self.progress = progress or (lambda *_: None)
         self.rp: RobotFileParser | None = None
         self._browser = None
         self._pw = None
@@ -401,6 +409,8 @@ class Crawler:
     # ---------------- main loop ----------------
     def crawl(self) -> SiteArtifact:
         self.art.crawled_at = time.time()
+        self._deadline = time.time() + self.max_seconds
+        self.progress("probing robots.txt / sitemap / TLS", 0, self.max_pages)
         self.probe_robots()
         self.probe_llms_txt()
         self.probe_sitemaps()
@@ -415,6 +425,7 @@ class Crawler:
         # Seed from the start URL AND the sitemap. Sitemap seeding is what makes
         # orphan detection (TECH-25/36) meaningful: a URL that is in the sitemap
         # but never reached by following links is by definition orphaned.
+        self.progress("starting crawl", 0, self.max_pages)
         queue = [(self.start_url, 0)]
         seen = {self.start_url}
         for u in self.art.sitemap_status.get("_all_urls", []):
@@ -422,6 +433,9 @@ class Crawler:
                 seen.add(u)
                 queue.append((u, 1))
         while queue and len(self.art.pages) < self.max_pages:
+            if self._out_of_time():
+                self.art.truncated = "page crawl hit the time budget"
+                break
             url, depth = queue.pop(0)
             if self.respect_robots and self.rp and not self.rp.can_fetch(self.ua, url):
                 continue
@@ -443,6 +457,9 @@ class Crawler:
             except Exception as e:
                 pg = Page(url=url, depth=depth, error=str(e))
             self.art.pages[url] = pg
+            n = len(self.art.pages)
+            if n % 5 == 0 or n <= 3:
+                self.progress(f"crawled {n} pages", n, self.max_pages)
             if self.verbose:
                 print(f"  [{len(self.art.pages):3}] d{depth} {pg.status_code} {url[:88]}")
 
@@ -519,6 +536,9 @@ class Crawler:
                             "trustworthy",
                             sig, home.bytes_html, cause)
 
+    def _out_of_time(self) -> bool:
+        return self._deadline is not None and time.time() > self._deadline
+
     def _post_process(self, seen):
         # inbound internal link counts (ONP-15, ONP-48, TECH-36)
         counts = {u: 0 for u in self.art.pages}
@@ -544,13 +564,18 @@ class Crawler:
                                               "kind": "internal"})
         # (b) targets we never crawled — HEAD-check them
         to_check = {u for u in linked_targets if u not in self.art.pages}
+        self.progress(f"verifying {min(len(to_check), 120)} internal links",
+                      len(self.art.pages), self.max_pages)
         for u in list(to_check)[:120]:
             if SKIP_EXT.search(u):
                 continue
+            if self._out_of_time():
+                self.art.truncated = "internal link verification hit the time budget"
+                break
             try:
-                r = self.sess.head(u, timeout=10, allow_redirects=True)
+                r = self.sess.head(u, timeout=6, allow_redirects=True)
                 if r.status_code >= 400:
-                    r = self.sess.get(u, timeout=10, allow_redirects=True)
+                    r = self.sess.get(u, timeout=6, allow_redirects=True)
                 if r.status_code >= 400:
                     self.art.broken_links.append({"to": u, "status": r.status_code,
                                                   "kind": "internal"})
@@ -562,9 +587,13 @@ class Crawler:
         ext = []
         for pg in self.art.pages.values():
             ext.extend(l["href"] for l in pg.links_external)
+        self.progress("verifying external links", len(self.art.pages), self.max_pages)
         for u in sorted(set(ext))[:60]:
+            if self._out_of_time():
+                self.art.truncated = "external link verification hit the time budget"
+                break
             try:
-                r = self.sess.head(u, timeout=8, allow_redirects=True)
+                r = self.sess.head(u, timeout=5, allow_redirects=True)
                 self.art.external_checked[u] = r.status_code
                 if r.status_code >= 400:
                     self.art.broken_links.append({"to": u, "status": r.status_code,

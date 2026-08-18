@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS audits (
   coverage       TEXT,
   crawl_blocked  INTEGER DEFAULT 0,  -- crawler could not see the real page
   crawl_note     TEXT,
+  crawl_truncated TEXT,
   options        TEXT,               -- JSON: crawl overrides
   created_at     REAL NOT NULL,
   started_at     REAL,
@@ -218,12 +219,44 @@ def _statements(ddl: str):
             yield stmt
 
 
+# Additive migrations. CREATE TABLE IF NOT EXISTS does NOTHING to a table that
+# already exists, so a column added to SCHEMA never reaches a deployed database.
+# Every new column must ALSO be listed here or production breaks on first write
+# with "column does not exist" — while local dev, which starts from an empty
+# file, looks perfectly healthy.
+#
+# Append-only. Never edit or remove a line.
+MIGRATIONS = [
+    ("audits", "crawl_blocked", "INTEGER DEFAULT 0"),
+    ("audits", "crawl_note", "TEXT"),
+    ("audits", "crawl_truncated", "TEXT"),
+    ("jobs", "job_type", "TEXT DEFAULT 'audit'"),
+]
+
+
+def _apply_migrations(cur):
+    for table, column, coltype in MIGRATIONS:
+        try:
+            if cfg.is_postgres:
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS "
+                            f"{column} {coltype}")
+            else:
+                cur.execute(f"PRAGMA table_info({table})")
+                if column not in {r[1] for r in cur.fetchall()}:
+                    cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
+        except Exception as e:
+            # A migration failing must not take the service down; log and move on.
+            print(f"[db] migration {table}.{column} skipped: "
+                  f"{type(e).__name__}: {e}", flush=True)
+
+
 def init_db(seed_catalog: str = "seed/checkpoints.csv"):
     with conn() as c:
         cur = c.cursor()
         for stmt in _statements(SCHEMA):
             cur.execute(stmt if not cfg.is_postgres
                         else stmt.replace("REAL", "DOUBLE PRECISION"))
+        _apply_migrations(cur)
         # default tenant — exists in internal mode so every row has an owner
         cur.execute(_q("SELECT 1 FROM partners WHERE id=?"), (cfg.default_partner,))
         if not cur.fetchone():

@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.18-4"
-BUILD_NOTES = "blocked-crawl + WAF challenge detection"
+BUILD = "2026.08.18-5"
+BUILD_NOTES = "crawl time budget + live progress"
 # ---------------------------------------------------------------------------
 
 
