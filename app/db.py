@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS audits (
   overall_rating TEXT,
   pages_crawled  INTEGER,
   coverage       TEXT,
+  crawl_blocked  INTEGER DEFAULT 0,  -- crawler could not see the real page
+  crawl_note     TEXT,
   options        TEXT,               -- JSON: crawl overrides
   created_at     REAL NOT NULL,
   started_at     REAL,

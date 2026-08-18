@@ -61,6 +61,9 @@ class Config:
     max_depth: int = int(_s("CRAWL_MAX_DEPTH", "4"))
     crawl_delay: float = float(_s("CRAWL_DELAY", "0.25"))
     render_js: bool = _b("CRAWL_RENDER_JS", False)
+    # Honest bot identification is the right default. Some WAFs answer it with an
+    # empty shell, which the crawl-quality gate now detects; BROWSER_UA is the
+    # documented remedy for sites you have permission to audit.
     user_agent: str = _s(
         "CRAWL_USER_AGENT",
         "ViciAuditBot/1.0 (+https://vicimediainc.com/bot; SEO audit crawler)")

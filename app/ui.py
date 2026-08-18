@@ -108,7 +108,7 @@ def dashboard_html(audits, principal, queue_depth):
       · queue depth {queue_depth}</div>
 
     <h2>New audit</h2>
-    <div class='card'><form method='post' action='/audits'>
+    <div class='card'><form method='post' action='/audits' id='auditform'>
       <div><label>Target URL</label>
         <input name='target_url' placeholder='https://www.example.com/' required></div>
       <div><label>Client name</label>
@@ -119,6 +119,18 @@ def dashboard_html(audits, principal, queue_depth):
         <option value='local_service'>local service</option></select></div>
       <div><label>Max pages</label><input name='max_pages' type='number' value='150'></div>
       <div><button type='submit'>Run audit</button></div>
+    </form>
+    <div style='margin-top:12px;display:flex;gap:20px;font-size:12.5px;color:var(--ink2)'>
+      <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
+        <input type='checkbox' name='browser_ua' value='1' form='auditform'
+               style='width:auto'> Use a browser user-agent
+        <span style='color:var(--muted)'>(if the site blocks bots)</span></label>
+      <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
+        <input type='checkbox' name='render_js' value='1' form='auditform'
+               style='width:auto'> Render JavaScript
+        <span style='color:var(--muted)'>(slower; for SPA sites)</span></label>
+    </div>
+    <form style='display:none'>
     </form></div>
 
     <h2>Audits</h2>{table}

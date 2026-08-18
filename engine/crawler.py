@@ -88,6 +88,33 @@ class Page:
 
 
 @dataclass
+class CrawlQuality:
+    """
+    Was the crawl actually usable?
+
+    This exists because of a real production failure: a bot-protected site
+    returned a near-empty 200 shell, and the checkers dutifully reported ~20
+    confident findings — no title, no H1, no images, no links — describing a
+    site that does not look like that at all. Every one of those findings was
+    false, and a partner reading them would have (correctly) concluded the tool
+    was broken.
+
+    A crawler that cannot see the page must SAY SO. It must never let downstream
+    checks turn "we were blocked" into "your site is broken". This is the same
+    rule the scoring engine already enforces for Need Access; it just needs to
+    apply one layer earlier.
+    """
+    degenerate: bool = False
+    reason: str = ""
+    signals: list = field(default_factory=list)
+    homepage_bytes: int = 0
+    likely_cause: str = ""
+
+    def to_dict(self):
+        return asdict(self)
+
+
+@dataclass
 class SiteArtifact:
     start_url: str
     host: str
@@ -102,6 +129,7 @@ class SiteArtifact:
     tls: dict = field(default_factory=dict)
     broken_links: list = field(default_factory=list)   # {from, to, status}
     external_checked: dict = field(default_factory=dict)
+    quality: CrawlQuality = field(default_factory=CrawlQuality)
     www_resolve: dict = field(default_factory=dict)
     http_to_https: dict = field(default_factory=dict)
     crawled_at: float = 0.0
@@ -119,7 +147,8 @@ class SiteArtifact:
 class Crawler:
     def __init__(self, start_url: str, max_pages: int = 150, max_depth: int = 4,
                  delay: float = 0.3, render_js: bool = False, timeout: int = 20,
-                 respect_robots: bool = True, verbose: bool = True):
+                 respect_robots: bool = True, verbose: bool = True,
+                 user_agent: str | None = None):
         self.start_url = start_url.rstrip("/") + "/" if start_url.count("/") < 3 else start_url
         p = urlparse(self.start_url)
         self.host, self.scheme = p.netloc, p.scheme
@@ -130,8 +159,12 @@ class Crawler:
 
         self.art = SiteArtifact(start_url=self.start_url, host=self.host, scheme=self.scheme)
         self.sess = requests.Session()
-        self.sess.headers.update({"User-Agent": USER_AGENT,
-                                  "Accept-Encoding": "gzip, deflate, br"})
+        self.ua = user_agent or USER_AGENT
+        self.sess.headers.update({
+            "User-Agent": self.ua,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br"})
         self.rp: RobotFileParser | None = None
         self._browser = None
         self._pw = None
@@ -355,7 +388,7 @@ class Crawler:
                 queue.append((u, 1))
         while queue and len(self.art.pages) < self.max_pages:
             url, depth = queue.pop(0)
-            if self.respect_robots and self.rp and not self.rp.can_fetch(USER_AGENT, url):
+            if self.respect_robots and self.rp and not self.rp.can_fetch(self.ua, url):
                 continue
             try:
                 r = self.sess.get(url, timeout=self.timeout, allow_redirects=True)
@@ -365,7 +398,7 @@ class Crawler:
                 rendered = ""
                 if self.render_js and self._browser:
                     try:
-                        p = self._browser.new_page(user_agent=USER_AGENT)
+                        p = self._browser.new_page(user_agent=self.ua)
                         p.goto(url, timeout=self.timeout * 1000, wait_until="domcontentloaded")
                         rendered = p.inner_text("body")[:20000]
                         p.close()
@@ -387,10 +420,65 @@ class Crawler:
             time.sleep(self.delay)
 
         self._post_process(seen)
+        self.art.quality = self._assess_quality()
         if self._browser:
             self._browser.close()
             self._pw.stop()
         return self.art
+
+    def _assess_quality(self) -> "CrawlQuality":
+        """
+        Detect a crawl that produced structurally empty pages.
+
+        Deliberately conservative: it takes THREE independent signals to call a
+        crawl degenerate, so a genuinely minimal-but-real page (a one-page
+        brochure site) is not falsely flagged.
+        """
+        ok = [p for p in self.art.pages.values()
+              if not p.error and 200 <= p.status_code < 300]
+        if not ok:
+            return CrawlQuality(True, "no successful page responses",
+                                ["all requests failed or returned an error status"],
+                                0, "site unreachable, or blocking this host outright")
+
+        home = min(ok, key=lambda p: p.depth)
+        sig = []
+        if home.bytes_html < 2048:
+            sig.append(f"homepage HTML is only {home.bytes_html} bytes")
+        if not home.title:
+            sig.append("homepage has no <title>")
+        if not home.h1:
+            sig.append("homepage has no <h1>")
+        if not home.links_internal:
+            sig.append("homepage exposes no internal links")
+        if home.word_count < 50:
+            sig.append(f"homepage has {home.word_count} words of text")
+        if not home.images:
+            sig.append("homepage contains no images")
+
+        if len(sig) < 3:
+            return CrawlQuality(False, "crawl looks healthy", [],
+                                home.bytes_html, "")
+
+        # Distinguish the two plausible causes, because the remedy differs.
+        body = (home.rendered_text or "").lower()
+        challenge_words = ("just a moment", "enable javascript", "checking your browser",
+                           "access denied", "captcha", "cloudflare", "are you a robot",
+                           "unusual traffic", "request unsuccessful")
+        if any(w in body for w in challenge_words):
+            cause = ("bot protection — the server returned a challenge/interstitial "
+                     "page instead of the site")
+        elif home.bytes_html < 2048 and len(home.scripts) <= 2:
+            cause = ("bot protection or an empty shell — a real page this small is "
+                     "very unlikely")
+        else:
+            cause = ("client-side rendering — content is built by JavaScript and is "
+                     "absent from the raw HTML")
+
+        return CrawlQuality(True,
+                            "crawled pages are structurally empty; results are not "
+                            "trustworthy",
+                            sig, home.bytes_html, cause)
 
     def _post_process(self, seen):
         # inbound internal link counts (ONP-15, ONP-48, TECH-36)

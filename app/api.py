@@ -51,6 +51,7 @@ class AuditRequest(BaseModel):
     max_depth: int | None = None
     render_js: bool | None = None
     skip_psi: bool | None = None
+    user_agent: str | None = None
 
 
 # ------------------------------------------------------------------ API
@@ -69,7 +70,8 @@ def create_audit(req: AuditRequest, x_api_key: str | None = Header(None)):
     if not req.target_url.startswith(("http://", "https://")):
         raise HTTPException(400, "target_url must include a scheme")
     opts = {k: v for k, v in req.model_dump().items()
-            if k in ("max_pages", "max_depth", "render_js", "skip_psi") and v is not None}
+            if k in ("max_pages", "max_depth", "render_js", "skip_psi",
+                     "user_agent") and v is not None}
     aid = db.create_audit(tenancy.owner_for_new_audit(p), req.client_name,
                           req.target_url, req.vertical, req.business_model, opts)
     Q.enqueue(aid)
@@ -128,9 +130,15 @@ def home(x_api_key: str | None = Header(None)):
 @app.post("/audits")
 def submit_form(target_url: str = Form(...), client_name: str = Form(...),
                 vertical: str = Form(""), max_pages: int = Form(150),
+                render_js: str = Form(""), browser_ua: str = Form(""),
                 skip_psi: str = Form(""), x_api_key: str | None = Header(None)):
     p = principal(x_api_key)
-    opts = {"max_pages": max_pages, "skip_psi": bool(skip_psi)}
+    opts = {"max_pages": max_pages, "skip_psi": bool(skip_psi),
+            "render_js": bool(render_js)}
+    if browser_ua:
+        opts["user_agent"] = (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
     aid = db.create_audit(tenancy.owner_for_new_audit(p), client_name, target_url,
                           vertical or None, None, opts)
     Q.enqueue(aid)
@@ -152,7 +160,9 @@ def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
             "coverage": a["coverage"] or "",
             "generated": time.strftime("%Y-%m-%d %H:%M",
                                        time.localtime(a["completed_at"] or time.time())),
-            "duration_s": round((a["completed_at"] or 0) - (a["started_at"] or 0), 1)}
+            "duration_s": round((a["completed_at"] or 0) - (a["started_at"] or 0), 1),
+            "crawl_blocked": bool(a.get("crawl_blocked")),
+            "crawl_note": a.get("crawl_note")}
     return render_html(meta, scores, findings, db.catalog())
 
 

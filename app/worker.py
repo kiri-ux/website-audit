@@ -58,10 +58,19 @@ def run_audit_job(audit_id: str):
         max_depth=int(opts.get("max_depth", cfg.max_depth)),
         delay=float(opts.get("delay", cfg.crawl_delay)),
         render_js=bool(opts.get("render_js", cfg.render_js)),
+        user_agent=opts.get("user_agent") or cfg.user_agent,
         verbose=False,
     )
     art = cr.crawl()
-    step("checking", f"crawled {len(art.pages)} pages; running checkpoints")
+    q = art.quality
+    if q.degenerate:
+        # Do not silently produce a report full of false findings.
+        print(f"[worker] {audit_id} CRAWL DEGENERATE: {q.reason} | {q.likely_cause} "
+              f"| signals={q.signals}", flush=True)
+        step("checking", f"crawl blocked ({q.likely_cause}); "
+                         f"content checks will report Need Access")
+    else:
+        step("checking", f"crawled {len(art.pages)} pages; running checkpoints")
 
     ctx = {"psi_key": cfg.psi_key,
            "skip_psi": bool(opts.get("skip_psi", cfg.skip_psi))}
@@ -78,7 +87,12 @@ def run_audit_job(audit_id: str):
     put_artifact(audit_id, "crawl_artifact.json", art.to_json().encode())
 
     db.update_audit(
-        audit_id, status="ready", progress="complete",
+        audit_id, status="ready",
+        progress=("complete — CRAWL BLOCKED, content checks not assessed"
+                  if art.quality.degenerate else "complete"),
+        crawl_blocked=1 if art.quality.degenerate else 0,
+        crawl_note=(f"{art.quality.likely_cause} · " + "; ".join(art.quality.signals)
+                    if art.quality.degenerate else None),
         overall_score=sc["overall"]["score"], overall_rating=sc["overall"]["rating"],
         pages_crawled=len(art.pages), coverage=f"{len(findings)}/{len(cat)}",
         completed_at=time.time())

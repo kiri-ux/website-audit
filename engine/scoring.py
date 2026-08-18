@@ -84,6 +84,15 @@ def score(findings: dict, catalog: dict, vertical: str | None = None):
 
     scored = [v["score"] for v in per_section.values() if v["score"] is not None]
     overall = round(sum(scored) / len(scored)) if scored else None
+
+    # Refuse to publish an overall score built from a small minority of sections.
+    # A blocked crawl leaves only the infrastructure sections assessable, and a
+    # confident "68/100" on top of that reads as a verdict on the site when it is
+    # really a verdict on four robots.txt checks.
+    assessed = len(scored)
+    total_sections = len(per_section)
+    if total_sections and assessed / total_sections < 0.5:
+        overall = None
     out["sections"] = per_section
     out["overall"] = {"score": overall, "rating": rating(overall)}
     return out

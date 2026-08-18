@@ -145,17 +145,34 @@ def render_html(meta, sc, findings, catalog):
          f"<title>SEO/GEO Audit — {e(meta['client'])}</title><style>{CSS}</style>",
          "</head><body class='viz-root'><div class='wrap'>"]
 
+    if meta.get("crawl_blocked"):
+        P.append(
+            "<div class='note' style='border-left-color:var(--critical);"
+            "margin:0 0 22px'><b style='color:var(--critical)'>"
+            "⚠ Crawl blocked — this report is not valid.</b><br>"
+            f"{e(meta.get('crawl_note') or '')}<br><br>"
+            "The crawler could not retrieve usable page content, so every "
+            "content-dependent checkpoint is reported as <code>Need Access</code> "
+            "rather than as a defect. <b>Do not send this to a client.</b> "
+            "Re-run with a browser user-agent, with JavaScript rendering enabled, "
+            "or from an allowlisted IP.</div>")
+
     P.append(f"<header><h1>SEO &amp; Generative Engine Optimization Audit</h1>"
              f"<div class='sub'>{e(meta['client'])} · <code>{e(meta['url'])}</code><br>"
              f"{meta['pages_crawled']} pages crawled · {e(meta['coverage'])} checkpoints "
              f"evaluated · generated {e(meta['generated'])}</div></header>")
 
     # HERO — a single headline number is a hero figure, never a one-bar chart
-    P.append(f"<div class='hero'><div class='n'>{o['score'] if o['score'] is not None else '—'}"
+    _blocked = bool(meta.get("crawl_blocked"))
+    _desc = ("No overall score: too few sections could be assessed to produce a "
+             "meaningful figure." if o["score"] is None else
+             "Mean of assessed section scores. Sections with no assessable data are "
+             "excluded rather than scored zero.")
+    P.append(f"<div class='hero'><div class='n'>"
+             f"{o['score'] if o['score'] is not None else '—'}"
              f"<span style='font-size:22px;color:var(--muted)'>/100</span></div>"
-             f"<div><div class='rating'>{e(o['rating'])}</div>"
-             f"<div class='d'>Mean of assessed section scores. Sections with no "
-             f"assessable data are excluded rather than scored zero.</div></div></div>")
+             f"<div><div class='rating'>{e('Not Assessed' if o['score'] is None else o['rating'])}</div>"
+             f"<div class='d'>{_desc}</div></div></div>")
 
     # KPI row of stat tiles
     P.append("<h2>At a glance</h2><div class='kpis'>")

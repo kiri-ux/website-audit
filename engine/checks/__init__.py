@@ -64,11 +64,49 @@ def _normalise(f):
     return f
 
 
+# Checkpoints that DO NOT depend on page HTML. These stay valid even when the
+# crawler was blocked, because they read robots.txt, the sitemap, DNS/TLS, HTTP
+# redirects, or an external API — none of which need the page body.
+INFRASTRUCTURE_ONLY = {
+    # robots.txt / sitemap
+    "TECH-13", "TECH-14", "TECH-18", "TECH-19", "TECH-21", "TECH-22", "TECH-23",
+    "TECH-24", "TECH-26", "TECH-27", "TECH-28", "TECH-30", "TECH-15",
+    # host resolution & transport
+    "URL-01", "URL-06", "URL-15", "URL-16",
+    "SEC-01", "SEC-02", "SEC-03", "SEC-04", "SEC-09", "SEC-10", "SEC-11",
+    "EEAT-19",
+    # llms.txt + AI crawler policy (fetched independently of the page)
+    "GEO-01", "GEO-02", "GEO-03", "GEO-04",
+    # PageSpeed Insights (Google fetches the page itself, not us)
+    "PERF-10", "PERF-11", "PERF-12", "PERF-13", "PERF-14", "PERF-19",
+}
+
+
 def run_all(art, ctx=None):
-    """Execute every registered check against the artifact."""
+    """
+    Execute every registered check against the artifact.
+
+    If the crawl was degenerate (blocked, or a JS-only shell), content-dependent
+    checkpoints return Need Access instead of Fail. A crawler that could not see
+    the page must not report the page as broken — that turns one infrastructure
+    problem into twenty false findings, which is exactly what happened on the
+    first production run against a bot-protected site.
+    """
     ctx = ctx or {}
+    q = getattr(art, "quality", None)
+    blocked = bool(q and q.degenerate)
     out = {}
     for cid, fn in REGISTRY.items():
+        if blocked and cid not in INFRASTRUCTURE_ONLY:
+            out[cid] = finding(
+                "Need Access",
+                {"crawl_blocked": True, "homepage_bytes": q.homepage_bytes},
+                f"Not assessed — the crawler could not retrieve usable page "
+                f"content ({q.likely_cause}). Reporting this as a defect would "
+                f"be inaccurate.",
+                severity="Medium", confidence=0.0)
+            out[cid]["source"] = "crawl_blocked"
+            continue
         try:
             f = fn(art, ctx)
             if f is None:
