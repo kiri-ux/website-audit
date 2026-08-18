@@ -71,6 +71,16 @@ class Config:
         "CRAWL_USER_AGENT",
         "ViciAuditBot/1.0 (+https://vicimediainc.com/bot; SEO audit crawler)")
 
+    # ---- report authorship -----------------------------------------------
+    # A report with a name on it reads as work someone did; an unsigned one
+    # reads as output something produced. This costs nothing and changes how
+    # the deliverable is received, so it is first-class config rather than a
+    # template string buried in the renderer.
+    analyst_name: str = _s("ANALYST_NAME")
+    analyst_title: str = _s("ANALYST_TITLE", "SEO & GEO Analyst")
+    analyst_email: str = _s("ANALYST_EMAIL")
+    firm_name: str = _s("FIRM_NAME", "Vici Media")
+
     # ---- collectors ------------------------------------------------------
     psi_key: str | None = _s("PSI_API_KEY") or None
     skip_psi: bool = _b("SKIP_PSI", False)

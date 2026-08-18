@@ -112,7 +112,14 @@ def run_audit_job(audit_id: str):
                                 site_url=a["target_url"]))
     findings.update(collect_backlinks(art.host))
 
-    extras = {}
+    # Business context: what the crawl learned about the CLIENT rather than
+    # about their SEO. Free — it re-reads the artifact we already have — and it
+    # is what lets the report open with a sentence that could only have been
+    # written about this company.
+    from engine.context import extract as extract_context
+    bc = extract_context(art)
+    extras = {"context": {**bc.to_dict(), "describe": bc.describe()}}
+
     if dataforseo.configured() and not opts.get("skip_dataforseo"):
         # Lighthouse via DataForSEO FILLS GAPS ONLY. Where PageSpeed Insights
         # answered we keep it, because PSI carries CrUX field data and this is a
@@ -160,7 +167,7 @@ def run_audit_job(audit_id: str):
         crawl_note=(f"{art.quality.likely_cause} · " + "; ".join(art.quality.signals)
                     if art.quality.degenerate else None),
         crawl_truncated=art.truncated,
-        extras=json.dumps(extras) if extras else None,
+        extras=json.dumps(extras),
         overall_score=sc["overall"]["score"], overall_rating=sc["overall"]["rating"],
         pages_crawled=len(art.pages), coverage=f"{len(findings)}/{len(cat)}",
         completed_at=time.time())

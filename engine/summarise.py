@@ -45,8 +45,278 @@ VERTICAL_NOTE = {
 }
 
 
+# ---------------------------------------------------------------------------
+# WHY IT MATTERS — the sentence a checklist cannot write for itself.
+#
+# A generated report gives you the finding and the fix and stops there. What
+# makes a report read as consultancy rather than as tool output is the middle
+# step: why this matters TO THIS BUSINESS. That judgment is editorial, so it is
+# written here, once, by a human, and selected by evidence — not generated per
+# run and not invented by a model.
+# ---------------------------------------------------------------------------
+WHY_IT_MATTERS = {
+    "SEC": "Browsers mark insecure pages, and Google has used HTTPS as a ranking "
+           "signal for a decade. This is table stakes rather than optimisation.",
+    "TECH": "Crawl and indexing problems cap everything downstream: content you "
+            "cannot get indexed cannot rank, however good it is.",
+    "GEO": "Assistants are increasingly answering questions that used to start "
+           "as searches. Being uncitable there removes you from that channel "
+           "entirely, and it is a channel your competitors are already in.",
+    "SCHEMA": "Structured data is how you get rich results and how assistants "
+              "understand what a page is about. It is one of the few changes "
+              "that alters how you appear, not just where you rank.",
+    "PERF": "Speed is both a ranking input and a conversion input. The second "
+            "effect is usually the larger one and it shows up in revenue first.",
+    "ONP": "Titles and headings are the cheapest ranking lever available and the "
+           "one most often left to a CMS default.",
+    "MOB": "Google indexes the mobile version of your site. A mobile problem is "
+           "not a subset of your traffic, it is the version that gets ranked.",
+    "CANON": "Duplicate URLs split ranking signals between copies, so the site "
+             "competes with itself for its own terms.",
+    "EEAT": "For anything involving money, health or expertise, visible authorship "
+            "and credentials are what separate a page that ranks from one that "
+            "merely exists.",
+    "URL": "Architecture decides how authority flows through the site. Deep or "
+           "orphaned pages are the ones that quietly never rank.",
+    "OFF": "Links remain the strongest off-site signal of authority, and the "
+           "hardest to fake. This is the slowest thing to fix, so it is the "
+           "first thing to start.",
+    "ANA": "Without correct measurement, none of the other work can be proven to "
+           "have paid off — which is how budgets get cut.",
+    "HTML": "Markup errors rarely cost rankings directly, but they make every "
+            "other diagnosis harder and can break rendering in ways that do.",
+    "INTL": "Wrong language or region targeting sends the right visitor to the "
+            "wrong page, which reads as a bounce rather than as a bug.",
+    "GSC": "Search Console is the only source of what people actually typed to "
+           "reach you. Nothing else substitutes for it.",
+    "GA4": "Behaviour data is what turns a ranking into a decision about where to "
+           "spend next.",
+}
+
+# Overrides where the vertical genuinely changes the argument.
+WHY_BY_VERTICAL = {
+    "ecommerce": {
+        "SCHEMA": "Product and Review markup drive the price, stock and star "
+                  "ratings that appear beside a retail listing. Without it you "
+                  "compete against listings that show all three.",
+        "PERF": "For a retailer this is measured in cart abandonment before it is "
+                "measured in rankings.",
+    },
+    "local_service": {
+        "SCHEMA": "LocalBusiness markup is what ties your pages to your physical "
+                  "locations. It is the difference between ranking nationally for "
+                  "nothing and locally for everything.",
+        "ONP": "Location and service terms in titles are the highest-yield change "
+               "available to a service business.",
+    },
+    "finance_ymyl": {
+        "EEAT": "For a YMYL brand this is the single largest factor. Google holds "
+                "financial content to a standard that no amount of technical work "
+                "compensates for.",
+    },
+}
+
+EFFORT = {
+    "SEC": "one server change", "CANON": "one server change",
+    "TECH": "developer, hours", "HTML": "developer, hours",
+    "PERF": "developer, days", "MOB": "developer, days",
+    "SCHEMA": "developer, days", "URL": "developer, days",
+    "ONP": "content, ongoing", "EEAT": "content, ongoing",
+    "GEO": "content plus one config change", "OFF": "outreach, months",
+    "ANA": "analytics, hours", "GSC": "access request", "GA4": "access request",
+}
+
+
 def _pct(v):
     return "—" if v is None else f"{v}"
+
+
+def _listy(items) -> str:
+    """
+    a, b and c — the way a person writes it, not 'a, b, c'.
+
+    Takes the Oxford comma when an item already contains "and", because
+    "HTML and code quality and International SEO" parses wrong on first read.
+    Section names are never case-folded here: .lower() turns "HTTPS" into
+    "https" and "AI search visibility (GEO)" into nonsense.
+    """
+    items = [i for i in items if i]
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    oxford = "," if any(" and " in i for i in items) and len(items) > 2 else ""
+    return ", ".join(items[:-1]) + oxford + " and " + items[-1]
+
+
+# ---------------------------------------------------------------------------
+# ROOT-CAUSE THEMES.
+#
+# Written after reading a draft that listed, as its four most important
+# findings: "HTTPS consistency", "Entire website uses HTTPS", "No redirect or
+# canonical to HTTPS homepage", and "Homepage does not use HTTPS encryption".
+# Four rows, one problem — the site is not on HTTPS — and the same "why it
+# matters" paragraph printed twice.
+#
+# That is the single loudest signal that a document was assembled by a machine.
+# A person writes that up once. The checkpoint framework is right to hold four
+# separate rows (they are separately verifiable), but the summary must speak in
+# problems, not rows.
+#
+# Matched against the checkpoint NAME, in order — first match wins, so put the
+# specific before the general.
+# ---------------------------------------------------------------------------
+THEMES = [
+    ("https",       ("https", "ssl", "tls", "certificate", "mixed content"), "SEC"),
+    ("canonical",   ("canonical", "duplicate url", "www resolve"),           "CANON"),
+    ("indexing",    ("robots.txt", "noindex", "sitemap", "crawl budget",
+                     "index coverage"),                                      "TECH"),
+    ("redirects",   ("redirect", "301", "302", "redirect chain"),            "TECH"),
+    ("schema",      ("schema", "structured data", "rich result", "json-ld"), "SCHEMA"),
+    ("titles",      ("title tag", "meta description", "h1", "heading"),      "ONP"),
+    ("images",      ("image", "alt text", "next-gen", "webp"),               "PERF"),
+    ("speed",       ("core web vital", "largest contentful", "cumulative "
+                     "layout", "time to first byte", "page speed", "lcp",
+                     "cls", "inp", "lighthouse"),                            "PERF"),
+    ("mobile",      ("mobile", "viewport", "tap target", "responsive"),      "MOB"),
+    ("ai_access",   ("ai crawler", "llms.txt", "gptbot", "citation",
+                     "ai overview", "generative"),                           "GEO"),
+    ("authority",   ("backlink", "referring domain", "anchor", "domain "
+                     "rating", "authority score"),                           "OFF"),
+    ("eeat",        ("author", "about page", "credential", "expertise",
+                     "trust", "review policy"),                              "EEAT"),
+    ("hreflang",    ("hreflang", "language", "international"),               "INTL"),
+    ("architecture", ("internal link", "orphan", "click depth", "breadcrumb",
+                      "url structure"),                                      "URL"),
+]
+
+THEME_TITLE = {
+    "https": "The site is not fully served over HTTPS",
+    "canonical": "Duplicate URLs are competing with each other",
+    "indexing": "Crawling and indexing are not fully under control",
+    "redirects": "Redirects are losing signal",
+    "schema": "Structured data is thin or missing",
+    "titles": "Titles and headings are not doing their job",
+    "images": "Images are unoptimised",
+    "speed": "The site is slower than the Core Web Vitals thresholds",
+    "mobile": "The mobile experience has defects",
+    "ai_access": "AI assistants cannot properly cite the site",
+    "authority": "Off-site authority is behind",
+    "eeat": "Trust and expertise signals are weak",
+    "hreflang": "Language and region targeting is misconfigured",
+    "architecture": "Site architecture is limiting how authority flows",
+}
+
+
+# When no theme matches, the group falls back to its section. The section still
+# needs a PROBLEM title rather than the exemplar checkpoint's name — "Meta
+# Pixel" is a row, "Measurement has gaps" is a finding a client can act on.
+SECTION_PROBLEM_TITLE = {
+    "ANA": "Measurement and conversion tracking have gaps",
+    "TECH": "Technical foundations need attention",
+    "URL": "Site architecture is limiting how authority flows",
+    "SEC": "The site is not fully served over HTTPS",
+    "CANON": "Duplicate URLs are competing with each other",
+    "PERF": "Pages are heavier and slower than they need to be",
+    "ONP": "On-page fundamentals are inconsistent",
+    "MOB": "The mobile experience has defects",
+    "SCHEMA": "Structured data is thin or missing",
+    "INTL": "Language and region targeting is misconfigured",
+    "HTML": "Markup quality is holding diagnostics back",
+    "EEAT": "Trust and expertise signals are weak",
+    "GEO": "The site is not set up to be cited by AI assistants",
+    "OFF": "Off-site authority is behind",
+    "GSC": "Search Console data is not available to us",
+    "GA4": "Analytics data is not available to us",
+}
+
+
+def _theme_of(checkpoint_name: str, prefix: str) -> tuple:
+    """(theme_key, prefix_for_why). Falls back to the section when nothing matches."""
+    name = (checkpoint_name or "").lower()
+    for key, needles, why_prefix in THEMES:
+        if any(n in name for n in needles):
+            return key, why_prefix
+    return f"section:{prefix}", prefix
+
+
+def _midsentence(name: str) -> str:
+    """
+    Lowercase a section name for use mid-sentence, but only when it is safe.
+
+    "Structured data" -> "structured data". "Mobile SEO", "HTML and code
+    quality" and "AI search visibility (GEO)" are left alone, because an
+    internal capital means an acronym and lowercasing it is the exact tell we
+    are trying to remove.
+    """
+    if not name:
+        return name
+    return name.lower() if name[1:] == name[1:].lower() else name
+
+
+def _why(prefix: str, vertical: str | None) -> str:
+    return (WHY_BY_VERTICAL.get(vertical or "", {}).get(prefix)
+            or WHY_IT_MATTERS.get(prefix, ""))
+
+
+SEV_RANK = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Opportunity": 4}
+
+
+def _group_issues(findings: dict, catalog: dict, meta: dict, limit: int = 5) -> list:
+    """
+    Collapse the top findings into distinct PROBLEMS, worst first.
+
+    Draws from a wide pool (40 findings) rather than the top 5, because after
+    grouping, four of the top five can turn out to be one problem — and taking
+    only five inputs would then leave two items on the page.
+
+    Each group keeps its full membership, and the write-up says how many
+    checkpoints it covers. Nothing is hidden: the individual rows are all still
+    in the appendix, they are just not each given a headline.
+    """
+    groups = {}
+    for cid, f in top_issues(findings, catalog, 40):
+        m = catalog.get(cid, {})
+        name = m.get("checkpoint", cid)
+        prefix = (m.get("prefix") or cid.split("-")[0])
+        key, why_prefix = _theme_of(name, prefix)
+        g = groups.setdefault(key, {"members": [], "why_prefix": why_prefix,
+                                    "prefix": prefix})
+        g["members"].append((cid, name, f))
+
+    out = []
+    for key, g in groups.items():
+        # Exemplar = worst member; ties broken by the order top_issues gave us,
+        # which is already the scoring engine's own priority.
+        g["members"].sort(key=lambda t: SEV_RANK.get(t[2].get("severity"), 5))
+        cid, name, f = g["members"][0]
+        others = [n for _, n, _ in g["members"][1:]]
+        short = (f.get("evidence") or "").strip().rstrip(".") + "."
+        finding = short
+        if others:
+            finding += (f" This shows up across {len(g['members'])} checkpoints, "
+                        f"including {_listy(others[:3])}.")
+        action = (f.get("recommendation") or "").strip()
+        if not action:
+            action = next((x.get("recommendation", "").strip()
+                           for _, _, x in g["members"]
+                           if x.get("recommendation")), "")
+        out.append({
+            "id": cid,
+            "ids": [c for c, _, _ in g["members"]],
+            "title": (THEME_TITLE.get(key)
+                      or SECTION_PROBLEM_TITLE.get(g["prefix"]) or name),
+            "severity": f.get("severity", "Medium"),
+            "count": len(g["members"]),
+            "finding": finding,
+            "finding_short": short,
+            "why": _why(g["why_prefix"], meta.get("vertical")),
+            "action": action,
+            "effort": EFFORT.get(g["why_prefix"], ""),
+            "area": SECTION_NAMES.get(g["why_prefix"], g["why_prefix"]),
+        })
+    out.sort(key=lambda d: (SEV_RANK.get(d["severity"], 5), -d["count"]))
+    return out[:limit]
 
 
 def build_summary(findings: dict, scores: dict, catalog: dict,
@@ -60,22 +330,44 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
     weak = sorted(assessed.items(), key=lambda kv: kv[1]["score"])[:4]
 
     # ---------- What's Working ----------
-    working = []
+    # Deliberately NOT one bullet per section in identical grammar. Four
+    # consecutive sentences of the form "X scores N/100 (R) — a of b passing"
+    # is the single loudest tell that a document was assembled rather than
+    # written. Clean areas get grouped into one sentence; only an area with
+    # something specific to say earns its own.
+    clean, notable = [], []
     for code, v in strong:
         if v["score"] < 75:
             continue
-        passes = [cid for cid, f in findings.items()
-                  if (catalog.get(cid, {}) or {}).get("prefix") == code
-                  and f["status"] == "Pass"]
+        passes = sum(1 for cid, f in findings.items()
+                     if (catalog.get(cid, {}) or {}).get("prefix") == code
+                     and f["status"] == "Pass")
         # Count against ASSESSED checkpoints, not the section total. Saying
         # "1 of 4 passing" next to a 94/100 Excellent rating reads as a
         # contradiction; the other 3 were Need Access or N/A, not failures.
+        if v["score"] >= 95 and v.get("failing", 0) == 0:
+            clean.append((SECTION_NAMES.get(code, code), passes))
+        else:
+            notable.append((code, v, passes))
+
+    working = []
+    if clean:
+        total_pass = sum(n for _, n in clean)
+        names = _listy([n for n, _ in clean])
         working.append(
-            f"{SECTION_NAMES.get(code, code)} scores {v['score']}/100 "
-            f"({v['rating']}) — {len(passes)} of {v['checked']} assessed "
+            f"{names} came back clean — {total_pass} checkpoints across those "
+            f"areas with nothing outstanding." if len(clean) > 1 else
+            f"{names} came back clean, with all {total_pass} assessed "
             f"checkpoints passing.")
+    for code, v, passes in notable[:2]:
+        working.append(
+            f"{SECTION_NAMES.get(code, code)} is in good shape at {v['score']}"
+            f"/100, with {v['failing']} open item"
+            f"{'s' if v['failing'] != 1 else ''} against {passes} passing.")
     if not working:
-        working.append("No section reached a Strong rating in this audit.")
+        working.append("No area reached a Strong rating, which is unusual and "
+                       "means the fixes below are foundational rather than "
+                       "incremental.")
 
     # ---------- Priority Issues ----------
     issues = []
@@ -92,33 +384,77 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
                 if (catalog.get(cid, {}) or {}).get("prefix") == code
                 and f["status"] in FAILING]
         names = [catalog.get(c, {}).get("checkpoint", c) for c in gaps[:5]]
-        opp = (f"{SECTION_NAMES.get(code, code)} is the least mature area "
-               f"at {v['score']}/100 ({v['rating']}), with {v['failing']} of "
-               f"{v['checked']} assessed checkpoints needing work"
-               + (f" — including {', '.join(names[:3])}." if names else "."))
+        opp = (f"The most ground to make up is in "
+               f"{_midsentence(SECTION_NAMES.get(code, code))}, which scores "
+               f"{v['score']}/100 with {v['failing']} of {v['checked']} assessed "
+               f"checkpoints needing work"
+               + (f", including {_listy(names[:3])}." if names else "."))
+        why = _why(code, meta.get("vertical"))
+        if why:
+            opp += " " + why
         note = VERTICAL_NOTE.get(meta.get("vertical") or "")
-        if note:
+        if note and not WHY_BY_VERTICAL.get(meta.get("vertical") or "", {}).get(code):
             opp += " " + note
+
+    # ---------- the five things that matter ----------
+    # A ranked shortlist with a stated reason, rather than 313 rows at equal
+    # weight. Clients do not act on a checklist; they act on an argument.
+    five = _group_issues(findings, catalog, meta, limit=5)
 
     # ---------- overview ----------
     o = scores.get("overall", {}) or {}
     n_fail = sum(1 for f in findings.values() if f["status"] in FAILING)
     n_na = sum(1 for f in findings.values() if f["status"] == "Need Access")
-    overview = (
-        f"This audit evaluated {len(findings)} checkpoints across "
-        f"{len(secs)} areas of {meta.get('client', 'the site')}"
-        + (f", based on {meta.get('pages_crawled')} pages analysed" if meta.get("pages_crawled") else "")
-        + ". "
-        + (f"The overall score is {o.get('score')}/100 ({o.get('rating')}). "
-           if o.get("score") is not None else
-           "No overall score is published because too few sections could be assessed. ")
-        + f"{n_fail} checkpoints require action"
-        + (f"; {n_na} could not be assessed and are reported as Need Access rather "
-           f"than as defects." if n_na else "."))
+    ctx = (meta.get("extras") or {}).get("context") or {}
+    client = meta.get("client") or ctx.get("brand") or "the site"
 
-    return {"overview": overview, "working": working, "issues": issues,
-            "opportunity": opp, "roadmap": build_roadmap(findings, catalog),
+    # Sentence 1 is about the BUSINESS, not the audit. It is the only part of
+    # this document that could not have been written about any other client,
+    # and it comes first for exactly that reason.
+    lead = (ctx.get("describe") or "").strip()
+    parts = []
+    if lead:
+        parts.append(lead)
+    parts.append(
+        f"We crawled {meta.get('pages_crawled') or 0} pages of "
+        f"{_host(meta.get('url'))}"
+        + (f" on {meta['generated'].split(' ')[0]}" if meta.get("generated") else "")
+        + f" and worked through {len(findings)} checkpoints across "
+          f"{len(secs)} areas.")
+    if o.get("score") is not None:
+        parts.append(f"The site scores {o['score']}/100 overall ({o['rating']}), "
+                     f"with {n_fail} items open.")
+    else:
+        parts.append(f"We are not publishing an overall score: too few areas could "
+                     f"be assessed for the number to mean anything. "
+                     f"{n_fail} items are open in the areas we could assess.")
+    if n_na:
+        parts.append(f"A further {n_na} checkpoints could not be assessed without "
+                     f"access to your own accounts; those are listed as Need "
+                     f"Access, not counted against you.")
+    overview = " ".join(parts)
+
+    # The single most consequential finding, said plainly and once.
+    headline = ""
+    if five:
+        top = five[0]
+        # The SHORT form here on purpose: the pull quote sits a few inches
+        # above the same item written out in full, and repeating the grouping
+        # clause verbatim in both places is its own kind of machine tell.
+        headline = (f"The single most consequential finding: {top['title']} — "
+                    f"{top.get('finding_short', top['finding']).rstrip('.')}.")
+
+    return {"overview": overview, "headline": headline, "working": working,
+            "issues": issues, "five_things": five, "opportunity": opp,
+            "context": ctx, "roadmap": build_roadmap(findings, catalog),
             "generated_by": "deterministic"}
+
+
+def _host(url) -> str:
+    if not url:
+        return "the site"
+    h = str(url).split("//")[-1].split("/")[0]
+    return h or "the site"
 
 
 def build_roadmap(findings: dict, catalog: dict) -> list:
@@ -193,7 +529,21 @@ def polish_with_llm(summary: dict, meta: dict) -> dict:
         "- Do NOT add any finding, number, or claim that is not below.\n"
         "- Do NOT soften or dramatise the severity.\n"
         "- Keep every number exactly as given.\n"
-        "- No marketing language, no 'unlock', no 'leverage'.\n\n"
+        "- Do NOT merge or split the items you are given.\n"
+        "\n"
+        "VOICE — this is sold as expert analysis and must not read as generated "
+        "text. These are the tells to avoid, and tests check for them:\n"
+        "- Never write consecutive sentences with the same grammatical shape "
+        "(e.g. 'X scores N/100 (R) — a of b passing' repeated). Vary the "
+        "construction and the sentence length.\n"
+        "- Never repeat the same rationale twice on a page.\n"
+        "- Banned words and phrases: leverage, unlock, delve, seamless, "
+        "cutting-edge, game-changing, harness, elevate, supercharge, "
+        "best-in-class, robust solution, landscape, tapestry, navigate the, "
+        "in today's, it is important/worth noting, furthermore, moreover.\n"
+        "- Do not open with 'This audit'. Lead with the client's business.\n"
+        "- Keep acronyms cased correctly: HTTPS, SEO, GEO, HTML, E-E-A-T.\n"
+        "- British or American spelling is fine, but be consistent.\n\n"
         f"OVERVIEW: {summary['overview']}\n\n"
         f"WHAT'S WORKING:\n" + "\n".join(f"- {x}" for x in summary["working"]) + "\n\n"
         f"PRIORITY ISSUES:\n" + "\n".join(f"- {x}" for x in summary["issues"]) + "\n\n"

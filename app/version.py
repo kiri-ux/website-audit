@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.18-13"
-BUILD_NOTES = ("Charted report + dashboard rings; reportlab declared and a "
-               "build-time import check so a missing dep fails the build")
+BUILD = "2026.08.18-14"
+BUILD_NOTES = ("Bespoke voice: business context, root-cause grouping, "
+               "five-things section, named analyst, method page")
 # ---------------------------------------------------------------------------
 
 

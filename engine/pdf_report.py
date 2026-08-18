@@ -222,7 +222,17 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                            "Optimization Audit", S["h1"]))
     story.append(Paragraph(_p(meta.get("client", "")), S["h2"]))
     story.append(Spacer(1, 4))
-    story.append(_kv_table([
+    analyst = meta.get("analyst") or {}
+    prepared = []
+    if analyst.get("name"):
+        prepared = [[Paragraph("<b>Prepared by</b>", S["cell"]),
+                     Paragraph(_p(analyst["name"])
+                               + (f", {_p(analyst.get('title'))}"
+                                  if analyst.get("title") else "")
+                               + (f"<br/><font color='#52514e'>"
+                                  f"{_p(analyst.get('firm'))}</font>"
+                                  if analyst.get("firm") else ""), S["cell"])]]
+    story.append(_kv_table(prepared + [
         [Paragraph("<b>Website</b>", S["cell"]), Paragraph(_p(meta.get("url")), S["cell"])],
         [Paragraph("<b>Audit date</b>", S["cell"]), Paragraph(_p(meta.get("generated")), S["cell"])],
         [Paragraph("<b>Pages analysed</b>", S["cell"]),
@@ -233,7 +243,43 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
          Paragraph("Browser capture (real-render)" if meta.get("capture_method")
                    else "Automated crawl", S["cell"])],
     ]))
-    story.append(Spacer(1, 16))
+    story.append(Spacer(1, 14))
+
+    # ---- what we understand about the business ---------------------------
+    # Everything in this box came off their own site. It is the fastest way to
+    # signal that a person looked, and it gives the client something concrete
+    # to correct — which turns the report into a conversation.
+    ctx = ((meta.get("extras") or {}).get("context") or {})
+    facts = []
+    if ctx.get("categories"):
+        facts.append(("Main sections", ", ".join(ctx["categories"][:5])))
+    if ctx.get("locations"):
+        where = ", ".join(sorted({l.get("region") for l in ctx["locations"]
+                                  if l.get("region")}))
+        facts.append((f"Locations found", f"{len(ctx['locations'])}"
+                      + (f" — {where}" if where else "")))
+    elif ctx.get("location_pages"):
+        facts.append(("Location pages", str(ctx["location_pages"])))
+    if ctx.get("product_pages"):
+        facts.append(("Product pages seen", str(ctx["product_pages"])))
+    if ctx.get("blog_pages"):
+        facts.append(("Editorial pages seen", str(ctx["blog_pages"])))
+    if ctx.get("phone"):
+        facts.append(("Phone in markup", ctx["phone"]))
+    if ctx.get("entity_types"):
+        facts.append(("Schema entities", ", ".join(ctx["entity_types"][:5])))
+    if facts:
+        story.append(Paragraph("What we understand about your business", S["h3"]))
+        story.append(Paragraph(
+            "Read from your own pages during the crawl. If anything here is "
+            "wrong, tell us — it usually means search engines have it wrong too.",
+            S["small"]))
+        story.append(Spacer(1, 5))
+        story.append(_kv_table(
+            [[Paragraph(f"<b>{_p(k)}</b>", S["cellsm"]),
+              Paragraph(_p(v), S["cellsm"])] for k, v in facts],
+            w1=1.7, w2=4.9))
+        story.append(Spacer(1, 14))
 
     # data-integrity banners come FIRST — before any number the reader might trust
     if meta.get("crawl_blocked"):
@@ -303,9 +349,11 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         story.append(Paragraph("Executive Summary", S["h2"]))
         if summary.get("overview"):
             story.append(Paragraph(_p(summary["overview"]), S["body"]))
+        if summary.get("headline"):
+            story.append(_banner("", summary["headline"], SEQ, S))
+            story.append(Spacer(1, 8))
         for key, title in (("working", "What's Working"),
-                           ("issues", "Priority Issues"),
-                           ("opportunity", "Biggest Opportunity")):
+                           ("opportunity", "Where the Ground Is")):
             items = summary.get(key)
             if not items:
                 continue
@@ -313,8 +361,40 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             if isinstance(items, str):
                 story.append(Paragraph(_p(items), S["body"]))
             else:
+                # Short lists read better as prose than as bullets; a bulleted
+                # list of two items looks like a form that was filled in.
                 for it in items:
-                    story.append(Paragraph(_p(it), S["bullet"], bulletText="•"))
+                    story.append(Paragraph(_p(it), S["body"]))
+
+    # ------------------------------------------------ the five things
+    five = (summary or {}).get("five_things") or []
+    if five:
+        story.append(Spacer(1, 6))
+        story.append(Paragraph("The Five Things That Matter Most", S["h2"]))
+        story.append(Paragraph(
+            f"This audit checked {_p(meta.get('coverage'))} checkpoints. These "
+            f"five are the ones we would fix first, in this order. Everything "
+            f"else is in the detail section and the appendix — real, but not "
+            f"where the return is.", S["small"]))
+        story.append(Spacer(1, 10))
+        for i, t in enumerate(five, start=1):
+            block = [Paragraph(f"{i}. {_p(t.get('title'))}", S["h3"])]
+            meta_line = " · ".join(x for x in (
+                _p(t.get("severity")), _p(t.get("area")),
+                (f"effort: {_p(t['effort'])}" if t.get("effort") else "")) if x)
+            block.append(Paragraph(f"<font color='#898781'>{meta_line}</font>",
+                                   S["muted"]))
+            block.append(Spacer(1, 3))
+            block.append(Paragraph(f"<b>What we found.</b> {_p(t.get('finding'))}",
+                                   S["body"]))
+            if t.get("why"):
+                block.append(Paragraph(f"<b>Why it matters.</b> {_p(t['why'])}",
+                                       S["body"]))
+            if t.get("action"):
+                block.append(Paragraph(f"<b>What to do.</b> {_p(t['action'])}",
+                                       S["body"]))
+            block.append(Spacer(1, 9))
+            story.append(KeepTogether(block))
 
     # ------------------------------------------------ area snapshot
     # No forced page break here: the exec summary rarely fills a page, and a
@@ -458,11 +538,14 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
 
     # ------------------------------------------------ detailed findings
     story.append(PageBreak())
-    story.append(Paragraph("Detailed Findings", S["h2"]))
+    story.append(Paragraph("Appendix — Full Checkpoint Detail", S["h2"]))
     story.append(Paragraph(
-        "Every row carries its source and a raw value, so a disputed finding can "
-        "be traced to the collector that produced it. <b>Need Access</b> means the "
-        "check could not run — not that it failed.", S["small"]))
+        "The complete record, area by area. This is here so any finding above "
+        "can be checked and so nothing is hidden — not because we expect it to "
+        "be read start to finish. Every row carries its source and a raw value, "
+        "so a disputed finding can be traced to the collector that produced it. "
+        "<b>Need Access</b> means the check could not run — not that it failed.",
+        S["small"]))
 
     for k in ORDER:
         rows_f = [(cid, f) for cid, f in findings.items()
@@ -516,13 +599,76 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         story.append(head)
         story.append(t)
 
+    # ------------------------------------------------ method & sign-off
+    story.append(PageBreak())
+    story.append(Paragraph("How This Audit Was Carried Out", S["h2"]))
+    story.append(Paragraph(
+        "Stating the method is part of the finding. A number without a method "
+        "behind it cannot be argued with, checked, or repeated next quarter.",
+        S["small"]))
+    story.append(Spacer(1, 8))
+
+    m, need, na = _coverage_counts(findings, catalog)
+    method = [
+        ("Collection",
+         "Browser capture — pages were opened in a real browser and the rendered "
+         "DOM was read, because the server-side crawl was blocked."
+         if meta.get("capture_method") else
+         f"Automated crawl of {_p(meta.get('pages_crawled'))} pages from "
+         f"{_p(meta.get('url'))}, following internal links and the XML sitemap."),
+        ("Framework",
+         f"{len(catalog)} checkpoints across {len(SECTION_NAMES)} areas, covering "
+         f"technical SEO, on-page, structured data, performance, security, "
+         f"E-E-A-T and generative-engine visibility."),
+        ("What we measured", f"{m} checkpoints answered from direct observation "
+                             f"of your site and third-party data."),
+        ("What we could not measure",
+         f"{need} checkpoints need access to accounts only you control — Search "
+         f"Console and Analytics, chiefly. They are reported as Need Access and "
+         f"are excluded from scoring rather than counted as failures. Granting "
+         f"read-only access closes most of that gap."),
+        ("Not applicable", f"{na} checkpoints do not apply to a site of this "
+                           f"shape and are excluded."),
+        ("Scoring", "Each area scores out of 100 from its assessed checkpoints, "
+                    "weighted by severity. Areas with too little assessable data "
+                    "are marked Not Assessed rather than scored low — an "
+                    "unmeasured area is not a failing one."),
+    ]
+    if meta.get("truncated"):
+        method.append(("Coverage limit", _p(meta["truncated"])))
+    story.append(_kv_table([[Paragraph(f"<b>{_p(k)}</b>", S["cellsm"]),
+                             Paragraph(_p(v), S["cellsm"])] for k, v in method],
+                           w1=1.55, w2=5.05))
+
+    analyst = meta.get("analyst") or {}
+    if analyst.get("name") or analyst.get("email"):
+        story.append(Spacer(1, 18))
+        who = _p(analyst.get("name") or analyst.get("firm"))
+        line = f"<b>{who}</b>"
+        if analyst.get("title"):
+            line += f", {_p(analyst['title'])}"
+        if analyst.get("firm") and analyst.get("name"):
+            line += f"<br/>{_p(analyst['firm'])}"
+        if analyst.get("email"):
+            line += f"<br/>{_p(analyst['email'])}"
+        story.append(_banner(
+            "Questions about this report",
+            "Any finding here can be walked through line by line, and anything "
+            "you disagree with is worth raising — a wrong finding usually means "
+            "we saw something a search engine also saw.", SEQ, S))
+        story.append(Spacer(1, 8))
+        story.append(Paragraph(line, S["body"]))
+
     doc.build(story)
     return buf.getvalue()
 
 
 def _banner(title, body, colour, S):
-    t = Table([[Paragraph(f"<b>{_p(title)}</b><br/>"
-                          f"<font size=8.5>{_p(body)}</font>", S["body"])]],
+    # Title is optional: used with one for warnings, without one for a pulled
+    # quote. An empty <b></b> would leave a stray blank line.
+    head = f"<b>{_p(title)}</b><br/>" if title else ""
+    t = Table([[Paragraph(head + f"<font size={'8.5' if title else '10'}>"
+                          f"{_p(body)}</font>", S["body"])]],
               colWidths=[6.6 * inch])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), SURFACE),

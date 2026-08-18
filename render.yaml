@@ -26,6 +26,19 @@ services:
         sync: false                # s3://your-bucket  (or Cloudflare R2)
       - key: PSI_API_KEY
         sync: false
+      # The PDF is rendered by the API, so authorship must be set HERE as well
+      # as on the worker — setting it only on the worker produces an unsigned
+      # report and no error to explain why.
+      - key: ANALYST_NAME
+        sync: false
+      - key: ANALYST_TITLE
+        sync: false
+      - key: ANALYST_EMAIL
+        sync: false
+      - key: FIRM_NAME
+        sync: false
+      - key: REPORT_LOGO_PATH
+        sync: false
 
   # ---------------------------------------------------------------- worker
   - type: worker
@@ -92,6 +105,18 @@ services:
         sync: false
       # Optional logo for the client PDF; blank = unbranded with a clean slot.
       - key: REPORT_LOGO_PATH
+        sync: false
+      # Report authorship. A named analyst on the cover and a sign-off block at
+      # the end is the cheapest thing that makes a deliverable read as work
+      # someone did rather than output something produced. Blank = omitted
+      # entirely rather than printed as a placeholder.
+      - key: ANALYST_NAME
+        sync: false
+      - key: ANALYST_TITLE
+        sync: false
+      - key: ANALYST_EMAIL
+        sync: false
+      - key: FIRM_NAME
         sync: false
       # Scale out by raising numInstances — the Redis queue makes workers
       # independent, and job handling is idempotent.

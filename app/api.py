@@ -181,6 +181,8 @@ def _report_meta(a: dict) -> dict:
             "truncated": a.get("crawl_truncated"),
             "capture_method": a.get("capture_method"),
             "extras": json.loads(a.get("extras") or "{}"),
+            "analyst": {"name": cfg.analyst_name, "title": cfg.analyst_title,
+                        "email": cfg.analyst_email, "firm": cfg.firm_name},
             "build": version.label()}
 
 

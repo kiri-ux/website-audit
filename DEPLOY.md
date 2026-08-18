@@ -73,6 +73,16 @@ prompt during Apply, or set them later per service.
 |---|---|---|
 | `ARTIFACT_STORE` | `s3://your-bucket` | See the warning below |
 | `PSI_API_KEY` | Google PageSpeed Insights API key | Optional — free tier works without one, just rate-limited |
+| `ANALYST_NAME` | e.g. `Kiri Sanders` | Optional, but set it — see below |
+| `ANALYST_TITLE` | e.g. `SEO & GEO Analyst` | Optional |
+| `ANALYST_EMAIL` | e.g. `kiri@vicimediainc.com` | Optional |
+| `FIRM_NAME` | e.g. `Vici Media` | Optional |
+
+**Set authorship on the API too, not just the worker.** The PDF is rendered by
+the API service, so setting `ANALYST_NAME` only on the worker produces an
+unsigned report with no error explaining why. Left blank, the "Prepared by" row
+and the sign-off block are omitted entirely rather than printed as a
+placeholder — an empty name field is worse than no name field.
 
 **Set on `vici-audit-worker` only** (nothing else calls these):
 
