@@ -158,6 +158,15 @@ def _bubbles(text, seen, limit=2):
     return out
 
 
+def _brand_head() -> str:
+    """Icon tags, inlined so they do not depend on a static route."""
+    try:
+        from app.brand import HEAD_TAGS
+        return HEAD_TAGS
+    except Exception:
+        return "<meta name='theme-color' content='#002D58'>"
+
+
 def render_html(meta, sc, findings, catalog, summary=None):
     st = Counter(f["status"] for f in findings.values())
     sev = Counter(f["severity"] for f in findings.values()
@@ -167,9 +176,7 @@ def render_html(meta, sc, findings, catalog, summary=None):
 
     P = [f"<!doctype html><html><head><meta charset='utf-8'>",
          "<meta name='viewport' content='width=device-width,initial-scale=1'>",
-         "<link rel='icon' href='/favicon.svg' type='image/svg+xml'>",
-         "<link rel='apple-touch-icon' href='/apple-touch-icon.png'>",
-         "<meta name='theme-color' content='#002D58'>",
+         _brand_head(),
          f"<title>SEO/GEO Audit — {e(meta['client'])}</title><style>{CSS}</style>",
          "</head><body class='viz-root'><div class='wrap'>"]
 

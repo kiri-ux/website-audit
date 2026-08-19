@@ -1,36 +1,34 @@
-# Build 2026.08.19-07
+# Build 2026.08.19-08
+
+## Answering the two questions
+
+**Yes — the judgment layer and DataForSEO run automatically.** No flags, no
+config beyond the keys you have already set. A fresh audit will call them.
+
+But **before this build, Off-Page would still have read "Not Assessed"** even
+with DataForSEO working, and that was a bug worth fixing before you ran it —
+see below.
 
 ## Check after deploying
 
-- [ ] Header reads **build 2026.08.19-07**.
-- [ ] Re-run Junk Bee Gone (findings are stored, so this needs a fresh run).
-- [ ] **No Google Ads / Meta / LinkedIn rows anywhere in Top Findings or the
-      plan.** They now read N/A — *"Not detected. Paid media tracking — outside
-      the scope of this audit."*
-- [ ] The paid-channels checkbox is gone from the new-audit form.
-- [ ] Executive summary: no date, no "not counted against you", and the
-      description no longer repeats the brand name twice in one sentence.
-- [ ] Pull quote reads **"Top issue: …"**.
-- [ ] Recommended Plan bullets are all the same shape — "Duplicate title tags",
-      "Missing image alt attributes", "Broken internal links". Phase captions are
-      centered.
-- [ ] A lazy-loading definition bubble appears where that finding is discussed.
-
-## Coverage still showing "Not Assessed"
-
-Four sections need credentials, not code:
-
-| Section | What's needed |
-|---|---|
-| E-E-A-T (9/24) | `ANTHROPIC_API_KEY` on the worker — the judgment layer answers the other 15 |
-| AI Search (8/22) | `ANTHROPIC_API_KEY`, plus per-platform keys (`OPENAI_API_KEY`, `PERPLEXITY_API_KEY`, `GEMINI_API_KEY`) for the visibility monitor |
-| Off-Page (0/29) | `DFS_LOGIN` + `DFS_PASSWORD` |
-| Search Console / GA4 | A Vici login added to the client's property, plus `GOOGLE_TOKENS` |
-
-A section stays "Not Assessed" below 50% coverage on purpose — a score built
-from a third of its checks is worse than no score.
+- [ ] Header reads **build 2026.08.19-08**.
+- [ ] Favicon appears. It is now inlined as a data URI in the page itself, so it
+      no longer depends on the `static/` directory reaching the container. If it
+      is still missing, the deploy did not take.
+- [ ] Run a fresh audit. Expect it to take **3–6 minutes longer**: 29 judgment
+      calls (6 at a time) plus the DataForSEO round trips.
+- [ ] Worker log shows the judgment step and, if credentials are right, no
+      `DataForSEO ... failed` lines.
+- [ ] Scores by Area: **E-E-A-T, AI Search and Off-Page should all carry a
+      score** rather than "Not Assessed".
+- [ ] Off-Page rows OFF-21..29 read *"Prospecting work, delivered during the
+      campaign rather than measured in the audit."*
+- [ ] Send me the keyword rankings table — that is the DataForSEO payload most
+      likely to differ from what I coded against.
 
 ## Up next
 
-- **Real DataForSEO run.** Two env vars, then send me the rankings table.
-- **Feed the paid data into the judgment layer.** Blocked on the above by choice.
+- **Feed the paid data into the judgment layer.** Now unblocked: once you
+  confirm the DataForSEO response looks right, the E-E-A-T and AI Search prompts
+  can read the backlink profile and rankings instead of judging authority from
+  the site's own copy. Same-day change.

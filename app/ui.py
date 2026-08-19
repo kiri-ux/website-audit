@@ -116,7 +116,7 @@ td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .marks span.done{color:var(--ink2)}
 """
 
-HEAD = ("<link rel='icon' href='/favicon.svg' type='image/svg+xml'><link rel='apple-touch-icon' href='/apple-touch-icon.png'><meta name='theme-color' content='#002D58'>")
+from .brand import HEAD_TAGS as HEAD
 
 STATUS_COLOR = {"ready": "var(--good)", "failed": "var(--critical)",
                 "queued": "var(--muted)", "crawling": "var(--warning)",

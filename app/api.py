@@ -131,42 +131,31 @@ def artifact(audit_id: str, x_api_key: str | None = Header(None)):
 
 
 # ------------------------------------------------------------------ brand
-_STATIC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                       "static")
+from .brand import FAVICON_SVG, APPLE_ICON
 
 
-def _static_file(name: str, media: str):
-    """
-    One tiny file server rather than a StaticFiles mount.
-
-    A mount would add a route prefix that has to be reasoned about alongside
-    the /audits/{id}.pdf ordering problem, for the sake of two icons. Read once
-    per request; these are 1–6KB and Render sits behind a CDN anyway.
-    """
-    path = os.path.join(_STATIC, name)
-    if not os.path.exists(path):
+def _asset(blob: bytes | None, media: str):
+    if not blob:
         raise HTTPException(404, "not found")
-    with open(path, "rb") as f:
-        return Response(f.read(), media_type=media,
-                        headers={"Cache-Control": "public, max-age=86400"})
+    return Response(blob, media_type=media,
+                    headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/favicon.svg")
 def favicon_svg():
-    return _static_file("favicon.svg", "image/svg+xml")
+    return _asset(FAVICON_SVG, "image/svg+xml")
 
 
 @app.get("/favicon.ico")
 def favicon_ico():
-    # Browsers still ask for /favicon.ico unprompted. Serving the SVG here
-    # stops a 404 per page view in the logs; every browser that understands
-    # <link rel=icon> has already used the SVG by this point.
-    return _static_file("favicon.svg", "image/svg+xml")
+    # Browsers request /favicon.ico unprompted whatever the <link> tags say.
+    # Serving the SVG here stops a 404 per page view in the logs.
+    return _asset(FAVICON_SVG, "image/svg+xml")
 
 
 @app.get("/apple-touch-icon.png")
 def apple_touch_icon():
-    return _static_file("apple-touch-icon.png", "image/png")
+    return _asset(APPLE_ICON, "image/png")
 
 
 # ------------------------------------------------------------------ UI

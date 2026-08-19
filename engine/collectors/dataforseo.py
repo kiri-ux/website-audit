@@ -171,6 +171,31 @@ def collect_backlinks(domain: str) -> dict:
             f"{broken:,} broken backlinks pointing at missing pages.",
             "Low" if not broken else "Medium",
             "" if not broken else "Redirect the target URLs to recover this equity.")
+    types = s.get("referring_links_types") or {}
+    if isinstance(types, dict) and types.get("image") is not None:
+        add("OFF-18", True, {"image_backlinks": types["image"]},
+            f"{types['image']:,} backlinks come from images.")
+    pages_ref = s.get("referring_pages")
+    if pages_ref is not None:
+        add("OFF-19", True, {"referring_pages": pages_ref},
+            f"{pages_ref:,} individual pages link to the site.")
+    main = s.get("referring_main_domains")
+    if main is not None and rd:
+        add("OFF-20", True, {"referring_main_domains": main},
+            f"{main:,} distinct root domains among {rd:,} referring domains.")
+    if s.get("referring_domains_nofollow") is not None and rd:
+        nf = s["referring_domains_nofollow"]
+        pct = round(100 * nf / rd, 1) if rd else 0
+        add("OFF-10", pct < 50, {"nofollow_domains": nf, "pct": pct},
+            f"{pct}% of referring domains link with nofollow only.",
+            "Low" if pct < 50 else "Medium")
+    if s.get("broken_pages") is not None:
+        bp = s["broken_pages"]
+        add("OFF-11", bp == 0, {"broken_pages": bp},
+            f"{bp:,} of your linked-to pages are broken.",
+            "Low" if not bp else "Medium",
+            "" if not bp else "Restore or redirect those URLs to recover the links.")
+
     if follow is not None and nofollow is not None and bl:
         pct = round(100 * follow / bl, 1)
         add("OFF-13", pct >= 50, {"follow_pct": pct, "follow": follow,
@@ -202,14 +227,26 @@ def collect_backlinks(domain: str) -> dict:
     except Exception:
         pass   # anchors are a bonus; never fail the section over them
 
+    # OFF-21..29 are link PROSPECTING — competitor gap, guest posting, digital
+    # PR, HARO, unlinked mentions. They are not measurements of the client's
+    # site; they are the outreach work of the campaign itself. Brendan left all
+    # nine blank in his audit for the same reason. Reporting them as Need
+    # Access implied a missing credential, and dragged the section below the
+    # coverage floor so nothing in it could be scored at all.
+    PROSPECTING = {f"OFF-{i}" for i in range(21, 30)}
     for cid in OFF_IDS:
-        out.setdefault(cid, _f(
-            "Need Access", {},
-            "Not retrieved — requires an additional DataForSEO backlinks endpoint "
-            "(competitor gap, toxic links, or link-prospecting data).",
-            "Medium",
-            "Each endpoint is a metered call; add them deliberately rather than "
-            "all at once.", 0.0, "dataforseo_not_implemented"))
+        if cid in PROSPECTING:
+            out.setdefault(cid, _f(
+                "N/A", {},
+                "Prospecting work, delivered during the campaign rather than "
+                "measured in the audit.", "Low", "", 1.0, "campaign_scope"))
+        else:
+            out.setdefault(cid, _f(
+                "Need Access", {},
+                "Not retrieved — requires an additional DataForSEO backlinks "
+                "endpoint.", "Medium",
+                "Each endpoint is a metered call; add them deliberately rather "
+                "than all at once.", 0.0, "dataforseo_not_implemented"))
     return out
 
 

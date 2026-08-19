@@ -1,24 +1,24 @@
-# Changed files — build 2026.08.19-07
+# Changed files — build 2026.08.19-08
 
 **Cumulative since 2026.08.18-16.** Apply and you are current whatever you last
-uploaded. `NEXT.md` has the checklist.
+uploaded.
 
 ## This build
 
 | File | Why |
 |---|---|
-| `engine/checks/tagdetect.py` | Paid-media pixels (Meta, LinkedIn, Google Ads) are detected and reported but **never** scored as defects — different team, often a different agency |
-| `app/ui.py` | Paid-channels checkbox removed from the form |
-| `app/api.py`, `app/worker.py` | `channels` intake removed |
-| `engine/summarise.py` | `roadmap_item()` normalizes every plan bullet to one shape; duplicates collapsed; phase captions reworded; "Top issue"; no date; "workstream" → "optimization" |
-| `engine/context.py` | Self-description no longer repeats the brand name |
-| `engine/glossary.py` | Lazy loading defined |
-| `engine/pdf_report.py` | Phase captions centered; no ghost meter on unassessed rows |
-| `tests/test_voice.py` | Asserts ad pixels are never defects |
+| `engine/scoring.py` | **N/A rows no longer count against section coverage.** "Need Access" still does — the check applies and we couldn't see it. "N/A" doesn't — it doesn't apply. Without this, Off-Page could never score even with DataForSEO working |
+| `engine/collectors/dataforseo.py` | OFF-21..29 (link prospecting) marked N/A — campaign work, not audit measurement. Plus 5 more rows mapped from the summary payload we already pay for |
+| `app/brand.py` | **New.** Favicon owned in code; `<link>` uses an inline data URI so it cannot go missing |
+| `app/api.py`, `app/ui.py`, `engine/report.py` | Use the inlined brand tags |
+| `app/version.py` | 2026.08.19-08 |
 
 ## Verified before sending
 
+- Renamed `static/` away entirely and confirmed the icon still renders from the
+  embedded fallback — the exact failure mode you hit.
+- Simulated a post-credentials audit: E-E-A-T 24/24, AI Search 22/30, Off-Page
+  13/20 assessable, Analytics 6/6 — all four now score instead of reading
+  "Not Assessed".
 - Unpacked over a clean tree; `import app.api, app.worker` succeeds.
-- Roadmap rendered and read: all bullets are noun-phrase defects, no duplicates.
-- Every glossary glyph verified present in the embedded font.
-- 10 suites green.
+- 14 suites green.

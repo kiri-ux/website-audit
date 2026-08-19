@@ -85,7 +85,14 @@ def score(findings: dict, catalog: dict, vertical: str | None = None):
         # happened to be measurable. "E-E-A-T 100/100 Excellent" off a single
         # TLS check out of nine is actively misleading, and flattering errors
         # are the dangerous kind.
-        if len(applicable) / max(1, len(rows)) < MIN_SECTION_COVERAGE:
+        # Coverage is measured against what COULD be assessed. "Need Access"
+        # counts against us — the check applies and we could not see it. "N/A"
+        # does not — the check does not apply to this site, so including it in
+        # the denominator would mark a section unassessable for the crime of
+        # having irrelevant rows in the template. Without this, a site that runs
+        # no paid ads can never score its Analytics section.
+        assessable = [r for r in rows if r[1]["status"] != "N/A"]
+        if len(applicable) / max(1, len(assessable)) < MIN_SECTION_COVERAGE:
             per_section[sec] = {"score": None, "rating": "Not Assessed",
                                 "checked": len(applicable), "total": len(rows),
                                 "failing": len(fails),
