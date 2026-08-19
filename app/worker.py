@@ -26,6 +26,7 @@ from engine import checks as engine_checks
 from engine import scoring as engine_scoring
 from engine import aivis
 from engine.judgment import run_judgment
+from engine import screenshots
 from engine.collectors import (collect_gsc, collect_ga4, collect_backlinks,
                                collect_rankings, collect_lighthouse,
                                capture_screenshot, dataforseo)
@@ -153,6 +154,30 @@ def run_audit_job(audit_id: str):
             extras["screenshot"] = shot
 
     db.save_findings(audit_id, findings)
+
+    # ---- evidence screenshots ------------------------------------------
+    # Last, and strictly optional: by this point the audit is already complete,
+    # so a browser that hangs costs us a picture rather than the report. Skipped
+    # entirely when the crawl was blocked — we would be photographing a
+    # challenge page and captioning it as the client's site.
+    if (not art.quality.degenerate and not opts.get("skip_screenshots")
+            and screenshots.available()):
+        step("scoring", "capturing evidence screenshots")
+        shots = []
+        cat_now = db.catalog()
+        for cid, url, sel, caption in screenshots.pick_targets(
+                findings, cat_now, art.start_url, limit=3):
+            png = screenshots.capture(url, sel)
+            if not png:
+                continue
+            name = f"evidence_{cid.replace('/', '_')}.png"
+            put_artifact(audit_id, name, png)
+            shots.append({"checkpoint": cid, "name": name, "url": url,
+                          "caption": caption, "boxed": bool(sel)})
+        if shots:
+            extras["screenshots"] = shots
+            print(f"[worker] {audit_id} captured {len(shots)} evidence shots",
+                  flush=True)
 
     step("scoring", f"{len(findings)} checkpoints evaluated; scoring")
     cat = db.catalog()

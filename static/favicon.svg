@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img"
+     aria-label="Vici SEO & AI Search Audit">
+  <!-- Vici SEO & AI Search Audit — house style shared with site-scan and the
+       SEO quote tool: Atlas Blue field (#002D58), rx=14 rounded square,
+       parchment (#FDFBF7) primary mark, Vici Gold (#F1B434) on the payoff.
+
+       The mark is the score gauge, which is this product's own hero element —
+       site-scan already owns the check-in-a-ring and the quote tool owns the
+       magnifier, so the 270° dial is what distinguishes this one at 16px. -->
+  <rect width="64" height="64" rx="14" fill="#002D58"/>
+
+  <!-- track: the part of the score not yet earned -->
+  <path d="M19.27 44.73 A 18 18 0 1 1 44.73 44.73" fill="none"
+        stroke="#FDFBF7" stroke-opacity=".28" stroke-width="7"
+        stroke-linecap="round"/>
+
+  <!-- earned score, ~75% of the sweep -->
+  <path d="M19.27 44.73 A 18 18 0 1 1 48.63 25.11" fill="none"
+        stroke="#F1B434" stroke-width="7" stroke-linecap="round"/>
+
+  <!-- needle at the reading, plus its hub -->
+  <line x1="32" y1="32" x2="42.2" y2="27.8" stroke="#FDFBF7"
+        stroke-width="5" stroke-linecap="round"/>
+  <circle cx="32" cy="32" r="3.6" fill="#FDFBF7"/>
+</svg>

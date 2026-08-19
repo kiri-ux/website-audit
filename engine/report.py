@@ -167,6 +167,9 @@ def render_html(meta, sc, findings, catalog, summary=None):
 
     P = [f"<!doctype html><html><head><meta charset='utf-8'>",
          "<meta name='viewport' content='width=device-width,initial-scale=1'>",
+         "<link rel='icon' href='/favicon.svg' type='image/svg+xml'>",
+         "<link rel='apple-touch-icon' href='/apple-touch-icon.png'>",
+         "<meta name='theme-color' content='#002D58'>",
          f"<title>SEO/GEO Audit — {e(meta['client'])}</title><style>{CSS}</style>",
          "</head><body class='viz-root'><div class='wrap'>"]
 

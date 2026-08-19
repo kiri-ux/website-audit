@@ -378,6 +378,125 @@ def _access_received(findings: dict) -> str:
     return ", ".join(got) if got else "None — site crawl and public data only"
 
 
+
+def _ai_visibility(meta, S):
+    """
+    What AI assistants say when asked about this client.
+
+    Two numbers that look similar and are not: MENTIONED means the brand name
+    appeared in the answer; CITED means the assistant linked to the site as a
+    source. Only the second one sends traffic and only the second one is
+    defensible, so they are printed side by side with the gap called out.
+    """
+    v = (meta.get("extras") or {}).get("ai_visibility") or {}
+    if not v or v.get("citation_rate") is None:
+        return []
+    out = [Paragraph("AI Search Visibility", S["h2"]),
+           Paragraph("Measured by asking the assistants real buying questions "
+                     "in your category and recording what came back. No brand "
+                     "name in the question — this is what someone finds when "
+                     "they are not already looking for you.", S["small"]),
+           Spacer(1, 8)]
+
+    cite = v.get("citation_rate") or 0
+    ment = v.get("mention_rate") or 0
+    unp = v.get("unprompted_citation_rate")
+    tiles = Table([[
+        Paragraph(f"<font size=20><b>{cite}%</b></font><br/>"
+                  f"<font size=8 color='#52514e'>of answers CITED your site "
+                  f"as a source</font>", S["cellsm"]),
+        Paragraph(f"<font size=20><b>{ment}%</b></font><br/>"
+                  f"<font size=8 color='#52514e'>mentioned the brand without "
+                  f"linking to you</font>", S["cellsm"]),
+        Paragraph(f"<font size=20><b>{v.get('client_citations') or 0}</b></font><br/>"
+                  f"<font size=8 color='#52514e'>total citations across "
+                  f"{len(v.get('platforms') or [])} platforms</font>", S["cellsm"]),
+    ]], colWidths=[2.18 * inch, 2.18 * inch, 2.18 * inch])
+    tiles.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BACKGROUND", (0, 0), (-1, -1), SURFACE),
+        ("BOX", (0, 0), (-1, -1), 0.5, LINE),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, LINE),
+        ("ROUNDEDCORNERS", [9, 9, 9, 9]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12), ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING", (0, 0), (-1, -1), 11), ("BOTTOMPADDING", (0, 0), (-1, -1), 11),
+    ]))
+    out.append(tiles)
+
+    if ment > cite:
+        out.append(Spacer(1, 8))
+        out.append(_banner("", f"Mentioned is not cited. Assistants named you in "
+                               f"{ment}% of answers but linked to you in only "
+                               f"{cite}% — the gap is visibility you are already "
+                               f"earning and not being credited for.", SEQ, S))
+
+    sov = v.get("share_of_voice") or []
+    if sov:
+        out.append(Spacer(1, 12))
+        out.append(Paragraph("Who gets cited in your category", S["h3"]))
+        rows = [[Paragraph("<b>Domain</b>", S["cellsm"]), "",
+                 Paragraph("<b>Share</b>", S["cellsm"]),
+                 Paragraph("<b>Citations</b>", S["cellsm"])]]
+        for d in sov:
+            is_client = bool(d.get("is_client"))
+            name = _p(d.get("domain"))
+            rows.append([
+                Paragraph(f"<b>{name}</b>" if is_client else name, S["cell"]),
+                MiniMeter(round((d.get("share") or 0) * 100)
+                          if (d.get("share") or 0) <= 1 else d.get("share"),
+                          width=1.9 * inch, height=7),
+                Paragraph(f"{round((d.get('share') or 0) * 100)}%"
+                          if (d.get("share") or 0) <= 1
+                          else f"{d.get('share')}%", S["cellsm"]),
+                Paragraph(str(d.get("citations") or 0), S["cellsm"]),
+            ])
+        t = Table(rows, colWidths=[2.3 * inch, 2.1 * inch, 0.9 * inch, 1.25 * inch])
+        t.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LINEBELOW", (0, 0), (-1, -1), 0.4, LINE),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3)]))
+        out.append(t)
+        gap = v.get("citation_gap")
+        if gap and v.get("top_competitor_domain"):
+            out.append(Spacer(1, 6))
+            out.append(Paragraph(
+                f"<font color='#52514e'>{_p(v['top_competitor_domain'])} is cited "
+                f"{gap} more times than you across the same questions.</font>",
+                S["small"]))
+
+    if v.get("skipped"):
+        out.append(Spacer(1, 6))
+        out.append(Paragraph(
+            f"<font color='#898781'>Not measured: "
+            f"{_p(', '.join(v['skipped']))}. Those platforms are reported as "
+            f"unmeasured rather than as zero visibility.</font>", S["muted"]))
+    return out
+
+
+def _evidence(meta, S):
+    """Annotated screenshots — the problem, in a picture, on their own site."""
+    shots = (meta.get("extras") or {}).get("screenshot_blobs") or []
+    if not shots:
+        return []
+    from reportlab.platypus import Image as RLImage
+    out = [Paragraph("What This Looks Like", S["h2"]),
+           Paragraph("Captured from your live site. Red outlines mark the "
+                     "elements the check flagged.", S["small"]),
+           Spacer(1, 8)]
+    for sh in shots[:3]:
+        try:
+            img = RLImage(io.BytesIO(sh["png"]), width=6.4 * inch,
+                          height=6.4 * inch * 820 / 1280, kind="proportional")
+        except Exception:
+            continue
+        cap = Paragraph(f"<font color='#52514e'>{_p(sh.get('caption'))}</font>",
+                        S["muted"])
+        out.append(KeepTogether([img, Spacer(1, 3), cap, Spacer(1, 14)]))
+    return out
+
+
 def _severity_counts(findings: dict) -> dict:
     """Severity of OPEN issues only. A passing checkpoint has no severity."""
     out = {}
@@ -617,6 +736,9 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                 story.append(b)
             story.append(Spacer(1, 12))
 
+    for fl in _evidence(meta, S):
+        story.append(fl)
+
     # ------------------------------------------------ area snapshot
     # No forced page break here: the exec summary rarely fills a page, and a
     # break left a third of page 2 blank. KeepTogether keeps the chart intact.
@@ -738,6 +860,12 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         story.append(Paragraph(
             f"Not collected — {_p(rk.get('reason'))}. This section is omitted rather "
             f"than estimated.", S["small"]))
+
+    ai_block = _ai_visibility(meta, S)
+    if ai_block:
+        story.append(PageBreak())
+        for fl in ai_block:
+            story.append(fl)
 
     # ------------------------------------------------ roadmap
     if summary and summary.get("roadmap"):

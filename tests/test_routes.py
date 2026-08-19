@@ -107,6 +107,23 @@ def main():
     check("suffix is stripped before the DB lookup",
           b"audit not found" not in body)
 
+    print("\nBRAND ASSETS ARE SERVED")
+    # Two failure modes worth a test: the files not being copied into the
+    # image, and the routes being shadowed the way the PDF route was.
+    st, ct, body = GET("/favicon.svg")
+    check("favicon.svg is served", st == 200 and b"<svg" in body, f"{st} {ct}")
+    check("favicon uses the Vici field color", b"#002D58" in body)
+    check("favicon carries the gold accent", b"#F1B434" in body)
+    st, ct, body = GET("/favicon.ico")
+    check("/favicon.ico does not 404 (browsers ask unprompted)", st == 200, str(st))
+    st, ct, body = GET("/apple-touch-icon.png")
+    check("apple touch icon is a real PNG",
+          st == 200 and body[:8] == b"\x89PNG\r\n\x1a\n", f"{st} {len(body)}B")
+    _, _, dash = GET("/")
+    check("dashboard links the icon", b"/favicon.svg" in dash)
+    _, _, rep = GET(f"/audits/{aid}")
+    check("the report page links it too", b"/favicon.svg" in rep)
+
     print("\nNEIGHBOURING ROUTES STILL BEHAVE")
     st, ct, body = GET("/audits/does-not-exist")
     check("unknown audit still 404s", st == 404, str(st))

@@ -130,6 +130,46 @@ def artifact(audit_id: str, x_api_key: str | None = Header(None)):
     return Response(blob, media_type="application/json")
 
 
+
+# ------------------------------------------------------------------ brand
+_STATIC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       "static")
+
+
+def _static_file(name: str, media: str):
+    """
+    One tiny file server rather than a StaticFiles mount.
+
+    A mount would add a route prefix that has to be reasoned about alongside
+    the /audits/{id}.pdf ordering problem, for the sake of two icons. Read once
+    per request; these are 1–6KB and Render sits behind a CDN anyway.
+    """
+    path = os.path.join(_STATIC, name)
+    if not os.path.exists(path):
+        raise HTTPException(404, "not found")
+    with open(path, "rb") as f:
+        return Response(f.read(), media_type=media,
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/favicon.svg")
+def favicon_svg():
+    return _static_file("favicon.svg", "image/svg+xml")
+
+
+@app.get("/favicon.ico")
+def favicon_ico():
+    # Browsers still ask for /favicon.ico unprompted. Serving the SVG here
+    # stops a 404 per page view in the logs; every browser that understands
+    # <link rel=icon> has already used the SVG by this point.
+    return _static_file("favicon.svg", "image/svg+xml")
+
+
+@app.get("/apple-touch-icon.png")
+def apple_touch_icon():
+    return _static_file("apple-touch-icon.png", "image/png")
+
+
 # ------------------------------------------------------------------ UI
 from .ui import dashboard_html, audit_html  # noqa: E402
 from .ui_aivis import visibility_html, visibility_index_html  # noqa: E402
@@ -275,6 +315,40 @@ def _extras(a: dict) -> dict:
         extras = json.loads(a.get("extras") or "{}") or {}
     except Exception:
         extras = {}
+    # AI visibility, if a monitor run is linked to this audit. Read at render
+    # time rather than frozen into the audit, so a monitor run that happens
+    # AFTER the audit still shows up in the PDF.
+    try:
+        run = db.latest_ai_run_for_audit(a["id"])
+        if run:
+            extras["ai_visibility"] = {
+                "citation_rate": run.get("citation_rate"),
+                "mention_rate": run.get("mention_rate"),
+                "unprompted_citation_rate": run.get("unprompted_citation_rate"),
+                "client_citations": run.get("client_citations"),
+                "top_competitor_domain": run.get("top_competitor_domain"),
+                "citation_gap": run.get("citation_gap"),
+                "platforms": json.loads(run.get("platforms") or "[]"),
+                "skipped": json.loads(run.get("skipped") or "[]"),
+                "headline": run.get("headline"),
+                "share_of_voice": db.get_ai_sov(run["id"])[:6],
+            }
+    except Exception as e:
+        print(f"[api] ai visibility skipped for {a.get('id')}: "
+              f"{type(e).__name__}: {e}", flush=True)
+
+    # Evidence screenshots are stored as blobs; the renderer needs the bytes.
+    shots = []
+    for sh in (extras.get("screenshots") or []):
+        try:
+            blob = get_artifact(a["id"], sh["name"])
+            if blob:
+                shots.append({**sh, "png": blob})
+        except Exception:
+            continue
+    if shots:
+        extras["screenshot_blobs"] = shots
+
     if extras.get("context"):
         return extras
     try:

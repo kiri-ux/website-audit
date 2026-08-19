@@ -608,3 +608,15 @@ def group_by_client(audits: list) -> list:
                     "latest": rows[0], "history": rows[1:], "runs": len(rows)})
     out.sort(key=lambda g: g["latest"].get("created_at") or 0, reverse=True)
     return out
+
+
+def latest_ai_run_for_audit(audit_id) -> dict | None:
+    """The most recent completed monitor run linked to this audit, if any."""
+    with conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT * FROM ai_runs WHERE audit_id=? AND status='ready' "
+                       "ORDER BY created_at DESC LIMIT 1"), (audit_id,))
+        r = cur.fetchone()
+        if not r:
+            return None
+        return dict(zip([d[0] for d in cur.description], r))

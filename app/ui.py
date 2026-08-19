@@ -116,6 +116,8 @@ td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .marks span.done{color:var(--ink2)}
 """
 
+HEAD = ("<link rel='icon' href='/favicon.svg' type='image/svg+xml'><link rel='apple-touch-icon' href='/apple-touch-icon.png'><meta name='theme-color' content='#002D58'>")
+
 STATUS_COLOR = {"ready": "var(--good)", "failed": "var(--critical)",
                 "queued": "var(--muted)", "crawling": "var(--warning)",
                 "checking": "var(--warning)", "scoring": "var(--warning)",
@@ -166,6 +168,7 @@ def _shell(title, body, refresh=None):
     r = f"<meta http-equiv='refresh' content='{refresh}'>" if refresh else ""
     return (f"<!doctype html><html><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width,initial-scale=1'>{r}"
+            f"<link rel='icon' href='/favicon.svg' type='image/svg+xml'><link rel='apple-touch-icon' href='/apple-touch-icon.png'><meta name='theme-color' content='#002D58'>"
             f"<title>{e(title)}</title><style>{CSS}</style></head>"
             f"<body class='viz-root'><div class='wrap'>{body}</div></body></html>")
 

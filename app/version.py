@@ -12,9 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.19-03"
-BUILD_NOTES = ("Dashboard grouped by client, delete + prune, intake fields "
-               "on the form")
+BUILD = "2026.08.19-05"
+BUILD_NOTES = ("Evidence screenshots, AI Search Visibility page, Vici favicon")
 # ---------------------------------------------------------------------------
 
 

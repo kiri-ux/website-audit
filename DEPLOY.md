@@ -101,6 +101,7 @@ counted as zero visibility. You can add them one at a time.
 
 | Key | Purpose |
 |---|---|
+| `SKIP_SCREENSHOTS` | Set `true` to skip evidence screenshots (adds ~30s per audit) |
 | `DFS_LOGIN` + `DFS_PASSWORD` | DataForSEO. Fills the 29 Off-Page rows, the keyword rankings table, Lighthouse (PERF-10..14, PERF-19, MOB-03..06) and report screenshots. Same credentials as the SEO quote tool. |
 | `AHREFS_API_KEY` *or* `SEMRUSH_API_KEY` | Fallback for backlinks only, used when `DFS_LOGIN` is unset |
 | `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | OAuth app for Search Console and GA4 |
