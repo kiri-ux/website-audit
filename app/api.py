@@ -52,6 +52,13 @@ class AuditRequest(BaseModel):
     client_name: str
     vertical: str | None = Field(None, description="ecommerce|finance_ymyl|local_service")
     business_model: str | None = None
+    # Intake. Brendan's template carries these on the cover ("Business Model",
+    # "Primary Markets", "Primary Conversion") and they are not guessable from a
+    # crawl. `channels` is the one that changes findings rather than copy: it is
+    # what makes a missing LinkedIn pixel a defect instead of a non-event.
+    primary_markets: str | None = None
+    primary_conversion: str | None = None
+    channels: list[str] | None = None
     max_pages: int | None = None
     max_depth: int | None = None
     render_js: bool | None = None
@@ -77,7 +84,8 @@ def create_audit(req: AuditRequest, x_api_key: str | None = Header(None)):
         raise HTTPException(400, "target_url must include a scheme")
     opts = {k: v for k, v in req.model_dump().items()
             if k in ("max_pages", "max_depth", "render_js", "skip_psi",
-                     "user_agent") and v is not None}
+                     "user_agent", "primary_markets", "primary_conversion",
+                     "channels") and v is not None}
     aid = db.create_audit(tenancy.owner_for_new_audit(p), req.client_name,
                           req.target_url, req.vertical, req.business_model, opts)
     Q.enqueue(aid)
@@ -137,10 +145,18 @@ def home(x_api_key: str | None = Header(None)):
 def submit_form(target_url: str = Form(...), client_name: str = Form(...),
                 vertical: str = Form(""), max_pages: int = Form(150),
                 render_js: str = Form(""), browser_ua: str = Form(""),
-                skip_psi: str = Form(""), x_api_key: str | None = Header(None)):
+                skip_psi: str = Form(""), primary_markets: str = Form(""),
+                primary_conversion: str = Form(""), channels: list = Form([]),
+                x_api_key: str | None = Header(None)):
     p = principal(x_api_key)
     opts = {"max_pages": max_pages, "skip_psi": bool(skip_psi),
             "render_js": bool(render_js)}
+    for k, v in (("primary_markets", primary_markets),
+                 ("primary_conversion", primary_conversion)):
+        if v.strip():
+            opts[k] = v.strip()
+    if channels:
+        opts["channels"] = [c for c in channels if c]
     if browser_ua:
         opts["user_agent"] = (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -197,9 +213,48 @@ def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
                        summary=build_summary(findings, scores, cat, meta))
 
 
+def _extras(a: dict) -> dict:
+    """
+    Report material that is not a checkpoint finding.
+
+    Business context is recomputed HERE, from the stored crawl artifact, when
+    the audit predates it — so improving the report does not mean re-crawling
+    every client. The rule this follows: anything derivable from the artifact is
+    derived at render time; only what needs the network is frozen at crawl time.
+    """
+    extras = {}
+    try:
+        extras = json.loads(a.get("extras") or "{}") or {}
+    except Exception:
+        extras = {}
+    if extras.get("context"):
+        return extras
+    try:
+        blob = get_artifact(a["id"], "crawl_artifact.json")
+        if blob:
+            from engine.crawler import artifact_from_json
+            from engine.context import extract as extract_context
+            art = artifact_from_json(blob.decode())
+            bc = extract_context(art)
+            extras["context"] = {**bc.to_dict(), "describe": bc.describe()}
+    except Exception as e:
+        print(f"[api] context rebuild skipped for {a.get('id')}: "
+              f"{type(e).__name__}: {e}", flush=True)
+    return extras
+
+
 def _report_meta(a: dict) -> dict:
+    try:
+        _o = json.loads(a.get("options") or "{}")
+        _o = _o if isinstance(_o, dict) else {}
+    except Exception:
+        _o = {}
     return {"url": a["target_url"], "client": a["client_name"],
             "vertical": a.get("vertical"),
+            "business_model": a.get("business_model"),
+            "primary_markets": _o.get("primary_markets"),
+            "primary_conversion": _o.get("primary_conversion"),
+            "channels": _o.get("channels") or [],
             "pages_crawled": a["pages_crawled"] or 0,
             "coverage": a["coverage"] or "",
             "generated": time.strftime("%Y-%m-%d %H:%M",
@@ -209,7 +264,7 @@ def _report_meta(a: dict) -> dict:
             "crawl_note": a.get("crawl_note"),
             "truncated": a.get("crawl_truncated"),
             "capture_method": a.get("capture_method"),
-            "extras": json.loads(a.get("extras") or "{}"),
+            "extras": _extras(a),
             "analyst": {"name": cfg.analyst_name, "title": cfg.analyst_title,
                         "email": cfg.analyst_email, "firm": cfg.firm_name},
             "build": version.label()}

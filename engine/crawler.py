@@ -20,7 +20,7 @@ import json
 import gzip
 import socket
 import ssl
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, fields
 from urllib.parse import urljoin, urlparse, urldefrag
 from urllib.robotparser import RobotFileParser
 
@@ -622,3 +622,34 @@ class Crawler:
                                                   "kind": "external"})
             except Exception:
                 self.art.external_checked[u] = 0
+
+
+def artifact_from_json(blob: str) -> "SiteArtifact":
+    """
+    Rebuild a SiteArtifact from a stored crawl_artifact.json.
+
+    Exists so the report can be improved without re-crawling. Anything that can
+    be derived from the artifact — business context, new checks over already-
+    collected data — is derived at render time from this; only work that needs
+    the network stays frozen at crawl time.
+
+    Unknown keys are dropped rather than raising, because an artifact written by
+    an older build must still load into a newer one.
+    """
+    d = json.loads(blob) if isinstance(blob, str) else blob
+    page_fields = {f.name for f in fields(Page)}
+    art_fields = {f.name for f in fields(SiteArtifact)}
+
+    pages = {}
+    for url, pd in (d.get("pages") or {}).items():
+        if isinstance(pd, dict):
+            pages[url] = Page(**{k: v for k, v in pd.items() if k in page_fields})
+
+    kwargs = {k: v for k, v in d.items() if k in art_fields and k != "pages"}
+    q = kwargs.pop("quality", None)
+    art = SiteArtifact(**kwargs)
+    art.pages = pages
+    if isinstance(q, dict):
+        art.quality = CrawlQuality(**{k: v for k, v in q.items()
+                                      if k in {f.name for f in fields(CrawlQuality)}})
+    return art

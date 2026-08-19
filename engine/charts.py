@@ -283,3 +283,34 @@ def coverage_segments(measured: int, need_access: int, na: int) -> list:
     return [("Measured", measured, SEQ),
             ("Need client access", need_access, MUTED),
             ("Not applicable", na, TRACK)]
+
+
+class DefBadge(Flowable):
+    """
+    The "this is a definition" marker: a filled circle with a lower-case i.
+
+    Drawn as vector rather than set as a glyph, and that is the whole point.
+    The first version used a symbol font looked up on disk; the production
+    container turned out not to have it, so `_icon()` correctly dropped the
+    character and the bubbles shipped with no icon at all. A circle and a
+    letter in Helvetica cannot go missing — Helvetica is one of the fourteen
+    fonts every PDF reader is required to have.
+    """
+
+    def __init__(self, size=12, fill=None, ink=None):
+        super().__init__()
+        self.width = self.height = size
+        self.fill = fill or colors.HexColor("#2a78d6")
+        self.ink = ink or colors.white
+
+    def wrap(self, aw, ah):
+        return self.width, self.height
+
+    def draw(self):
+        c = self.canv
+        r = self.width / 2
+        c.setFillColor(self.fill)
+        c.circle(r, r, r, stroke=0, fill=1)
+        c.setFillColor(self.ink)
+        c.setFont("Helvetica-Bold", self.width * 0.72)
+        c.drawCentredString(r, r - self.width * 0.26, "i")

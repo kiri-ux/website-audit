@@ -16,6 +16,15 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DEFAULT_TIMEOUT=60 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
+# DejaVu supplies the symbol glyphs the PDF's definition bubbles use. The
+# Playwright base image does not ship it, so the first production build
+# rendered every bubble with no icon — the renderer correctly drops a glyph the
+# font lacks rather than printing a black box, so the failure was silent.
+# The definition badge itself is drawn as vector and never depended on this.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends fonts-dejavu-core \
+ && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /srv
 
 COPY requirements.txt .

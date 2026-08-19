@@ -93,7 +93,11 @@ def run_audit_job(audit_id: str):
         step("checking", f"crawled {len(art.pages)} pages; running checkpoints")
 
     ctx = {"psi_key": cfg.psi_key,
-           "skip_psi": bool(opts.get("skip_psi", cfg.skip_psi))}
+           "skip_psi": bool(opts.get("skip_psi", cfg.skip_psi)),
+           # Which ad channels the client actually runs. Without this, a missing
+           # Meta pixel is reported as a defect on a site that has never bought
+           # a Meta ad. See engine/checks/tagdetect.py.
+           "channels": opts.get("channels") or []}
     findings = engine_checks.run_all(art, ctx)
 
     # ---- Phase 3: judgment layer (E-E-A-T + GEO assessment) ----
