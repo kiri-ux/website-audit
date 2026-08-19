@@ -45,3 +45,35 @@ def get_artifact(audit_id: str, name: str) -> bytes | None:
             return None
     path = os.path.join(loc, key)
     return open(path, "rb").read() if os.path.exists(path) else None
+
+
+def delete_artifacts(audit_id: str) -> int:
+    """
+    Remove every blob for an audit. Returns how many were deleted.
+
+    Best-effort by design: a storage failure must not block deleting the audit
+    row, or the dashboard ends up showing rows nobody can clear. An orphaned
+    blob costs pennies; a row you cannot delete costs trust in the tool.
+    """
+    scheme, loc = _backend()
+    n = 0
+    try:
+        if scheme == "s3":
+            import boto3
+            s3 = boto3.client("s3")
+            pages = s3.get_paginator("list_objects_v2").paginate(
+                Bucket=loc, Prefix=f"{audit_id}/")
+            keys = [{"Key": o["Key"]} for p in pages for o in p.get("Contents", [])]
+            for i in range(0, len(keys), 1000):
+                s3.delete_objects(Bucket=loc, Delete={"Objects": keys[i:i + 1000]})
+            n = len(keys)
+        else:
+            import shutil
+            d = os.path.join(loc, audit_id)
+            if os.path.isdir(d):
+                n = sum(len(fs) for _, _, fs in os.walk(d))
+                shutil.rmtree(d, ignore_errors=True)
+    except Exception as e:
+        print(f"[artifacts] delete skipped for {audit_id}: "
+              f"{type(e).__name__}: {e}", flush=True)
+    return n

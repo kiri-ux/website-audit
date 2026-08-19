@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from .config import cfg
 from . import db, tenancy, version
 from .queue import get_queue
-from .artifacts import get_artifact
+from .artifacts import get_artifact, delete_artifacts
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from engine.report import render_html
@@ -165,6 +165,54 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
                           vertical or None, None, opts)
     Q.enqueue(aid)
     return RedirectResponse(f"/audits/{aid}", status_code=303)
+
+
+
+# ------------------------------------------------------------------ delete
+@app.delete("/api/audits/{audit_id}")
+def delete_audit_api(audit_id: str, x_api_key: str | None = Header(None)):
+    p = principal(x_api_key)
+    # Ownership is checked BEFORE any blob is touched. Deleting artifacts first
+    # would let one tenant wipe another tenant's storage and still get a 404.
+    if not db.get_audit(audit_id, p.scope):
+        raise HTTPException(404, "audit not found")
+    blobs = delete_artifacts(audit_id)
+    db.delete_audit(audit_id, p.scope)
+    return {"deleted": audit_id, "artifacts_removed": blobs}
+
+
+@app.post("/audits/{audit_id}/delete")
+def delete_audit_form(audit_id: str, x_api_key: str | None = Header(None)):
+    """
+    Form-post delete, because an HTML form cannot issue DELETE.
+
+    Redirects back to the dashboard so the row is simply gone — no JSON blob in
+    the face of someone who clicked a button.
+    """
+    p = principal(x_api_key)
+    if db.get_audit(audit_id, p.scope):        # scope check before deletion
+        delete_artifacts(audit_id)
+        db.delete_audit(audit_id, p.scope)
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/clients/{client_key}/prune")
+def prune_client(client_key: str, x_api_key: str | None = Header(None)):
+    """
+    Keep the newest audit for a client, delete the rest.
+
+    This exists because testing a crawler against one site produces six rows of
+    the same client in an afternoon, and deleting them one at a time is the
+    kind of chore that ends with nobody tidying up at all.
+    """
+    p = principal(x_api_key)
+    rows = [a for a in db.list_audits(p.scope, limit=500)
+            if db.client_key(a.get("client_name")) == client_key]
+    rows.sort(key=lambda r: r.get("created_at") or 0, reverse=True)
+    for a in rows[1:]:
+        delete_artifacts(a["id"])
+        db.delete_audit(a["id"], p.scope)
+    return RedirectResponse("/", status_code=303)
 
 
 # ROUTE ORDER IS LOAD-BEARING. Starlette matches routes in registration order

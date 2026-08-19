@@ -537,3 +537,74 @@ def get_ai_platform_stats(run_id):
                          "citation_rate": round(100 * (ct or 0) / n, 1) if n else None,
                          "avg_prominence": round(prom or 0, 3)}
         return out
+
+
+# ---------------------------------------------------------------- deletion
+def delete_audit(audit_id, partner_id=None) -> bool:
+    """
+    Remove an audit and everything hanging off it.
+
+    Order matters: children first, parent last, all in one transaction. If the
+    audit row went first and a child delete then failed, the leftovers would be
+    invisible in the UI and impossible to clear.
+
+    Returns False when the audit does not exist or belongs to another tenant —
+    the caller turns that into a 404 rather than a silent success.
+    """
+    if not get_audit(audit_id, partner_id):
+        return False
+    with conn() as c:
+        cur = c.cursor()
+        for sql in ("DELETE FROM findings WHERE audit_id=?",
+                    "DELETE FROM section_scores WHERE audit_id=?",
+                    "DELETE FROM jobs WHERE audit_id=?"):
+            try:
+                cur.execute(_q(sql), (audit_id,))
+            except Exception as e:
+                # A table that does not exist in this deployment is not a
+                # reason to abandon the delete.
+                print(f"[db] {sql.split()[2]} cleanup skipped: "
+                      f"{type(e).__name__}: {e}", flush=True)
+        # Monitor runs reference the audit but outlive it; unlink rather than
+        # cascade, so a visibility time series is not destroyed by tidying up
+        # an audit.
+        try:
+            cur.execute(_q("UPDATE ai_runs SET audit_id=NULL WHERE audit_id=?"),
+                        (audit_id,))
+        except Exception:
+            pass
+        cur.execute(_q("DELETE FROM audits WHERE id=?"), (audit_id,))
+    return True
+
+
+def client_key(name: str) -> str:
+    """
+    Grouping key for a client name.
+
+    Case and spacing only — nothing cleverer. "Grand Furniture" and "grand
+    furniture " are the same client; "Grand Furniture" and "Grand Home
+    Furnishings" are not, and guessing that they might be is how you merge two
+    real clients into one row.
+    """
+    return " ".join(str(name or "").split()).lower()
+
+
+def group_by_client(audits: list) -> list:
+    """
+    [{client, key, latest, history, runs}] newest first.
+
+    The dashboard was a flat list, so six test runs of one site buried every
+    other client. Grouping makes the unit of the list a CLIENT, which is how
+    anyone actually thinks about it.
+    """
+    groups = {}
+    for a in audits:
+        k = client_key(a.get("client_name"))
+        groups.setdefault(k, []).append(a)
+    out = []
+    for k, rows in groups.items():
+        rows.sort(key=lambda r: r.get("created_at") or 0, reverse=True)
+        out.append({"key": k, "client": rows[0].get("client_name"),
+                    "latest": rows[0], "history": rows[1:], "runs": len(rows)})
+    out.sort(key=lambda g: g["latest"].get("created_at") or 0, reverse=True)
+    return out

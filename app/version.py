@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.19-02"
-BUILD_NOTES = ("Client PDF: scope not instructions, status/severity pills, "
-               "visual roadmap, AI Search naming, US dates")
+BUILD = "2026.08.19-03"
+BUILD_NOTES = ("Dashboard grouped by client, delete + prune, intake fields "
+               "on the form")
 # ---------------------------------------------------------------------------
 
 

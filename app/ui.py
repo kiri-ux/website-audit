@@ -28,7 +28,8 @@ h1{font-size:23px;margin:0 0 4px;letter-spacing:-.02em}
 h2{font-size:12.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
  margin:34px 0 12px;font-weight:600}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:20px 22px}
-form{display:grid;grid-template-columns:2fr 1.4fr 1fr .7fr auto;gap:10px;align-items:end}
+form#auditform{display:grid;grid-template-columns:2fr 1.4fr 1fr .7fr auto;
+ gap:10px;align-items:end}
 label{display:block;font-size:11.5px;color:var(--ink2);margin-bottom:5px;font-weight:600}
 input,select{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:7px;
  background:var(--plane);color:var(--ink);font:inherit;font-size:13.5px}
@@ -72,6 +73,36 @@ code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
 .ring text{font:600 13px ui-sans-serif,system-ui,sans-serif;fill:var(--ink);
  font-variant-numeric:tabular-nums}
 .ring text.sm{font-size:11px;fill:var(--muted);font-weight:500}
+/* --- client cards: the list is grouped by CLIENT, not by run --- */
+.crow{display:flex;gap:16px;align-items:flex-start;background:var(--surface);
+ border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:10px}
+.cscore{flex:none;padding-top:2px}
+.cmain{flex:1;min-width:0}
+.cname{font-size:15.5px;font-weight:640}
+.curl{margin-top:2px}
+.cmeta{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:8px;
+ font-size:12.5px;color:var(--ink2)}
+.cact{flex:none;display:flex;gap:8px;align-items:center}
+.btn{display:inline-block;padding:7px 14px;border-radius:7px;background:var(--seq);
+ color:#fff;font-size:12.5px;font-weight:620}
+.btn:hover{text-decoration:none;filter:brightness(1.08)}
+.btn.ghost{background:transparent;color:var(--seq);border:1px solid var(--line)}
+.del{background:transparent;color:var(--muted);border:1px solid var(--line);
+ padding:6px 12px;font-size:12.5px;font-weight:600}
+.del:hover{color:#fff;background:var(--critical);border-color:var(--critical);
+ filter:none}
+.del.wide{margin-top:8px;width:100%}
+.warn{margin-top:8px;font-size:12.5px;color:var(--ink2);background:var(--plane);
+ border-left:3px solid var(--serious);border-radius:6px;padding:8px 12px}
+.hist{margin-top:10px}
+.hist summary{cursor:pointer;font-size:12.5px;color:var(--seq);
+ list-style:none;display:inline-block}
+.hist summary::-webkit-details-marker{display:none}
+.hist summary:before{content:"▸ ";}
+.hist[open] summary:before{content:"▾ ";}
+table.sub{margin-top:8px;font-size:12.5px}
+table.sub td{padding:7px 8px;border-bottom:1px solid var(--line)}
+td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 /* --- live progress rail --- */
 .rail{position:relative;height:6px;background:var(--track);border-radius:3px;
  margin:20px 0 4px;overflow:hidden}
@@ -139,35 +170,86 @@ def _shell(title, body, refresh=None):
             f"<body class='viz-root'><div class='wrap'>{body}</div></body></html>")
 
 
+def _fmt_when(ts):
+    import time as _t
+    if not ts:
+        return "—"
+    return _t.strftime("%m/%d/%Y %H:%M", _t.localtime(ts))
+
+
+def _del_form(audit_id, label="Delete", confirm="Delete this audit?"):
+    return (f"<form method='post' action='/audits/{audit_id}/delete' "
+            f"style='display:inline' onsubmit=\"return confirm('{confirm}')\">"
+            f"<button class='del' type='submit'>{label}</button></form>")
+
+
 def dashboard_html(audits, principal, queue_depth):
-    rows = []
-    for a in audits:
+    """
+    Grouped by CLIENT, not one row per run.
+
+    Testing a crawler against a single site produces six rows of the same
+    client in an afternoon, which buries every other client in the list. The
+    unit of this page is now the client: newest run on the headline row, older
+    runs folded underneath, and a one-click way to drop the rest.
+    """
+    from . import db
+    groups = db.group_by_client(audits)
+
+    cards = []
+    for g in groups:
+        a = g["latest"]
         col = STATUS_COLOR.get(a["status"], "var(--muted)")
-        score = a["overall_score"]
         spin = "<span class='spin'></span> " if a["status"] in (
             "crawling", "checking", "scoring") else ""
-        rows.append(
-            f"<tr><td style='width:56px'>{_ring(score)}</td>"
-            f"<td><a href='/audits/{a['id']}'>{e(a['client_name'])}</a><br>"
-            f"<code>{e(a['target_url'])[:58]}</code></td>"
-            f"<td><span class='chip'><b style='background:{col}'></b>{spin}{e(a['status'])}</span>"
-            + (f"<br><span style='color:var(--muted);font-size:11.5px'>{e(a['progress'])}</span>"
-               if a["status"] not in ("ready", "failed") and a.get("progress") else "")
-            + f"</td>"
-            f"<td class='num'>{e(a.get('overall_rating') or '—')}</td>"
-            f"<td class='num'>{e(a['coverage'] or '—')}</td>"
-            f"<td class='num'>{a['pages_crawled'] or '—'}</td></tr>"
-            + (f"<tr><td colspan='6' style='padding-top:0;border:0;"
-               f"color:var(--ink2);font-size:12.5px'>"
-               f"⚠ Server crawl blocked. Open the client site in Chrome, launch "
-               f"<b>Vici Audit Capture</b>, and paste audit id "
-               f"<code>{a['id']}</code>.</td></tr>"
-               if a["status"] == "needs_capture" else ""))
+        hist = ""
+        if g["history"]:
+            rows = "".join(
+                f"<tr><td class='hw'>{_fmt_when(h.get('created_at'))}</td>"
+                f"<td><a href='/audits/{h['id']}'>{e(h['status'])}</a></td>"
+                f"<td class='num'>{h['overall_score'] if h['overall_score'] is not None else '—'}</td>"
+                f"<td class='num'>{e(h.get('coverage') or '—')}</td>"
+                f"<td class='num'>{h.get('pages_crawled') or '—'}</td>"
+                f"<td style='text-align:right'>{_del_form(h['id'], 'Delete')}</td></tr>"
+                for h in g["history"])
+            hist = (
+                f"<details class='hist'><summary>{len(g['history'])} earlier "
+                f"run{'s' if len(g['history']) != 1 else ''}</summary>"
+                f"<table class='sub'>{rows}</table>"
+                f"<form method='post' action='/clients/{e(g['key'])}/prune' "
+                f"onsubmit=\"return confirm('Delete {len(g['history'])} older "
+                f"run(s) for {e(g['client'])}? The newest is kept.')\">"
+                f"<button class='del wide' type='submit'>Keep newest, delete "
+                f"the other {len(g['history'])}</button></form></details>")
 
-    table = ("<table><tr><th>Score</th><th>Client</th><th>Status</th>"
-             "<th class='num'>Rating</th><th class='num'>Coverage</th>"
-             "<th class='num'>Pages</th></tr>" + "".join(rows) + "</table>"
-             ) if rows else "<div class='empty'>No audits yet — submit one above.</div>"
+        cards.append(
+            f"<div class='crow'>"
+            f"<div class='cscore'>{_ring(a['overall_score'])}</div>"
+            f"<div class='cmain'>"
+            f"<a class='cname' href='/audits/{a['id']}'>{e(g['client'])}</a>"
+            f"<div class='curl'><code>{e(a['target_url'])[:70]}</code></div>"
+            f"<div class='cmeta'>"
+            f"<span class='chip'><b style='background:{col}'></b>{spin}"
+            f"{e(a['status'])}</span>"
+            f"<span>{e(a.get('overall_rating') or 'Not Assessed')}</span>"
+            f"<span>{e(a.get('coverage') or '—')} checks</span>"
+            f"<span>{a.get('pages_crawled') or '—'} pages</span>"
+            f"<span>{_fmt_when(a.get('created_at'))}</span>"
+            f"</div>"
+            + (f"<div class='warn'>⚠ Server crawl blocked. Open the site in "
+               f"Chrome, launch <b>Vici Audit Capture</b>, and paste audit id "
+               f"<code>{a['id']}</code>.</div>"
+               if a["status"] == "needs_capture" else "")
+            + hist
+            + f"</div>"
+            f"<div class='cact'>"
+            f"<a class='btn' href='/audits/{a['id']}'>Open</a>"
+            f"<a class='btn ghost' href='/audits/{a['id']}.pdf' target='_blank' "
+            f"rel='noopener'>PDF</a>"
+            f"{_del_form(a['id'], 'Delete', 'Delete the newest run for ' + g['client'].replace(chr(39), '') + '?')}"
+            f"</div></div>")
+
+    listing = ("".join(cards) if cards else
+               "<div class='empty'>No audits yet — submit one above.</div>")
 
     running = any(a["status"] in ("queued", "crawling", "checking", "scoring")
                   for a in audits)
@@ -181,8 +263,8 @@ def dashboard_html(audits, principal, queue_depth):
     n_blocked = sum(1 for a in audits if a["status"] == "needs_capture")
     n_failed = sum(1 for a in audits if a["status"] == "failed")
     stats = "<div class='stats'>" + "".join([
+        _stat(len(groups), "clients"),
         _stat(len(audits), "audits"),
-        _stat(len(scored), "scored", STATUS_COLOR["ready"]),
         _stat(n_run, "in flight", STATUS_COLOR["crawling"]),
         _stat(n_blocked, "need capture", STATUS_COLOR["needs_capture"]),
         _stat(n_failed, "failed", STATUS_COLOR["failed"]),
@@ -191,7 +273,7 @@ def dashboard_html(audits, principal, queue_depth):
     ]) + "</div>"
 
     body = f"""
-    <h1>SEO &amp; GEO Audit Engine</h1>
+    <h1>SEO &amp; AI Search Audit Engine</h1>
     <div class='sub'>{e(principal.name)} · mode <code>{e(cfg.mode)}</code></div>
     <div style='margin-top:10px'>
       <span class='chip' style='background:var(--seq);color:#fff;border-color:var(--seq);
@@ -213,6 +295,28 @@ def dashboard_html(audits, principal, queue_depth):
       <div><label>Max pages</label><input name='max_pages' type='number' value='150'></div>
       <div><button type='submit'>Run audit</button></div>
     </form>
+    <div style='margin-top:14px;display:grid;
+                grid-template-columns:1fr 1fr;gap:10px'>
+      <div><label>Primary markets</label>
+        <input name='primary_markets' form='auditform'
+               placeholder='Roanoke VA, Knoxville TN'></div>
+      <div><label>Primary conversion</label>
+        <input name='primary_conversion' form='auditform'
+               placeholder='Book an appointment'></div>
+    </div>
+    <div style='margin-top:12px'>
+      <label>Paid channels running
+        <span style='font-weight:400;color:var(--muted)'>— a missing pixel is only
+        a finding for a channel you actually run</span></label>
+      <div style='display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;
+                  color:var(--ink2);margin-top:4px'>
+        {"".join(f"<label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>"
+                 f"<input type='checkbox' name='channels' value='{v}' form='auditform' "
+                 f"style='width:auto'> {l}</label>"
+                 for v, l in (("google_ads", "Google Ads"), ("meta", "Meta"),
+                              ("linkedin", "LinkedIn")))}
+      </div>
+    </div>
     <div style='margin-top:12px;display:flex;gap:20px;font-size:12.5px;color:var(--ink2)'>
       <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
         <input type='checkbox' name='browser_ua' value='1' form='auditform'
@@ -223,10 +327,9 @@ def dashboard_html(audits, principal, queue_depth):
                style='width:auto'> Render JavaScript
         <span style='color:var(--muted)'>(slower; for SPA sites)</span></label>
     </div>
-    <form style='display:none'>
-    </form></div>
+    </div>
 
-    <h2>Audits</h2>{table}
+    <h2>Clients</h2>{listing}
     """
     return _shell("Vici Audit Engine", body, refresh=8 if running else None)
 
