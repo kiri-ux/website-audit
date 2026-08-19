@@ -26,7 +26,7 @@ SECTION_NAMES = {
     "TECH": "Technical SEO", "URL": "URL Structure", "SEC": "HTTPS & Security",
     "CANON": "Canonicalization", "PERF": "Performance & CWV", "ONP": "On-Page SEO",
     "MOB": "Mobile SEO", "SCHEMA": "Structured Data", "INTL": "International SEO",
-    "HTML": "HTML & Code Quality", "EEAT": "E-E-A-T", "GEO": "AI SEO / GEO",
+    "HTML": "HTML & Code Quality", "EEAT": "E-E-A-T", "GEO": "AI Search (GEO)",
     "OFF": "Off-Page & Authority",
 }
 ORDER = ["ANA", "GSC", "GA4", "TECH", "URL", "SEC", "CANON", "PERF", "ONP",
@@ -206,11 +206,15 @@ def render_html(meta, sc, findings, catalog, summary=None):
 
     # KPI row of stat tiles
     if meta.get("pdf_url"):
+        # target=_blank: the PDF takes seconds to render, and navigating the
+        # report away to wait for it loses the page you were reading.
         P.append(f"<div style='margin:18px 0'><a href='{e(meta['pdf_url'])}' "
+                 f"target='_blank' rel='noopener' "
                  f"style='display:inline-block;padding:9px 18px;background:var(--seq);"
                  f"color:#fff;border-radius:7px;font-weight:640;font-size:13.5px;"
-                 f"text-decoration:none'>Download client PDF</a>"
-                 f"<a href='{e(meta['pdf_url'])}?polish=1' style='margin-left:12px;"
+                 f"text-decoration:none'>Open client PDF</a>"
+                 f"<a href='{e(meta['pdf_url'])}?polish=1' target='_blank' "
+                 f"rel='noopener' style='margin-left:12px;"
                  f"font-size:12.5px;color:var(--ink2)'>with AI-written summary</a></div>")
 
     if summary:

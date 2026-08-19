@@ -18,6 +18,7 @@ Design notes:
 """
 from __future__ import annotations
 import html as _h
+import re
 import io
 from datetime import datetime
 
@@ -30,7 +31,7 @@ from reportlab.platypus import (BaseDocTemplate, Frame, PageBreak, PageTemplate,
                                 Paragraph, Spacer, Table, TableStyle, KeepTogether)
 
 from .charts import (ScoreGauge, SectionBars, SegmentBar, MiniMeter,
-                     severity_segments, coverage_segments)
+                     DefBadge, severity_segments, coverage_segments)
 
 # ---- palette (matches the HTML report) -------------------------------------
 INK        = colors.HexColor("#0b0b0b")
@@ -56,7 +57,7 @@ SECTION_NAMES = {
     "PERF": "Website Performance & Core Web Vitals", "ONP": "On-Page SEO",
     "MOB": "Mobile SEO", "SCHEMA": "Structured Data (Schema)",
     "INTL": "International SEO", "HTML": "HTML & Code Quality",
-    "EEAT": "E-E-A-T Audit", "GEO": "AI SEO / GEO", "OFF": "Off-Page SEO & Authority",
+    "EEAT": "E-E-A-T Audit", "GEO": "AI Search", "OFF": "Off-Page SEO & Authority",
 }
 # Chart labels. The full names are correct in prose and in the tables, but a
 # ranked bar chart has a fixed label gutter — shortening beats auto-shrinking,
@@ -66,11 +67,21 @@ SHORT_NAMES = {
     "TECH": "Technical SEO", "URL": "URL & Architecture", "SEC": "HTTPS & Security",
     "CANON": "Canonicalization", "PERF": "Performance & CWV", "ONP": "On-Page SEO",
     "MOB": "Mobile SEO", "SCHEMA": "Structured Data", "INTL": "International SEO",
-    "HTML": "HTML & Code Quality", "EEAT": "E-E-A-T", "GEO": "AI SEO / GEO",
+    "HTML": "HTML & Code Quality", "EEAT": "E-E-A-T", "GEO": "AI Search",
     "OFF": "Off-Page & Authority",
 }
 ORDER = list(SECTION_NAMES)
 STATUS_ORDER = ["Fail", "Not Implemented", "Warning", "Pass", "Need Access", "N/A"]
+
+
+def _us_date(stamp) -> str:
+    """2026-08-18 14:00 -> 08/18/2026. US clients, US format, no time of day."""
+    raw = str(stamp or "").split(" ")[0]
+    try:
+        d = datetime.strptime(raw, "%Y-%m-%d")
+        return d.strftime("%m/%d/%Y")
+    except Exception:
+        return _h.escape(raw)
 
 
 def _p(text):
@@ -119,13 +130,60 @@ class _Doc(BaseDocTemplate):
         canvas.setStrokeColor(LINE)
         y = self.bottomMargin - 16
         canvas.line(self.leftMargin, y + 11, self.leftMargin + self.width, y + 11)
-        left = f"{self.meta.get('client','')} — SEO & GEO Audit"
+        left = f"{self.meta.get('client','')} — SEO & AI Search Audit"
         canvas.drawString(self.leftMargin, y, left[:90])
         canvas.drawRightString(self.leftMargin + self.width, y, f"Page {doc.page}")
-        if self.meta.get("build"):
-            canvas.drawCentredString(self.leftMargin + self.width / 2, y,
-                                     self.meta["build"])
+        # No build id here. It is operational information for us, and a version
+        # string in the footer of a client deliverable reads as a draft.
         canvas.restoreState()
+
+
+
+# ---------------------------------------------------------------------------
+# PILLS.
+#
+# The first version painted the severity cell with the ordinal ramp and left
+# the label in whatever color happened to be set. "Critical" in dark text on
+# #104281 was effectively unreadable at 8pt. Contrast is decided here, per
+# level, rather than left to a rule of thumb: the two dark steps take white
+# text, the two light steps take dark text, and the ordinal reading survives
+# because the BACKGROUND still runs dark to light.
+# ---------------------------------------------------------------------------
+SEV_PILL = {
+    "Critical":    (colors.HexColor("#104281"), colors.white),
+    "High":        (colors.HexColor("#256abf"), colors.white),
+    "Medium":      (colors.HexColor("#dbe8fa"), colors.HexColor("#17457f")),
+    "Low":         (colors.HexColor("#edf3fd"), colors.HexColor("#2a5d9e")),
+    "Opportunity": (colors.HexColor("#f1f0ec"), colors.HexColor("#52514e")),
+}
+ORD_PHASE = [colors.HexColor("#104281"), colors.HexColor("#256abf"),
+             colors.HexColor("#3987e5")]
+
+STATUS_PILL = {
+    "Pass":            (colors.HexColor("#e3f5e3"), colors.HexColor("#0b6b0b")),
+    "Fail":            (colors.HexColor("#fbe4e4"), colors.HexColor("#a32020")),
+    "Warning":         (colors.HexColor("#fdf1d9"), colors.HexColor("#8a5d05")),
+    "Not Implemented": (colors.HexColor("#fdeadf"), colors.HexColor("#9c4a1e")),
+    "Need Access":     (colors.HexColor("#f1f0ec"), colors.HexColor("#52514e")),
+    "N/A":             (colors.HexColor("#f6f5f2"), colors.HexColor("#898781")),
+}
+
+
+def _pill(label, palette, S, width=0.82 * inch):
+    """A rounded, filled label. Color plus text, never color alone."""
+    bg, fg = palette.get(label, (TRACK, INK2))
+    st = ParagraphStyle("pill", parent=S["cellsm"], textColor=fg,
+                        fontName="Helvetica-Bold", fontSize=7.5, leading=9.5,
+                        alignment=1)
+    t = Table([[Paragraph(_p(label), st)]], colWidths=[width])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), bg),
+        ("ROUNDEDCORNERS", [6, 6, 6, 6]),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3), ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    return t
 
 
 def _kv_table(rows, w1=1.7, w2=4.9):
@@ -222,7 +280,7 @@ BUBBLE_EDGE = colors.HexColor("#cfe0f8")
 
 def _bubble(term, definition, icon="", S=None, width=6.55 * inch, indent=0.0):
     """
-    A rounded, tinted definition bubble.
+    A rounded, tinted definition bubble with a definition badge on the left.
 
     Placed beside the finding that used the word, never collected into a
     glossary — that is Kiri's own habit in the AdLib guides ("On AdLib,
@@ -230,17 +288,32 @@ def _bubble(term, definition, icon="", S=None, width=6.55 * inch, indent=0.0):
     the difference between a reader who understands the finding and one who
     skips it.
 
-    Rounded and tinted rather than a bordered table row, because a bubble reads
-    as an aside; a bordered row reads as more of the same table.
+    The leading badge is a DRAWN circle, not a font glyph. The term-specific
+    symbol is a bonus that appears only where the symbol font is available; the
+    badge always renders, so a bubble is never left with no marker at all —
+    which is exactly what happened in production when the container turned out
+    to have no DejaVu installed.
     """
     ic = _icon(icon) if icon else ""
     body = ((f"{ic}  " if ic else "")
             + f"<b>{_p(term)}</b> — {_p(definition)}")
-    t = Table([[Paragraph(body, S["cellsm"])]], colWidths=[width - indent])
+    inner = Table([[DefBadge(11.5), Paragraph(body, S["cellsm"])]],
+                  colWidths=[0.24 * inch, width - indent - 0.24 * inch - 22])
+    inner.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (0, 0), "TOP"),
+        ("VALIGN", (1, 0), (1, 0), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (0, 0), 1),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (0, 0), 7),
+        ("RIGHTPADDING", (1, 0), (1, 0), 0),
+        ("TOPPADDING", (1, 0), (1, 0), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    t = Table([[inner]], colWidths=[width - indent])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), BUBBLE_BG),
         ("BOX", (0, 0), (-1, -1), 0.6, BUBBLE_EDGE),
-        ("ROUNDEDCORNERS", [7, 7, 7, 7]),
+        ("ROUNDEDCORNERS", [9, 9, 9, 9]),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 11),
         ("RIGHTPADDING", (0, 0), (-1, -1), 11),
@@ -273,6 +346,36 @@ def _bubbles_for(text, S, seen, width=6.55 * inch, indent=0.0, limit=2):
         e = entry(key, medium="pdf")
         out.append(_bubble(e["name"], e["definition"], e["icon"], S, width, indent))
     return out
+
+
+SEVERITY_LEGEND = [
+    ("Critical", "Blocks crawling or indexing, creates real risk, or materially "
+                 "hurts revenue.", "0–39", "Critical"),
+    ("High", "Large measurable impact, or a problem repeated across the site.",
+     "40–59", "Weak"),
+    ("Medium", "Worth doing — moderate effort, moderate return.", "60–74",
+     "Needs Improvement"),
+    ("Low", "Cleanup and best practice. Fold into normal release work.",
+     "75–89", "Strong"),
+    ("Opportunity", "Not a defect. Somewhere new visibility can be won.",
+     "90–100", "Excellent"),
+]
+
+
+def _access_received(findings: dict) -> str:
+    """
+    What the client actually granted us, derived rather than asserted.
+
+    A row that came back Need Access means we asked and could not see it, so
+    the presence of ANY measured row in a section is the evidence of access.
+    """
+    got = []
+    for label, prefix in (("Search Console", "GSC"), ("Google Analytics", "GA4")):
+        rows = [f for cid, f in findings.items() if cid.startswith(prefix + "-")]
+        if rows and any(f.get("status") not in ("Need Access", "N/A")
+                        and (f.get("confidence") or 0) > 0 for f in rows):
+            got.append(label)
+    return ", ".join(got) if got else "None — site crawl and public data only"
 
 
 def _severity_counts(findings: dict) -> dict:
@@ -332,30 +435,21 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             story.append(Spacer(1, 10))
         except Exception:
             pass
-    story.append(Paragraph("Comprehensive SEO &amp; Generative Engine "
-                           "Optimization Audit", S["h1"]))
+    story.append(Paragraph("Comprehensive SEO &amp; AI Search (GEO) Audit",
+                           S["h1"]))
     story.append(Paragraph(_p(meta.get("client", "")), S["h2"]))
     story.append(Spacer(1, 4))
     analyst = meta.get("analyst") or {}
-    prepared = []
-    if analyst.get("name"):
-        prepared = [[Paragraph("<b>Prepared by</b>", S["cell"]),
-                     Paragraph(_p(analyst["name"])
-                               + (f", {_p(analyst.get('title'))}"
-                                  if analyst.get("title") else "")
-                               + (f"<br/><font color='#52514e'>"
-                                  f"{_p(analyst.get('firm'))}</font>"
-                                  if analyst.get("firm") else ""), S["cell"])]]
-    story.append(_kv_table(prepared + [
+    story.append(_kv_table([
+        [Paragraph("<b>Prepared by</b>", S["cell"]),
+         Paragraph(_p(analyst.get("firm") or "Vici"), S["cell"])],
         [Paragraph("<b>Website</b>", S["cell"]), Paragraph(_p(meta.get("url")), S["cell"])],
-        [Paragraph("<b>Audit date</b>", S["cell"]), Paragraph(_p(meta.get("generated")), S["cell"])],
+        [Paragraph("<b>Audit date</b>", S["cell"]),
+         Paragraph(_us_date(meta.get("generated")), S["cell"])],
         [Paragraph("<b>Pages analyzed</b>", S["cell"]),
          Paragraph(_p(meta.get("pages_crawled")), S["cell"])],
-        [Paragraph("<b>Checkpoints evaluated</b>", S["cell"]),
+        [Paragraph("<b>Checks evaluated</b>", S["cell"]),
          Paragraph(_p(meta.get("coverage")), S["cell"])],
-        [Paragraph("<b>Collection method</b>", S["cell"]),
-         Paragraph("Browser capture (real-render)" if meta.get("capture_method")
-                   else "Automated crawl", S["cell"])],
     ]))
     story.append(Spacer(1, 14))
 
@@ -364,16 +458,31 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     # signal that a person looked, and it gives the client something concrete
     # to correct — which turns the report into a conversation.
     ctx = ((meta.get("extras") or {}).get("context") or {})
+    # Brendan's cover carries Business Model, Primary Markets, Primary
+    # Conversion and Access Received. Three of those come from intake — a crawl
+    # cannot know what a client sells to whom — so they are collected on the
+    # form and simply omitted when nobody filled them in. Access Received is
+    # derived: it is whichever collectors actually returned data.
     facts = []
+    if meta.get("business_model") or meta.get("vertical"):
+        facts.append(("Business model",
+                      meta.get("business_model") or meta.get("vertical")))
+    if meta.get("primary_markets"):
+        facts.append(("Primary markets", meta["primary_markets"]))
+    if meta.get("primary_conversion"):
+        facts.append(("Primary conversion", meta["primary_conversion"]))
+    if meta.get("channels"):
+        facts.append(("Paid channels running",
+                      ", ".join(str(c).replace("_", " ").title()
+                                for c in meta["channels"])))
+    granted = _access_received(findings)
+    facts.append(("Access received", granted))
     if ctx.get("sections"):
-        # Labelled as URL structure, which is what it is. The earlier label
-        # "Main sections" implied we knew their business lines; we do not, we
-        # know their top-level paths.
         facts.append(("Top-level URL paths", ", ".join(ctx["sections"][:5])))
     if ctx.get("locations"):
         where = ", ".join(sorted({l.get("region") for l in ctx["locations"]
                                   if l.get("region")}))
-        facts.append((f"Locations found", f"{len(ctx['locations'])}"
+        facts.append(("Locations found", f"{len(ctx['locations'])}"
                       + (f" — {where}" if where else "")))
     elif ctx.get("location_pages"):
         facts.append(("Location pages", str(ctx["location_pages"])))
@@ -386,30 +495,13 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     if ctx.get("entity_types"):
         facts.append(("Schema entities", ", ".join(ctx["entity_types"][:5])))
     if facts:
-        story.append(Paragraph("Your site, as we found it", S["h3"]))
-        story.append(Paragraph(
-            "All of this came off your own pages. If any of it is wrong, tell "
-            "us — when we read it wrong, search engines usually do too.",
-            S["small"]))
-        story.append(Spacer(1, 5))
+        story.append(Paragraph("Current Site Snapshot", S["h3"]))
+        story.append(Spacer(1, 3))
         story.append(_kv_table(
             [[Paragraph(f"<b>{_p(k)}</b>", S["cellsm"]),
               Paragraph(_p(v), S["cellsm"])] for k, v in facts],
             w1=1.7, w2=4.9))
         story.append(Spacer(1, 14))
-
-    # data-integrity banners come FIRST — before any number the reader might trust
-    if meta.get("crawl_blocked"):
-        story.append(_banner("This report is not valid — crawl blocked",
-                             f"{meta.get('crawl_note','')}. Every content-dependent "
-                             f"checkpoint is reported as Need Access rather than as a "
-                             f"defect. Do not send this to a client.",
-                             colors.HexColor("#d03b3b"), S))
-    if meta.get("truncated"):
-        story.append(_banner("Partial crawl",
-                             f"{meta['truncated']} — coverage reflects only the pages "
-                             f"reached within the time budget.",
-                             colors.HexColor("#fab219"), S))
 
     # ------------------------------------------------ overall score
     sev_counts = _severity_counts(findings)
@@ -446,10 +538,10 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     story.append(Spacer(1, 14))
 
     # ---- severity distribution + coverage, side by side -----------------
-    left = [Paragraph("Where your issues sit", S["h3"]),
+    left = [Paragraph("Issues by Severity", S["h3"]),
             SegmentBar(severity_segments(sev_counts), width=3.05 * inch,
                        note="Severity tells you what to fix first, not how much there is.")]
-    right = [Paragraph("What we could measure", S["h3"]),
+    right = [Paragraph("Audit Coverage", S["h3"]),
              SegmentBar(coverage_segments(*cov), width=3.05 * inch,
                         note="“Need client access” isn’t a mark against you.")]
     grid = Table([[left, right]], colWidths=[3.3 * inch, 3.3 * inch])
@@ -469,8 +561,8 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         if summary.get("headline"):
             story.append(_banner("", summary["headline"], SEQ, S))
             story.append(Spacer(1, 8))
-        for key, title in (("working", "What's Working"),
-                           ("opportunity", "Where the Biggest Gap Is")):
+        for key, title in (("working", "Current Strengths"),
+                           ("opportunity", "Biggest Opportunity")):
             items = summary.get(key)
             if not items:
                 continue
@@ -508,9 +600,11 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             if t.get("why"):
                 block.append(Paragraph(f"<b>Why it matters.</b> {_p(t['why'])}",
                                        S["body"]))
-            if t.get("action"):
-                block.append(Paragraph(f"<b>What to do.</b> {_p(t['action'])}",
-                                       S["body"]))
+            # Scope, not instructions — see SERVICE_ACTION in summarise.py.
+            if t.get("service") or t.get("action"):
+                block.append(Paragraph(
+                    f"<b>How we handle it.</b> "
+                    f"{_p(t.get('service') or t.get('action'))}", S["body"]))
             # KeepTogether covers the finding itself. The definition bubbles are
             # appended OUTSIDE it: bundling them made the block tall enough to
             # jump a page break, leaving half of page 2 blank.
@@ -544,7 +638,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                       v.get("rating")) for k, v in ranked], width=6.55 * inch)))
     story.append(Spacer(1, 16))
 
-    story.append(Paragraph("Every area, and what we could check", S["h3"]))
+    story.append(Paragraph("Coverage by Area", S["h3"]))
     rows = [[Paragraph("<b>Section</b>", S["cellsm"]),
              Paragraph("<b>Score</b>", S["cellsm"]),
              "", Paragraph("<b>Rating</b>", S["cellsm"]),
@@ -581,29 +675,19 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                  Paragraph("<b>Finding &amp; recommended action</b>", S["cellsm"])]]
         for cid, f in issues:
             m = catalog.get(cid, {})
-            ev = _p(f.get("evidence"))
-            if f.get("recommendation"):
-                ev += (f"<br/><font color='#898781'><i>→ "
-                       f"{_p(f['recommendation'])}</i></font>")
             rows.append([Paragraph(cid, S["cellsm"]),
                          Paragraph(_p(m.get("checkpoint")), S["cell"]),
-                         Paragraph(_p(f.get("severity")), S["cellsm"]),
-                         Paragraph(ev, S["cell"])])
-        t = Table(rows, colWidths=[0.62 * inch, 1.6 * inch, 0.7 * inch, 3.58 * inch],
+                         _pill(f.get("severity"), SEV_PILL, S, 0.66 * inch),
+                         Paragraph(_p(f.get("evidence")), S["cell"])])
+        t = Table(rows, colWidths=[0.62 * inch, 1.6 * inch, 0.78 * inch, 3.5 * inch],
                   repeatRows=1)
-        st = [("VALIGN", (0, 0), (-1, -1), "TOP"),
-              ("LINEBELOW", (0, 0), (-1, -1), 0.4, LINE),
-              ("TOPPADDING", (0, 0), (-1, -1), 5),
-              ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-              ("LEFTPADDING", (0, 0), (-1, -1), 3)]
-        # severity swatch: ordinal ramp, always beside the text label
-        for i, (cid, f) in enumerate(issues, start=1):
-            st.append(("BACKGROUND", (2, i), (2, i),
-                       ORD.get(f.get("severity"), TRACK)))
-            st.append(("TEXTCOLOR", (2, i), (2, i),
-                       colors.white if f.get("severity") in ("Critical", "High")
-                       else INK))
-        t.setStyle(TableStyle(st))
+        t.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("VALIGN", (2, 1), (2, -1), "MIDDLE"),
+            ("LINEBELOW", (0, 0), (-1, -1), 0.4, LINE),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3)]))
         story.append(t)
 
     # ------------------------------------------------ keyword rankings
@@ -643,7 +727,10 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         # the eye lands on what is already winning.
         for i, r in enumerate(rk["rows"][:25], start=1):
             if (r.get("position") or 999) <= 10:
-                st.append(("BACKGROUND", (1, i), (1, i), ORD.get("Low", TRACK)))
+                # Light tint, dark text. The full-strength ramp color put a
+                # mid-blue number on a mid-blue field and lost the number.
+                st.append(("BACKGROUND", (1, i), (1, i), SEV_PILL["Low"][0]))
+                st.append(("TEXTCOLOR", (1, i), (1, i), SEV_PILL["Low"][1]))
         t.setStyle(TableStyle(st))
         story.append(t)
     elif rk and not rk.get("available"):
@@ -654,23 +741,77 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
 
     # ------------------------------------------------ roadmap
     if summary and summary.get("roadmap"):
-        story.append(Paragraph("Prioritized Next Steps", S["h2"]))
-        for phase in summary["roadmap"]:
-            story.append(Paragraph(_p(phase.get("phase", "")), S["h3"]))
+        story.append(PageBreak())
+        story.append(Paragraph("Our Recommended Plan", S["h2"]))
+        story.append(Paragraph(
+            "The order we would work in, and roughly how much sits in each "
+            "phase. Item counts come straight from the findings above.",
+            S["small"]))
+        story.append(Spacer(1, 10))
+        for i, phase in enumerate(summary["roadmap"], start=1):
+            actions = phase.get("actions", []) or []
+            # The chip already says "Phase 2"; repeating it in the title reads
+            # as a template that forgot what it had already printed.
+            title = _p(re.sub(r"^Phase\s*\d+\s*[—\-:]\s*", "",
+                              str(phase.get("phase", ""))))
+            # A phase is a card: a numbered chip, the phase name, the count, a
+            # one-line rationale and the work itself. The chip and the count do
+            # the visual work a wall of bullets could not.
+            head = Table([[
+                _pill(f"Phase {i}", {f"Phase {i}": (ORD_PHASE[min(i, 3) - 1],
+                                                    colors.white)}, S, 0.62 * inch),
+                Paragraph(f"<b>{title}</b>", S["body"]),
+                Paragraph(f"<font color='#52514e'>{len(actions)} item"
+                          f"{'s' if len(actions) != 1 else ''}</font>", S["cellsm"]),
+            ]], colWidths=[0.72 * inch, 4.6 * inch, 1.2 * inch])
+            head.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (2, 0), (2, 0), "RIGHT"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]))
+            block = [head]
             if phase.get("rationale"):
-                story.append(Paragraph(_p(phase["rationale"]), S["small"]))
-            for a in phase.get("actions", []) or []:
-                story.append(Paragraph(_p(a), S["bullet"], bulletText="•"))
+                block.append(Paragraph(_p(phase["rationale"]), S["small"]))
+            block.append(Spacer(1, 4))
+
+            # Work items, not instructions: the checkpoint name is what we are
+            # taking on. The fix itself is the engagement.
+            cells = []
+            for a in actions[:14]:
+                label = str(a).split(" — ")[0].strip().rstrip(".")
+                cells.append(Paragraph(f"•  {_p(label)}", S["cellsm"]))
+            if cells:
+                pairs = [cells[i:i + 2] for i in range(0, len(cells), 2)]
+                if len(pairs[-1]) == 1:
+                    pairs[-1].append("")
+                grid = Table(pairs, colWidths=[3.27 * inch, 3.27 * inch])
+                grid.setStyle(TableStyle([
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("BACKGROUND", (0, 0), (-1, -1), SURFACE),
+                    ("BOX", (0, 0), (-1, -1), 0.5, LINE),
+                    ("ROUNDEDCORNERS", [8, 8, 8, 8]),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ]))
+                block.append(grid)
+            if len(actions) > 14:
+                block.append(Paragraph(
+                    f"<font color='#898781'>+ {len(actions) - 14} more in this "
+                    f"phase, listed in the appendix.</font>", S["muted"]))
+            block.append(Spacer(1, 14))
+            story.append(KeepTogether(block))
 
     # ------------------------------------------------ detailed findings
     story.append(PageBreak())
     story.append(Paragraph("Appendix — Full Checkpoint Detail", S["h2"]))
     story.append(Paragraph(
-        "Every check, area by area. It's here so you can trace anything above "
-        "back to where it came from — not because you need to read it start to "
-        "finish. Each row carries its source and the raw value. "
-        "<b>Need Access</b> means we couldn't run the check, not that you "
-        "failed it.", S["small"]))
+        "The full record, by area. <b>Need Access</b> means we could not run "
+        "the check without your account access. <b>N/A</b> means it does not "
+        "apply to your site.", S["small"]))
 
     for k in ORDER:
         rows_f = [(cid, f) for cid, f in findings.items()
@@ -696,29 +837,26 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
         ]))
         data = [[Paragraph("<b>ID</b>", S["cellsm"]),
-                 Paragraph("<b>Checkpoint</b>", S["cellsm"]),
+                 Paragraph("<b>Check</b>", S["cellsm"]),
                  Paragraph("<b>Status</b>", S["cellsm"]),
-                 Paragraph("<b>Evidence</b>", S["cellsm"])]]
+                 Paragraph("<b>What we found</b>", S["cellsm"])]]
         for cid, f in rows_f:
             m = catalog.get(cid, {})
-            ev = _p(f.get("evidence"))
-            if f.get("recommendation"):
-                ev += (f"<br/><font color='#898781'><i>→ "
-                       f"{_p(f['recommendation'])}</i></font>")
+            # The remediation stays out of the client PDF — it is the work we
+            # are selling. It is still on the internal HTML report and in the
+            # findings API for the team doing the fixing.
             data.append([Paragraph(cid, S["cellsm"]),
                          Paragraph(_p(m.get("checkpoint")), S["cell"]),
-                         Paragraph(_p(f["status"]), S["cellsm"]),
-                         Paragraph(ev, S["cell"])])
-        t = Table(data, colWidths=[0.62 * inch, 1.75 * inch, 0.85 * inch, 3.28 * inch],
+                         _pill(f["status"], STATUS_PILL, S, 0.86 * inch),
+                         Paragraph(_p(f.get("evidence")), S["cell"])])
+        t = Table(data, colWidths=[0.62 * inch, 1.75 * inch, 0.95 * inch, 3.18 * inch],
                   repeatRows=1)
         st = [("VALIGN", (0, 0), (-1, -1), "TOP"),
+              ("VALIGN", (2, 1), (2, -1), "MIDDLE"),
               ("LINEBELOW", (0, 0), (-1, -1), 0.35, LINE),
               ("TOPPADDING", (0, 0), (-1, -1), 4),
               ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
               ("LEFTPADDING", (0, 0), (-1, -1), 3)]
-        for i, (cid, f) in enumerate(rows_f, start=1):
-            st.append(("TEXTCOLOR", (2, i), (2, i),
-                       STATUS.get(f["status"], MUTED)))
         t.setStyle(TableStyle(st))
         story.append(Spacer(1, 8))
         story.append(head)
@@ -734,11 +872,37 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
 
     # ------------------------------------------------ method & sign-off
     story.append(PageBreak())
-    story.append(Paragraph("How We Ran This Audit", S["h2"]))
+    story.append(Paragraph("Methodology & Data Sources", S["h2"]))
     story.append(Paragraph(
         "How we got these numbers, so you can check them or repeat this next "
         "quarter.", S["small"]))
     story.append(Spacer(1, 8))
+
+    # Severity legend — lifted from the template's own scoring key, because a
+    # reader who does not know what "High" means cannot act on the roadmap.
+    story.append(Paragraph("How to read the ratings", S["h3"]))
+    leg = [[Paragraph("<b>Severity</b>", S["cellsm"]),
+            Paragraph("<b>What it means</b>", S["cellsm"]),
+            Paragraph("<b>Score</b>", S["cellsm"]),
+            Paragraph("<b>Area rating</b>", S["cellsm"])]]
+    for sev, definition, rng, rating in SEVERITY_LEGEND:
+        leg.append([Paragraph(_p(sev), S["cellsm"]),
+                    Paragraph(_p(definition), S["cellsm"]),
+                    Paragraph(_p(rng), S["cellsm"]),
+                    Paragraph(_p(rating), S["cellsm"])])
+    lt = Table(leg, colWidths=[0.85 * inch, 3.5 * inch, 0.7 * inch, 1.55 * inch])
+    lst = [("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+           ("LINEBELOW", (0, 0), (-1, -1), 0.4, LINE),
+           ("TOPPADDING", (0, 0), (-1, -1), 5),
+           ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+           ("LEFTPADDING", (0, 0), (-1, -1), 3)]
+    for i, (sev, _d, _r, _rt) in enumerate(SEVERITY_LEGEND, start=1):
+        lst.append(("BACKGROUND", (0, i), (0, i), ORD.get(sev, TRACK)))
+        lst.append(("TEXTCOLOR", (0, i), (0, i),
+                    colors.white if sev in ("Critical", "High") else INK))
+    lt.setStyle(TableStyle(lst))
+    story.append(lt)
+    story.append(Spacer(1, 14))
 
     m, need, na = _coverage_counts(findings, catalog)
     method = [
@@ -784,7 +948,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         if analyst.get("email"):
             line += f"<br/>{_p(analyst['email'])}"
         story.append(_banner(
-            "Questions about this report",
+            "Questions About This Report",
             "Happy to walk through any of this line by line. If something looks "
             "wrong, tell us — nine times out of ten it means a search engine saw "
             "the same odd thing we did, which is worth knowing either way.",

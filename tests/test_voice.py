@@ -154,6 +154,23 @@ def main():
           bool(bc.sections or bc.locations or bc.brand),
           f"brand={bc.brand!r} sections={bc.sections}")
 
+    print("\n4b. NO PIXEL IS RECOMMENDED FOR A CHANNEL THEY DON'T RUN")
+    from engine import checks as _checks
+    no_chan = _checks.run_all(art, {"skip_psi": True})
+    for cid in ("ANA-06", "ANA-07", "ANA-08", "ANA-09"):
+        f = no_chan.get(cid, {})
+        if f.get("status") == "Pass":
+            continue          # the fixture actually has it installed
+        check(f"{cid} is N/A, not a defect, with no channel stated",
+              f.get("status") == "N/A", f"{f.get('status')} / {f.get('severity')}")
+    ran = _checks.run_all(art, {"skip_psi": True, "channels": ["linkedin"]})
+    li = ran.get("ANA-07", {})
+    check("a stated channel turns the same row into a real finding",
+          li.get("status") in ("Not Implemented", "Pass"), li.get("status"))
+    check("and it says why it now matters",
+          li.get("status") == "Pass" or "running" in (li.get("evidence") or ""),
+          (li.get("evidence") or "")[:70])
+
     print("\n5. NO MARKETING FILLER ANYWHERE IN THE PROSE")
     blob = " ".join([s["overview"], s.get("headline", ""), s["opportunity"],
                      *working, *[t["why"] for t in five],
@@ -200,6 +217,17 @@ def main():
           ("you" in prose or "your" in prose), "")
     check("no 'it is recommended that' constructions",
           "it is recommended" not in prose and "should be implemented" not in prose)
+
+    print("\n7b. SECTION HEADERS ARE LABELS, NOT SENTENCES")
+    import re as _re
+    hdrs = _re.findall(r'Paragraph\("([A-Z][^"]{4,46})", S\["h[23]"\]\)',
+                       (root / "engine/pdf_report.py").read_text())
+    chatty = [h for h in hdrs
+              if h.lower().startswith(("your ", "we ", "what we", "how we",
+                                       "where the", "here", "all of"))
+              or h.rstrip().endswith(("?", "!"))]
+    check("no conversational section headers", not chatty, str(chatty))
+    check("headers were actually found to check", len(hdrs) >= 6, str(len(hdrs)))
 
     print("\n8. ACRONYMS SURVIVE SENTENCE CASING")
     # Checked on the CASED text only: an acronym is allowed to be lowercase

@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.18-16"
-BUILD_NOTES = ("Voice pass from the Confluence docs: US spelling, direct "
-               "address, definition bubbles beside each finding")
+BUILD = "2026.08.19-02"
+BUILD_NOTES = ("Client PDF: scope not instructions, status/severity pills, "
+               "visual roadmap, AI Search naming, US dates")
 # ---------------------------------------------------------------------------
 
 

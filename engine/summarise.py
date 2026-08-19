@@ -30,7 +30,7 @@ SECTION_NAMES = {
     "CANON": "Canonicalization", "PERF": "Site performance and Core Web Vitals",
     "ONP": "On-page SEO", "MOB": "Mobile SEO", "SCHEMA": "Structured data",
     "INTL": "International SEO", "HTML": "HTML and code quality",
-    "EEAT": "E-E-A-T and trust signals", "GEO": "AI search visibility (GEO)",
+    "EEAT": "E-E-A-T and trust signals", "GEO": "AI Search (GEO)",
     "OFF": "Off-page authority",
 }
 
@@ -313,6 +313,73 @@ def _why(prefix: str, vertical: str | None) -> str:
             or WHY_IT_MATTERS.get(prefix, ""))
 
 
+
+# ---------------------------------------------------------------------------
+# WHAT WE'LL DO — scope, not instructions.
+#
+# The audit is a sales document as well as a diagnostic. A step-by-step fix
+# ("Add a sitewide 301 from HTTP to HTTPS") is the deliverable we are selling;
+# printing it means the client can hand the report to anyone. So the client PDF
+# states the WORK, and the specific remediation stays in the internal view and
+# in the scope of the engagement.
+#
+# This is not vagueness for its own sake — each line still names the work
+# precisely enough to be quoted and scheduled. It just isn't a how-to.
+# ---------------------------------------------------------------------------
+SERVICE_ACTION = {
+    "https": "Included in the technical phase — we handle the HTTPS migration "
+             "and the redirect map end to end.",
+    "canonical": "We consolidate the duplicate URLs and set the canonical "
+                 "structure during technical setup.",
+    "indexing": "We take over crawl and indexing control as part of the "
+                "technical foundation work.",
+    "redirects": "We build and implement the redirect map so existing ranking "
+                 "value carries across.",
+    "schema": "We design and deploy structured data for your key page types, "
+              "then monitor how it renders in results.",
+    "titles": "Title and heading rewrites across priority templates are part of "
+              "the on-page workstream.",
+    "images": "Image optimization and alt text are handled in the on-page and "
+              "performance work.",
+    "speed": "Performance work — server response, asset delivery and Core Web "
+             "Vitals — runs through the technical phase.",
+    "mobile": "We resolve the mobile rendering issues alongside the performance "
+              "work.",
+    "ai_access": "We open up assistant access and build the files AI engines "
+                 "look for, then track whether you start getting cited.",
+    "authority": "Link acquisition and digital PR run continuously through the "
+                 "campaign.",
+    "eeat": "We build out authorship, credentials and trust signals as part of "
+            "the content workstream.",
+    "hreflang": "Language and region targeting is corrected during technical "
+                "setup.",
+    "architecture": "We restructure internal linking so authority reaches the "
+                    "pages that earn money.",
+}
+
+SERVICE_BY_SECTION = {
+    "SEC": SERVICE_ACTION["https"], "CANON": SERVICE_ACTION["canonical"],
+    "TECH": SERVICE_ACTION["indexing"], "SCHEMA": SERVICE_ACTION["schema"],
+    "ONP": SERVICE_ACTION["titles"], "PERF": SERVICE_ACTION["speed"],
+    "MOB": SERVICE_ACTION["mobile"], "GEO": SERVICE_ACTION["ai_access"],
+    "OFF": SERVICE_ACTION["authority"], "EEAT": SERVICE_ACTION["eeat"],
+    "INTL": SERVICE_ACTION["hreflang"], "URL": SERVICE_ACTION["architecture"],
+    "HTML": "Code quality cleanup is folded into the technical phase.",
+    "ANA": "We implement and QA the tracking setup so every channel is "
+           "measurable before campaign work begins.",
+    "GSC": "We get access set up and reporting configured during onboarding.",
+    "GA4": "We get access set up and reporting configured during onboarding.",
+}
+
+
+def service_action(theme_key: str, prefix: str) -> str:
+    """The scope line for the client PDF. Never the remediation steps."""
+    return (SERVICE_ACTION.get(theme_key)
+            or SERVICE_BY_SECTION.get(prefix)
+            or "Covered in the campaign scope — we'll walk you through the "
+               "sequencing on the kickoff call.")
+
+
 SEV_RANK = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Opportunity": 4}
 
 
@@ -365,7 +432,8 @@ def _group_issues(findings: dict, catalog: dict, meta: dict, limit: int = 5) -> 
             "finding": finding,
             "finding_short": short,
             "why": _why(g["why_prefix"], meta.get("vertical")),
-            "action": action,
+            "action": action,                     # internal: the actual fix
+            "service": service_action(key, g["prefix"]),   # client-facing scope
             "effort": EFFORT.get(g["why_prefix"], ""),
             "area": SECTION_NAMES.get(g["why_prefix"], g["why_prefix"]),
         })

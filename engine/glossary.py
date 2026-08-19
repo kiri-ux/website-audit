@@ -62,7 +62,7 @@ TERMS = {
         "direct levers on how assistants describe you.",
         (r"llms\.txt",)),
     "geo": (
-        "GEO (generative engine optimization)", "🤖", "◉",
+        "AI Search (GEO)", "🤖", "◉",
         "Being found and quoted inside AI answers — ChatGPT, Perplexity, "
         "Google's AI Overviews — rather than in the classic list of ten blue "
         "links. Different rules, same goal.",

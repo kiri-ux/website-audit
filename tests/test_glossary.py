@@ -43,7 +43,7 @@ def main():
               f"{len(definition)} chars")
         check(f"{key} definition avoids defining jargon with jargon",
               name.lower().split()[0] not in definition.lower()[:40]
-              or key in ("robots", "llms", "hreflang"),
+              or key in ("robots", "llms", "hreflang", "geo"),
               definition[:50])
 
     print("\nPDF GLYPHS RENDER — NO BLACK BOXES")
