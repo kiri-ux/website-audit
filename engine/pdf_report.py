@@ -71,7 +71,36 @@ SHORT_NAMES = {
     "OFF": "Off-Page & Authority",
 }
 ORDER = list(SECTION_NAMES)
-STATUS_ORDER = ["Fail", "Not Implemented", "Warning", "Pass", "Need Access", "N/A"]
+STATUS_ORDER = ["Fail", "Not Implemented", "Warning", "Pass", "Need Access",
+                "Manual", "N/A"]
+
+
+def _synthetic_rows(catalog: dict, findings: dict, prefix: str) -> list:
+    """
+    Catalog rows for this section that produced no finding at all.
+
+    They used to be counted in the coverage chart and then omitted from an
+    appendix headed "the full record, by area" — so the document both charged
+    the client for them and refused to name them. Now they are named, and
+    labelled with who they are waiting on.
+    """
+    from engine.access import blocked_on
+    out = []
+    for cid, m in catalog.items():
+        if (m or {}).get("prefix") != prefix or cid in findings:
+            continue
+        who = blocked_on(cid)
+        if who == "manual":
+            out.append((cid, {"status": "Manual",
+                              "evidence": "Reviewed by hand during the "
+                                          "engagement — no automated check "
+                                          "stands in for a judgment call.",
+                              "severity": "Low"}))
+        else:
+            out.append((cid, {"status": "Need Access",
+                              "evidence": "Waiting on our data provider for "
+                                          "this run.", "severity": "Low"}))
+    return out
 
 
 def _us_date(stamp) -> str:
@@ -165,6 +194,7 @@ STATUS_PILL = {
     "Warning":         (colors.HexColor("#fdf1d9"), colors.HexColor("#8a5d05")),
     "Not Implemented": (colors.HexColor("#fdeadf"), colors.HexColor("#9c4a1e")),
     "Need Access":     (colors.HexColor("#f1f0ec"), colors.HexColor("#52514e")),
+    "Manual":          (colors.HexColor("#eaf1fb"), colors.HexColor("#2a5ea8")),
     "N/A":             (colors.HexColor("#f6f5f2"), colors.HexColor("#898781")),
 }
 
@@ -510,24 +540,18 @@ def _severity_counts(findings: dict) -> dict:
 
 def _coverage_counts(findings: dict, catalog: dict) -> tuple:
     """
-    (measured, need_access, not_applicable) across the WHOLE catalog.
+    (measured, need_client_access, ours_to_complete, not_applicable) across the
+    WHOLE catalog.
 
-    Catalog rows we never returned a finding for count as Need Access, not as
-    silently absent — an audit that quietly skips 60 rows and shows 100%
-    coverage is the failure mode this chart exists to make impossible.
+    Catalog rows we never returned a finding for are counted, not silently
+    absent — an audit that quietly skips 58 rows and shows full coverage is the
+    failure mode this chart exists to make impossible. What changed is that
+    they are no longer all filed under the client: see engine/access.py for the
+    three-way split and why it matters.
     """
-    measured = need = na = 0
-    for cid in catalog:
-        f = findings.get(cid)
-        if f is None:
-            need += 1
-        elif f.get("status") == "Need Access":
-            need += 1
-        elif f.get("status") == "N/A":
-            na += 1
-        else:
-            measured += 1
-    return measured, need, na
+    from engine.access import counts
+    c = counts(findings, catalog)
+    return (c["measured"], c["client"], c["vendor"] + c["manual"], c["na"])
 
 
 def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
@@ -662,7 +686,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                        note="Severity tells you what to fix first, not how much there is.")]
     right = [Paragraph("Audit Coverage", S["h3"]),
              SegmentBar(coverage_segments(*cov), width=3.05 * inch,
-                        note="“Need client access” isn’t a mark against you.")]
+                        note="Nothing here is a mark against you.")]
     grid = Table([[left, right]], colWidths=[3.3 * inch, 3.3 * inch])
     grid.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -941,13 +965,15 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     story.append(PageBreak())
     story.append(Paragraph("Appendix — Full Checkpoint Detail", S["h2"]))
     story.append(Paragraph(
-        "The full record, by area. <b>Need Access</b> means we could not run "
-        "the check without your account access. <b>N/A</b> means it does not "
-        "apply to your site.", S["small"]))
+        "The full record, by area. <b>Need Access</b> means the check is "
+        "waiting on a Search Console or Analytics grant. <b>Manual</b> means it "
+        "is a judgment call we make by hand rather than by crawler. <b>N/A</b> "
+        "means it does not apply to your site.", S["small"]))
 
     for k in ORDER:
         rows_f = [(cid, f) for cid, f in findings.items()
                   if (catalog.get(cid, {}) or {}).get("prefix") == k]
+        rows_f += _synthetic_rows(catalog, findings, k)
         if not rows_f:
             continue
         rows_f.sort(key=lambda r: (STATUS_ORDER.index(r[1]["status"])
@@ -1036,7 +1062,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     story.append(lt)
     story.append(Spacer(1, 14))
 
-    m, need, na = _coverage_counts(findings, catalog)
+    m, need_client, ours, na = _coverage_counts(findings, catalog)
     method = [
         ("Collection",
          "Browser capture — pages were opened in a real browser and the rendered "
@@ -1050,11 +1076,18 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
          f"E-E-A-T and generative-engine visibility."),
         ("What we measured", f"{m} checks answered from your live site plus "
                              f"third-party data."),
-        ("What we couldn't measure",
-         f"{need} checks need access to accounts only you control — mostly "
-         f"Search Console and Analytics. Those are marked Need Access and left "
-         f"out of the scoring instead of counted against you. Give us read-only "
-         f"access and most of that gap closes."),
+        ("What we need from you",
+         f"{need_client} checks read from Search Console and Analytics, which "
+         f"we cannot see without a read-only grant. They are left out of the "
+         f"scoring rather than counted against you, and they are the only "
+         f"thing on this list that needs anything from your side."
+         if need_client else
+         "Nothing — every check that depends on your accounts was answered."),
+        ("What we complete during the engagement",
+         f"{ours} checks are ours to finish: off-page authority and rankings "
+         f"come from our data providers, and a further set is reviewed by hand "
+         f"rather than by crawler. They are also left out of the scoring until "
+         f"they are answered."),
         ("Not applicable", f"{na} checks don't apply to a site built like "
                            f"yours, so they're left out."),
         ("Scoring", "Each area scores out of 100 from the checks we could run, "

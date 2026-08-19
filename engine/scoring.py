@@ -63,12 +63,22 @@ def score(findings: dict, catalog: dict, vertical: str | None = None):
             continue
         sections[meta["prefix"]].append((cid, f, meta))
 
+    # How many checkpoints the TEMPLATE has in this area, as opposed to how
+    # many we returned a finding for. Reporting "34/34" for a section the
+    # template gives 50 rows reads as full coverage of the area; it was really
+    # full coverage of the subset we automated. The gating denominator below is
+    # deliberately NOT changed — see the comment there.
+    catalog_totals = defaultdict(int)
+    for meta in catalog.values():
+        catalog_totals[(meta or {}).get("prefix")] += 1
+
     out, per_section = {}, {}
     for sec, rows in sections.items():
         applicable = [(c, f) for c, f, m in rows if f["status"] not in EXCLUDED]
         if not applicable:
             per_section[sec] = {"score": None, "rating": "Not Assessed",
-                                "checked": 0, "total": len(rows),
+                                "checked": 0, "total": catalog_totals[sec] or len(rows),
+                                "returned": len(rows),
                                 "failing": 0, "need_access": len(rows)}
             continue
         pen = 0.0
@@ -94,8 +104,9 @@ def score(findings: dict, catalog: dict, vertical: str | None = None):
         assessable = [r for r in rows if r[1]["status"] != "N/A"]
         if len(applicable) / max(1, len(assessable)) < MIN_SECTION_COVERAGE:
             per_section[sec] = {"score": None, "rating": "Not Assessed",
-                                "checked": len(applicable), "total": len(rows),
-                                "failing": len(fails),
+                                "checked": len(applicable),
+                                "total": catalog_totals[sec] or len(rows),
+                                "returned": len(rows), "failing": len(fails),
                                 "need_access": sum(1 for _, f, _ in rows
                                                    if f["status"] == "Need Access"),
                                 "insufficient_coverage": True}
@@ -103,7 +114,8 @@ def score(findings: dict, catalog: dict, vertical: str | None = None):
 
         per_section[sec] = {
             "score": s, "rating": rating(s), "checked": len(applicable),
-            "total": len(rows), "failing": len(fails),
+            "total": catalog_totals[sec] or len(rows), "returned": len(rows),
+            "failing": len(fails),
             "need_access": sum(1 for _, f, _ in rows if f["status"] == "Need Access"),
             "failing_ids": fails,
         }

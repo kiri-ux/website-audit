@@ -103,10 +103,24 @@ def run_audit_job(audit_id: str):
     # ---- Phase 3: judgment layer (E-E-A-T + GEO assessment) ----
     if not opts.get("skip_judgment"):
         step("checking", "assessing E-E-A-T and GEO checkpoints")
-        findings.update(run_judgment(
+        j = run_judgment(
             art, business_model=a.get("vertical"), client=a.get("client_name"),
             progress=lambda d, t: db.update_audit(
-                audit_id, progress=f"judgment {d}/{t}")))
+                audit_id, progress=f"judgment {d}/{t}"))
+        findings.update(j)
+        # Same reasoning as the DataForSEO line below: when the LLM key is
+        # missing every row degrades to a tidy "Need Access" and the report
+        # still renders, so the failure is invisible unless we say it. This is
+        # what makes E-E-A-T and AI Search show as Not Assessed — those two
+        # sections cannot clear the coverage threshold without these rows.
+        answered = sum(1 for f in j.values() if f.get("status") != "Need Access")
+        if answered:
+            print(f"[worker] {audit_id} judgment layer answered {answered}/"
+                  f"{len(j)} E-E-A-T and AI Search rows", flush=True)
+        else:
+            print(f"[worker] {audit_id} judgment layer produced NOTHING — "
+                  f"ANTHROPIC_API_KEY is not set ON THE WORKER. E-E-A-T and AI "
+                  f"Search will report Not Assessed.", flush=True)
 
     # ---- external collectors (client credentials / vendor keys) ----
     step("checking", "collecting Search Console, Analytics and backlink data")
@@ -148,9 +162,28 @@ def run_audit_job(audit_id: str):
         step("checking", "collecting keyword rankings")
         rk = collect_rankings(art.host, opts.get("location_name"))
         extras["rankings"] = rk
+        # Logged loudly because this is the one collector whose success is
+        # invisible from the outside: a failed call degrades to an empty table
+        # and the report still renders cleanly. Without this line the only way
+        # to tell a live API from a silent no-op is to read the PDF.
+        if rk.get("available"):
+            print(f"[worker] {audit_id} DataForSEO rankings OK — "
+                  f"{rk.get('total', 0)} keywords, {rk.get('top10', 0)} in the "
+                  f"top 10, location={rk.get('location')}", flush=True)
+        else:
+            print(f"[worker] {audit_id} DataForSEO rankings UNAVAILABLE — "
+                  f"{rk.get('reason')}", flush=True)
         shot = capture_screenshot(a["target_url"])
         if shot:
             extras["screenshot"] = shot
+    else:
+        # Silence here used to be indistinguishable from success. Credentials
+        # set on the API service instead of the worker is the easy mistake —
+        # the dashboard looks configured and the collector never runs.
+        why = ("skip_dataforseo was set on this audit"
+               if dataforseo.configured()
+               else "DFS_LOGIN / DFS_PASSWORD are not set ON THE WORKER")
+        print(f"[worker] {audit_id} DataForSEO SKIPPED — {why}", flush=True)
 
     db.save_findings(audit_id, findings)
 

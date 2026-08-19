@@ -52,6 +52,21 @@ def _fit(c, text, font, size, maxw):
     return text, size
 
 
+def _gap_w(r, thick, dy):
+    """
+    Clear width inside the gauge's bottom opening, `dy` below the center.
+
+    Half-chord of the circle at that height, doubled, less the stroke the arc
+    occupies on each side. At dy=0.8r this is about one short word; at dy=0.55r
+    it comfortably holds "Needs Improvement".
+    """
+    import math
+    k = min(abs(dy) / r, 0.999) if r else 0.999
+    # 1.6x the stroke, not 1.0x: half a stroke each side is the geometric
+    # minimum and leaves the last glyph kissing the arc. The extra is margin.
+    return max(1.0, 2 * r * math.sqrt(1 - k * k) - thick * 1.6)
+
+
 class ScoreGauge(Flowable):
     """
     Overall score as a 270° arc.
@@ -104,14 +119,28 @@ class ScoreGauge(Flowable):
             c.setFillColor(MUTED)
             c.drawCentredString(cx, cy - s * 0.10, "/ 100")
 
-        # rating word sits in the arc's bottom gap — inside the flowable
+        # The rating and caption sit in the arc's bottom gap — inside the
+        # flowable, and inside the GAP. Both constraints are real: text below
+        # y=0 lands on the panel border, and text wider than the gap strikes
+        # through the arc on both sides. "Strong" fit at any height, which is
+        # how "Needs Improvement" shipped crossed out.
+        #
+        # The gap narrows fast as you go down, so the width available depends
+        # on where the baseline is. Compute it rather than guessing, and sit
+        # higher than the old 0.80r where the opening is barely a word wide.
+        rate_dy = r * 0.55
+        lbl_dy = rate_dy + s * 0.085
         c.setFillColor(INK2)
-        c.setFont("Helvetica-Bold", s * 0.095)
         txt = self.rating or ("Not scored" if self.score is None else "")
-        c.drawCentredString(cx, cy - r * 0.80, txt)
-        c.setFont("Helvetica", s * 0.072)
+        txt, size = _fit(c, txt, "Helvetica-Bold", s * 0.095,
+                         _gap_w(r, thick, rate_dy))
+        c.setFont("Helvetica-Bold", size)
+        c.drawCentredString(cx, cy - rate_dy, txt)
+        lbl, lsize = _fit(c, self.label, "Helvetica", s * 0.072,
+                          _gap_w(r, thick, lbl_dy))
+        c.setFont("Helvetica", lsize)
         c.setFillColor(MUTED)
-        c.drawCentredString(cx, cy - r * 0.80 - s * 0.085, self.label)
+        c.drawCentredString(cx, cy - lbl_dy, lbl)
         c.restoreState()
 
 
@@ -283,9 +312,17 @@ def severity_segments(counts: dict) -> list:
             for k in ("Critical", "High", "Medium", "Low")]
 
 
-def coverage_segments(measured: int, need_access: int, na: int) -> list:
+def coverage_segments(measured: int, client: int, ours: int, na: int) -> list:
+    """
+    Split by WHO IT IS BLOCKED ON, not by whether we happened to get a number.
+
+    The old two-way split lumped "your Search Console is private" together with
+    "we haven't set the backlink API key" and labelled the whole pile as the
+    client's to fix. Only the middle segment is an ask; the third is our work.
+    """
     return [("Measured", measured, SEQ),
-            ("Need client access", need_access, MUTED),
+            ("Need your access", client, MUTED),
+            ("We complete these", ours, SEQ_DIM),
             ("Not applicable", na, TRACK)]
 
 

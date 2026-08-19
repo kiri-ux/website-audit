@@ -12,9 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.19-11"
-BUILD_NOTES = ("Favicon actually renders — the SVG was invalid XML (bare '&'), "
-               "so every delivery route served a file no browser could parse")
+BUILD = "2026.08.19-13"
+BUILD_NOTES = ("Need Access split by who it is blocked on — the client's ask "
+               "drops from 161 to 38; unautomated checkpoints are named rather "
+               "than hidden; worker says whether DataForSEO and the judgment "
+               "layer ran; favicon renders; gauge rating fits inside the arc")
 # ---------------------------------------------------------------------------
 
 

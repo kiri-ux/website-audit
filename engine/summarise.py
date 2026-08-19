@@ -702,10 +702,21 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
                      f"could be assessed for the number to mean anything. "
                      f"{n_fail} things are worth fixing in the areas we could "
                      f"check.")
-    if n_na:
-        parts.append(f"Another {n_na} checks need access to your Search Console "
-                     f"and Analytics. Those are marked Need Access and left out "
-                     f"of the score.")
+    # Count what the CLIENT is actually blocked on, over the whole catalog —
+    # the same denominator the coverage strip uses. The old line counted every
+    # Need Access row against the client and used a different denominator from
+    # the chart three inches above it, so one page carried two numbers for the
+    # same fact and the larger one was an accusation.
+    try:
+        from engine.access import counts as _access_counts
+        n_client = _access_counts(findings, catalog)["client"]
+    except Exception:  # noqa: BLE001
+        n_client = n_na
+    if n_client:
+        parts.append(f"Another {n_client} checks read from your Search Console "
+                     f"and Analytics, which we need read-only access to. Those "
+                     f"are left out of the score rather than counted against "
+                     f"you.")
     overview = " ".join(parts)
 
     # The single most consequential finding, said plainly and once.

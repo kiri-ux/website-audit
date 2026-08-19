@@ -67,13 +67,16 @@ class _Rec:
         self._font = (name, size)
 
     def drawString(self, x, y, t):
-        self.texts.append({"x": x, "y": y, "t": t, "size": self._font[1]})
+        self.texts.append({"x": x, "y": y, "t": t, "size": self._font[1],
+                           "font": self._font[0]})
 
     def drawCentredString(self, x, y, t):
-        self.texts.append({"x": x, "y": y, "t": t, "size": self._font[1]})
+        self.texts.append({"x": x, "y": y, "t": t, "size": self._font[1],
+                           "font": self._font[0]})
 
     def drawRightString(self, x, y, t):
-        self.texts.append({"x": x, "y": y, "t": t, "size": self._font[1]})
+        self.texts.append({"x": x, "y": y, "t": t, "size": self._font[1],
+                           "font": self._font[0]})
 
     def stringWidth(self, t, font="Helvetica", size=10):
         # generous over-estimate, so a fit test that passes here passes for real
@@ -119,6 +122,28 @@ def main():
           sum(1 for t in rec.texts if t["t"] == "—") == 2)
     check("no row is labelled '0'", not any(t["t"].strip() == "0" for t in rec.texts))
 
+    print("\nTHE RATING WORD NEVER CROSSES THE GAUGE ARC")
+    # "Strong" fit at any height and "Needs Improvement" did not, so the long
+    # ratings shipped struck through by the arc on both sides. Every band the
+    # scorer can emit has to clear the opening it is drawn into.
+    from engine.charts import _gap_w
+    for band in ("Excellent", "Strong", "Needs Improvement", "Weak", "Critical",
+                 "Not Assessed"):
+        rec, w, h = _render(ScoreGauge(72, band))
+        thick = w * 0.105
+        r = (w - (thick / 2 + 1) * 2) / 2
+        hit = []
+        for t in rec.texts:
+            if t["t"] not in (band, "Overall score"):
+                continue
+            dy = w / 2 - t["y"]
+            if dy <= 0:
+                continue
+            width = rec.stringWidth(t["t"], t["font"], t["size"])
+            if width > _gap_w(r, thick, dy) + 0.5:
+                hit.append(f"{t['t']!r} {width:.1f}pt in {_gap_w(r, thick, dy):.1f}pt")
+        check(f"'{band}' fits the arc's opening", not hit, "; ".join(hit))
+
     print("\nNOTHING DRAWS OUTSIDE ITS DECLARED BOX")
     for name, fl in (("SectionBars", SectionBars(rows, width=6.4 * inch)),
                      ("ScoreGauge", ScoreGauge(75, "Strong")),
@@ -153,13 +178,36 @@ def main():
                 "X-02": {"status": "Fail", "severity": "Critical"},
                 "X-03": {"status": "Need Access", "severity": "Medium"},
                 "X-04": {"status": "N/A", "severity": "Low"}}
-    m, need, na = _coverage_counts(findings, catalog)
+    m, need, ours, na = _coverage_counts(findings, catalog)
     check("counts sum to the full catalog, not just returned findings",
-          m + need + na == len(catalog), f"{m}+{need}+{na} vs {len(catalog)}")
-    check("checkpoints never returned count as Need Access, not as absent",
-          need == 17, f"need={need}")
+          m + need + ours + na == len(catalog),
+          f"{m}+{need}+{ours}+{na} vs {len(catalog)}")
+    check("checkpoints never returned are counted, not silently dropped",
+          need + ours == 17, f"need={need} ours={ours}")
     check("measured counts only real answers", m == 2, f"measured={m}")
-    check("N/A is tracked apart from Need Access", na == 1, f"na={na}")
+    check("N/A is tracked apart from the unmeasured", na == 1, f"na={na}")
+
+    # The whole point of the split: an unknown prefix is OUR work to finish,
+    # never filed as homework for the client. Over-reporting the client's
+    # to-do list is the failure this bucketing exists to prevent.
+    check("an unrecognised section is never charged to the client",
+          need == 0, f"need={need}")
+
+    print("\nONLY SEARCH CONSOLE AND ANALYTICS ARE THE CLIENT'S TO GRANT")
+    from engine.access import blocked_on, counts as _acounts
+    check("GSC is the client's", blocked_on("GSC-01") == "client")
+    check("GA4 is the client's", blocked_on("GA4-07") == "client")
+    check("backlinks are ours to buy", blocked_on("OFF-01") == "vendor")
+    check("a judgment-layer row is ours to configure",
+          blocked_on("EEAT-01") == "vendor")
+    check("an unautomated checkpoint is ours to do by hand",
+          blocked_on("ONP-34") == "manual")
+    mixed_cat = {"GSC-01": {"prefix": "GSC"}, "OFF-01": {"prefix": "OFF"},
+                 "ONP-34": {"prefix": "ONP"}, "TECH-01": {"prefix": "TECH"}}
+    c = _acounts({"TECH-01": {"status": "Pass"}}, mixed_cat)
+    check("buckets split three ways over the whole catalog",
+          (c["client"], c["vendor"], c["manual"], c["measured"]) == (1, 1, 1, 1),
+          str(c))
 
     print("\nSEVERITY COUNTS OPEN ISSUES ONLY")
     sev = _severity_counts({
@@ -181,9 +229,12 @@ def main():
     check("zero-count severities draw no segment in the bar",
           len([r for r in rec.rects if r["fill"] and r["h"] > 10]) == 2,
           str([round(r["w"], 1) for r in rec.rects if r["fill"] and r["h"] > 10]))
-    cov = coverage_segments(132, 166, 15)
+    cov = coverage_segments(132, 38, 128, 15)
     check("coverage segments are labelled in words",
-          [c[0] for c in cov] == ["Measured", "Need client access", "Not applicable"])
+          [c[0] for c in cov] == ["Measured", "Need your access",
+                                  "We complete these", "Not applicable"])
+    check("the client-facing ask is the small number, not the pile",
+          cov[1][1] == 38 and cov[2][1] == 128, str([c[1] for c in cov]))
 
     print("\nFULL PDF STILL BUILDS WITH AN UNASSESSED SECTION")
     scores = {"overall": {"score": 75, "rating": "Strong"},
