@@ -212,7 +212,11 @@ def dashboard_html(audits, principal, queue_depth):
                 f"<td class='num'>{h['overall_score'] if h['overall_score'] is not None else '—'}</td>"
                 f"<td class='num'>{e(h.get('coverage') or '—')}</td>"
                 f"<td class='num'>{h.get('pages_crawled') or '—'}</td>"
-                f"<td style='text-align:right'>{_del_form(h['id'], 'Delete')}</td></tr>"
+                f"<td style='text-align:right'>"
+                f"<form method='post' action='/audits/{h['id']}/rerun' "
+                f"style='display:inline;margin-right:6px'>"
+                f"<button class='del' type='submit'>Re-run</button></form>"
+                f"{_del_form(h['id'], 'Delete')}</td></tr>"
                 for h in g["history"])
             hist = (
                 f"<details class='hist'><summary>{len(g['history'])} earlier "
@@ -245,6 +249,9 @@ def dashboard_html(audits, principal, queue_depth):
             + hist
             + f"</div>"
             f"<div class='cact'>"
+            f"<form method='post' action='/audits/{a['id']}/rerun' "
+            f"style='display:inline'>"
+            f"<button class='btn ghost' type='submit'>Re-run</button></form>"
             f"<a class='btn' href='/audits/{a['id']}'>Open</a>"
             f"<a class='btn ghost' href='/audits/{a['id']}.pdf' target='_blank' "
             f"rel='noopener'>PDF</a>"

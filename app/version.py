@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.19-08"
-BUILD_NOTES = ("N/A no longer blocks section scoring; more Off-Page rows; "
-               "favicon inlined so it cannot go missing")
+BUILD = "2026.08.19-10"
+BUILD_NOTES = ("Re-run button; verb-led plan items; score column no longer "
+               "overlaps the bars; scope wording removed")
 # ---------------------------------------------------------------------------
 
 

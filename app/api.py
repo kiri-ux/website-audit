@@ -194,6 +194,53 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
 
 
 
+
+@app.post("/audits/{audit_id}/rerun")
+def rerun_audit(audit_id: str, x_api_key: str | None = Header(None)):
+    """
+    Run the same site again, as a NEW audit.
+
+    Not a re-queue of the same row. Findings are stored, so re-running in place
+    would overwrite the old result and quietly destroy the before/after you get
+    from a fix — which is the main reason anyone re-runs. A new row keeps the
+    history, groups under the same client, and the prune button is there when
+    the history stops being useful.
+    """
+    p = principal(x_api_key)
+    a = db.get_audit(audit_id, p.scope)
+    if not a:
+        raise HTTPException(404, "audit not found")
+    try:
+        opts = json.loads(a.get("options") or "{}")
+        opts = opts if isinstance(opts, dict) else {}
+    except Exception:
+        opts = {}
+    new_id = db.create_audit(tenancy.owner_for_new_audit(p), a["client_name"],
+                             a["target_url"], a.get("vertical"),
+                             a.get("business_model"), opts)
+    Q.enqueue(new_id)
+    return RedirectResponse(f"/audits/{new_id}", status_code=303)
+
+
+@app.post("/api/audits/{audit_id}/rerun", status_code=202)
+def rerun_audit_api(audit_id: str, x_api_key: str | None = Header(None)):
+    p = principal(x_api_key)
+    a = db.get_audit(audit_id, p.scope)
+    if not a:
+        raise HTTPException(404, "audit not found")
+    try:
+        opts = json.loads(a.get("options") or "{}")
+        opts = opts if isinstance(opts, dict) else {}
+    except Exception:
+        opts = {}
+    new_id = db.create_audit(tenancy.owner_for_new_audit(p), a["client_name"],
+                             a["target_url"], a.get("vertical"),
+                             a.get("business_model"), opts)
+    Q.enqueue(new_id)
+    return {"audit_id": new_id, "status": "queued", "rerun_of": audit_id,
+            "poll": f"/api/audits/{new_id}", "report": f"/audits/{new_id}"}
+
+
 # ------------------------------------------------------------------ delete
 @app.delete("/api/audits/{audit_id}")
 def delete_audit_api(audit_id: str, x_api_key: str | None = Header(None)):

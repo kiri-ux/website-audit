@@ -794,7 +794,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         rows = [[Paragraph("<b>ID</b>", S["cellsm"]),
                  Paragraph("<b>Checkpoint</b>", S["cellsm"]),
                  Paragraph("<b>Severity</b>", S["cellsm"]),
-                 Paragraph("<b>Finding &amp; recommended action</b>", S["cellsm"])]]
+                 Paragraph("<b>What we found</b>", S["cellsm"])]]
         for cid, f in issues:
             m = catalog.get(cid, {})
             rows.append([Paragraph(cid, S["cellsm"]),

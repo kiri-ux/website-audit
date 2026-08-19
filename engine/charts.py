@@ -124,7 +124,7 @@ class SectionBars(Flowable):
     """
 
     def __init__(self, rows, width=6.4 * inch, row_h=13.5, label_w=1.95 * inch,
-                 value_w=0.95 * inch):
+                 value_w=1.5 * inch):
         super().__init__()
         self.rows = rows
         self.width = width
@@ -175,10 +175,14 @@ class SectionBars(Flowable):
             c.rect(bar_x, y, bar_w * max(0.0, min(1.0, sc / 100.0)), bar_h,
                    stroke=0, fill=1)
 
+            # Fit the value to its own column. "70  Needs Improvement" is more
+            # than twice the width of "100  Strong", and at a fixed size the
+            # long ones ran back over the bar.
             c.setFillColor(INK2)
-            c.setFont("Helvetica-Bold", 7.5)
-            c.drawRightString(self.width - 2, y + bar_h * 0.25,
-                              f"{sc}  {rating or ''}".strip())
+            txt = f"{sc}  {rating or ''}".strip()
+            txt, size = _fit(c, txt, "Helvetica-Bold", 7.5, self.value_w - 4)
+            c.setFont("Helvetica-Bold", size)
+            c.drawRightString(self.width - 2, y + bar_h * 0.25, txt)
         # baseline under the block
         c.setStrokeColor(LINE)
         c.setLineWidth(0.4)

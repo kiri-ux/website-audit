@@ -88,16 +88,12 @@ def _make(cid, label, patterns):
         val = {"implemented": found, "matched": hits[:3]}
 
         if found:
-            note = (" Paid media tracking — noted for completeness, not audited."
-                    if _cid in AD_PIXELS else "")
-            return finding("Pass", val, f"{_l} detected on the site.{note}",
+            return finding("Pass", val, f"{_l} detected on the site.",
                            [], "Low")
 
         # ---- absent ----
         if _cid in AD_PIXELS:
-            return finding("N/A", val,
-                           "Not detected. Paid media tracking — outside the "
-                           "scope of this audit.", [], "Low", "", 1.0)
+            return finding("N/A", val, "Not detected.", [], "Low", "", 1.0)
 
         if _cid in OPTIONAL:
             return finding("N/A", val,

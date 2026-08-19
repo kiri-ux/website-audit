@@ -238,8 +238,7 @@ def collect_backlinks(domain: str) -> dict:
         if cid in PROSPECTING:
             out.setdefault(cid, _f(
                 "N/A", {},
-                "Prospecting work, delivered during the campaign rather than "
-                "measured in the audit.", "Low", "", 1.0, "campaign_scope"))
+                "Not measured.", "Low", "", 1.0, "campaign_scope"))
         else:
             out.setdefault(cid, _f(
                 "Need Access", {},

@@ -385,92 +385,138 @@ def service_action(theme_key: str, prefix: str) -> str:
 # ---------------------------------------------------------------------------
 # ROADMAP ITEM WORDING.
 #
-# Checkpoint names come from the template in whatever grammar each one happened
-# to be written in — "Pages have more than one H1 tag", "Issues with duplicate
-# title tags", "Title length optimized", "Unique title on every page". Printed
-# as a list they read as four different documents.
+# Two problems, one function.
 #
-# These rules normalize them into one shape: a noun phrase naming the DEFECT.
-# Not the fix — the fix is the engagement — and not the check's own sentence.
+# 1. Checkpoint names arrive in whatever grammar each was written in — "Pages
+#    have more than one H1 tag", "Issues with duplicate title tags", "Title
+#    length optimized". Printed as a list they read as four documents.
+#
+# 2. A noun phrase does not say what we are going to DO. "Duplicate meta
+#    descriptions" leaves the reader asking whether we are removing them,
+#    rewriting them, or merely reporting them. Every line now starts with a
+#    verb, because the plan is a list of work, not a list of symptoms.
+#
+# The verb is scope, not instructions: "Rewrite duplicate page titles" says
+# what we take on without handing over the how.
 # ---------------------------------------------------------------------------
-_ITEM_RULES = [
-    (r"^issues? with\s+", ""),
-    (r"^pages?\s+(?:do not|don't|dont)\s+have\s+", "Missing "),
-    (r"^pages?\s+have\s+more than one\s+", "Multiple "),
-    (r"^pages?\s+have\s+too much\s+", "Excess "),
-    (r"^pages?\s+have\s+low\s+", "Low "),
-    (r"^pages?\s+have\s+only one\s+", "Only one "),
-    (r"^pages?\s+have\s+duplicate\s+", "Duplicate "),
-    (r"^pages?\s+have\s+no\s+", "Missing "),
-    (r"^pages?\s+have\s+", ""),
-    (r"^pages?\s+are\s+", ""),
-    (r"^pages?\s+returned\s+", "Pages returning "),
-    (r"^links?\s+have\s+no\s+", "Missing "),
-    (r"^links?\s+have\s+", ""),
-    (r"^links?\s+on\s+", "Links on "),
-    (r"^images?\s+don'?t\s+have\s+", "Missing image "),
+
+# The defects we actually see, written as the work. Several checkpoints map to
+# the SAME action on purpose — "Titles not unique" and "Duplicate title tags"
+# are one job, and the dedupe below then collapses them into one line.
+_ACTIONS = {
+    # titles & meta
+    "issues with duplicate title tags": "Rewrite duplicate page titles",
+    "unique title on every page": "Rewrite duplicate page titles",
+    "title length optimized": "Bring page titles to the right length",
+    "pages have too much text within the title tags":
+        "Bring page titles to the right length",
+    "unique meta description": "Rewrite duplicate meta descriptions",
+    "pages have duplicate meta descriptions": "Rewrite duplicate meta descriptions",
+    "pages don't have meta descriptions": "Write the missing meta descriptions",
+    "proper length": "Bring meta descriptions to the right length",
+    # headings
+    "one h1 per page": "Reduce each page to a single H1",
+    "pages have more than one h1 tag": "Reduce each page to a single H1",
+    "clear heading hierarchy": "Restructure the heading hierarchy",
+    "logical h2-h6 hierarchy": "Restructure the heading hierarchy",
+    # images
+    "images don't have alt attributes": "Write alt text for every image",
+    "descriptive filenames": "Rename image files descriptively",
+    "responsive images": "Serve responsive image sizes",
+    "lazy loading": "Enable lazy loading on below-the-fold images",
+    # crawl & indexing
+    "pages are blocked from crawling": "Open up the pages blocked from crawling",
+    "pages returned 4xx status code": "Fix or redirect the pages returning errors",
+    "internal links are broken": "Repair the broken internal links",
+    "orphan pages identified": "Link the orphaned pages into the site",
+    "no orphan pages": "Link the orphaned pages into the site",
+    "orphaned pages in sitemap": "Link the orphaned pages into the site",
+    "pages have only one incoming internal link": "Strengthen internal linking",
+    "links have no anchor text": "Add anchor text to bare links",
+    "links have non-descriptive anchor text": "Rewrite vague anchor text",
+    # https & redirects
+    "https consistency": "Move every page onto HTTPS",
+    "entire website uses https": "Move every page onto HTTPS",
+    "homepage does not use https encryption": "Move every page onto HTTPS",
+    "no redirect or canonical to https homepage from http version":
+        "Add the sitewide HTTP to HTTPS redirect",
+    "links on https pages lead to http pages": "Update internal links to HTTPS",
+    "redirect chains and loops": "Clean up redirect chains",
+    "redirect consistency": "Standardize redirect behavior",
+    # content & code
+    "pages have duplicate content issues": "Resolve the duplicate content",
+    "pages have low semantic html usage": "Improve the semantic HTML",
+    # speed
+    "largest contentful paint (lcp)": "Improve Largest Contentful Paint",
+    "cumulative layout shift (cls)": "Reduce Cumulative Layout Shift",
+    "core web vitals evaluated": "Bring Core Web Vitals into the green",
+    "gzip/brotli compression": "Turn on compression at the server",
+    "uncompressed pages": "Turn on compression at the server",
+    "browser caching": "Set browser caching headers",
+    "issues with uncached javascript and css files": "Set browser caching headers",
+    # schema
+    "website schema": "Add Website schema",
+    "article schema": "Add Article schema",
+    "product schema": "Add Product schema",
+    "faq schema": "Add FAQ schema",
+    "organization schema": "Add Organization schema",
+    "breadcrumb schema": "Add Breadcrumb schema",
+    "structured data completeness": "Complete the structured data",
+    # trust & policy pages
+    "author pages": "Publish author pages",
+    "trust badges": "Add trust and accreditation badges",
+    "terms & conditions": "Publish a Terms & Conditions page",
+    "disclosure pages": "Publish the required disclosure pages",
+    "refund policy": "Publish a refund policy",
+    "editorial policy": "Publish an editorial policy",
+    # measurement & AI
+    "cookie consent implementation": "Add a cookie consent banner",
+    "microsoft bing webmaster tools": "Connect Bing Webmaster Tools",
+    "ai crawler accessibility": "Unblock the AI crawlers",
+    "llms.txt file has formatting issues": "Correct the llms.txt formatting",
+    "llms.txt implementation": "Publish an llms.txt file",
+    "llms.txt not found": "Publish an llms.txt file",
+}
+
+# Fallback rules, applied to the raw checkpoint name when it is not in the map
+# above. Each produces a verb-led phrase.
+_ACTION_RULES = [
+    (r"^pages?\s+(?:do not|don't|dont)\s+have\s+(.+)$", "Add {0}"),
+    (r"^pages?\s+have\s+no\s+(.+)$", "Add {0}"),
+    (r"^pages?\s+have\s+more than one\s+(.+)$", "Reduce to one {0} per page"),
+    (r"^pages?\s+have\s+duplicate\s+(.+)$", "Resolve duplicate {0}"),
+    (r"^pages?\s+have\s+too much\s+(.+)$", "Shorten {0}"),
+    (r"^pages?\s+have\s+low\s+(.+)$", "Improve {0}"),
+    (r"^pages?\s+are\s+(.+)$", "Fix pages that are {0}"),
+    (r"^issues?\s+with\s+(.+)$", "Fix {0}"),
+    (r"^links?\s+have\s+no\s+(.+)$", "Add {0} to links"),
+    (r"^links?\s+have\s+(.+)$", "Fix links with {0}"),
+    (r"^images?\s+(?:do not|don't|dont)\s+have\s+(.+)$", "Add image {0}"),
+    (r"^missing\s+(.+)$", "Add {0}"),
+    (r"^no\s+(.+)$", "Add {0}"),
+    (r"^broken\s+(.+)$", "Repair broken {0}"),
+    (r"^duplicate\s+(.+)$", "Resolve duplicate {0}"),
 ]
 
 
-# Names written as the DESIRED STATE rather than the defect. The rules above
-# cannot invert those — "Title length optimized" is not a problem statement —
-# so the handful that actually occur are written out.
-_ITEM_OVERRIDES = {
-    "title length optimized": "Title length",
-    "unique title on every page": "Titles not unique",
-    "proper length": "Meta description length",
-    "lazy loading": "Lazy loading not enabled",
-    "descriptive filenames": "Non-descriptive image filenames",
-    "clear heading hierarchy": "Heading hierarchy",
-    "logical h2-h6 hierarchy": "Heading hierarchy below H1",
-    "structured data completeness": "Incomplete structured data",
-    "author pages": "Missing author pages",
-    "terms & conditions": "Missing Terms & Conditions",
-    "disclosure pages": "Missing disclosure pages",
-    "refund policy": "Missing refund policy",
-    "microsoft bing webmaster tools": "Bing Webmaster Tools not connected",
-    "cookie consent implementation": "No cookie consent banner",
-    "llms.txt file has formatting issues": "llms.txt formatting",
-    "internal links are broken": "Broken internal links",
-    "unique meta description": "Meta descriptions not unique",
-    "one h1 per page": "More than one H1",
-    "trust badges": "No trust badges",
-    "responsive images": "Images not responsive",
-    "website schema": "Missing Website schema",
-    "article schema": "Missing Article schema",
-    "product schema": "Missing Product schema",
-    "faq schema": "Missing FAQ schema",
-    "organization schema": "Missing Organization schema",
-    "breadcrumb schema": "Missing Breadcrumb schema",
-    "ai crawler accessibility": "AI crawlers blocked",
-    "https consistency": "Mixed HTTP and HTTPS pages",
-    "entire website uses https": "Site not fully on HTTPS",
-    "homepage does not use https encryption": "Homepage not on HTTPS",
-    "no redirect or canonical to https homepage from http version":
-        "No HTTP to HTTPS redirect",
-}
-
-
 def roadmap_item(name: str) -> str:
-    """One consistent shape for every line in the plan."""
+    """One line of the plan: a verb, then the work."""
     s = re.sub(r"\s*\(if applicable\)\s*$", "", str(name or "").strip())
-    if s.lower() in _ITEM_OVERRIDES:
-        return _ITEM_OVERRIDES[s.lower()]
-    low = s
-    for pat, repl in _ITEM_RULES:
-        new = re.sub(pat, repl, low, flags=re.I)
-        if new != low:
-            low = new
-            break
-    low = low.strip()
-    if not low:
-        return s
-    # "Multiple H1 tag" -> "Multiple H1 tags"
-    if low.lower().startswith(("multiple ", "duplicate ")) and not low.endswith("s"):
-        low += "s"
-    # Capitalise the first letter only — never .capitalize(), which would turn
-    # "H1 tags" into "H1 tags" but "HTML usage" into "Html usage".
-    return low[0].upper() + low[1:]
+    key = s.lower()
+    if key in _ACTIONS:
+        return _ACTIONS[key]
+    for pat, tmpl in _ACTION_RULES:
+        m = re.match(pat, s, flags=re.I)
+        if m:
+            body = m.group(1).strip().rstrip(".")
+            # Lower-case the first letter unless it is an acronym, so
+            # "Add Meta descriptions" does not appear mid-phrase.
+            if body[1:2].islower():
+                body = body[0].lower() + body[1:]
+            return tmpl.format(body)
+    # Nothing matched: it is already a bare noun phrase from the template.
+    body = s[0].lower() + s[1:] if s[1:2].islower() else s
+    return f"Address {body}"
 
 
 SEV_RANK = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Opportunity": 4}

@@ -171,6 +171,40 @@ def main():
 
     st, body = req("GET", "/")
     check("dashboard renders grouped", st == 200 and b"Clients" in body)
+    check("dashboard offers a re-run", b"/rerun" in body)
+
+    print("\nRE-RUN MAKES A NEW AUDIT, IT DOES NOT OVERWRITE")
+    # The reason anyone re-runs is to see whether a fix worked. Re-queuing the
+    # same row would overwrite the "before" and destroy the comparison.
+    src = db.list_audits("vici")[0]
+    db.save_findings(src["id"], {"TECH-01": {
+        "status": "Pass", "value": {}, "evidence": "before", "affected_pages": [],
+        "severity": "Low", "recommendation": "", "confidence": 1.0,
+        "source": "test"}})
+    # Counted UNFILTERED: the API creates audits owned by the internal
+    # principal ("vici-internal"), while the fixtures above are seeded as
+    # "vici". Filtering by the fixture's partner id would silently miss the
+    # new row and make this assertion test nothing.
+    before_n = len(db.list_audits())
+    st, body = req("POST", f"/api/audits/{src['id']}/rerun")
+    check("rerun returns 202", st == 202, str(st))
+    new_id = json.loads(body)["audit_id"]
+    check("a NEW audit id is returned", new_id != src["id"])
+    check("the original still exists", db.get_audit(src["id"]) is not None)
+    check("the original's findings are untouched",
+          db.get_findings(src["id"])["TECH-01"]["evidence"] == "before")
+    after_n = len(db.list_audits())
+    check("audit count went up by one", after_n == before_n + 1,
+          f"{before_n} -> {after_n}")
+    nw = db.get_audit(new_id)
+    check("target and client are carried over",
+          nw["target_url"] == src["target_url"]
+          and nw["client_name"] == src["client_name"])
+    check("it groups under the same client",
+          db.client_key(nw["client_name"]) == db.client_key(src["client_name"]))
+    check("it is queued for the worker", nw["status"] == "queued", nw["status"])
+    st, body = req("POST", "/api/audits/nope/rerun")
+    check("rerunning an unknown audit 404s", st == 404, str(st))
 
     print("\n" + "=" * 68)
     print(f"  {len(FAILURES)} FAILED: {FAILURES}" if FAILURES
