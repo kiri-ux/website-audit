@@ -20,6 +20,7 @@ Run:  python3 -m tests.test_routes
 from __future__ import annotations
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -108,18 +109,46 @@ def main():
           b"audit not found" not in body)
 
     print("\nBRAND ASSETS ARE SERVED")
-    # Two failure modes worth a test: the files not being copied into the
-    # image, and the routes being shadowed the way the PDF route was.
+    # Three failure modes worth a test: the files not being copied into the
+    # image, the routes being shadowed the way the PDF route was, and — the one
+    # that actually shipped — a 200 carrying an SVG that no browser will parse.
     st, ct, body = GET("/favicon.svg")
     check("favicon.svg is served", st == 200 and b"<svg" in body, f"{st} {ct}")
     check("favicon uses the Vici field color", b"#002D58" in body)
     check("favicon carries the gold accent", b"#F1B434" in body)
+
+    # THE IMPORTANT ONE. SVG is XML and browsers parse a standalone SVG
+    # document strictly: a bare `&` in an attribute kills the whole file
+    # silently. Asserting "contains <svg" passed happily while the tab stayed
+    # blank for three builds. Assert it PARSES.
+    import xml.etree.ElementTree as _ET
+    try:
+        _ET.fromstring(body)
+        parses, why = True, ""
+    except Exception as exc:  # noqa: BLE001
+        parses, why = False, str(exc)
+    check("the served favicon is well-formed XML (a browser can render it)",
+          parses, why)
+
+    # And the inlined copy must be the same well-formed bytes — it is built
+    # from the file, so a broken file would poison the data URI too.
+    import base64 as _b64
+    _, _, dash = GET("/")
+    m = re.search(rb"data:image/svg\+xml;base64,([A-Za-z0-9+/=]+)", dash)
+    check("the head carries an inline data-URI icon", m is not None)
+    if m:
+        try:
+            _ET.fromstring(_b64.b64decode(m.group(1)))
+            inline_ok, why = True, ""
+        except Exception as exc:  # noqa: BLE001
+            inline_ok, why = False, str(exc)
+        check("the inlined data-URI icon is well-formed too", inline_ok, why)
+
     st, ct, body = GET("/favicon.ico")
     check("/favicon.ico does not 404 (browsers ask unprompted)", st == 200, str(st))
     st, ct, body = GET("/apple-touch-icon.png")
     check("apple touch icon is a real PNG",
           st == 200 and body[:8] == b"\x89PNG\r\n\x1a\n", f"{st} {len(body)}B")
-    _, _, dash = GET("/")
     check("dashboard links the icon", b"/favicon.svg" in dash)
     _, _, rep = GET(f"/audits/{aid}")
     check("the report page links it too", b"/favicon.svg" in rep)
@@ -136,7 +165,6 @@ def main():
 
     print("\nEVERY LINK THE REPORT PAGE ADVERTISES RESOLVES")
     _, _, html = GET(f"/audits/{aid}")
-    import re
     hrefs = set(re.findall(rb'href=[\'"](/[^\'" >]+)', html))
     for h in sorted(hrefs):
         path = h.decode()

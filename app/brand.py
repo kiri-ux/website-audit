@@ -38,7 +38,30 @@ def _read(name: str) -> bytes | None:
         return None
 
 
-FAVICON_SVG: bytes = _read("favicon.svg") or _FALLBACK_SVG.encode()
+def _wellformed(blob: bytes | None) -> bytes | None:
+    """
+    SVG is XML, and browsers parse a standalone SVG document STRICTLY. One raw
+    `&` in an attribute and the whole file fails to parse — the browser draws
+    nothing and reports nothing. That is exactly what shipped: `aria-label`
+    read "SEO & AI Search", so /favicon.svg returned a clean 200 containing a
+    document no renderer would accept, and the data URI below was built from
+    the same bytes. Three delivery mechanisms, one broken payload.
+
+    A read that succeeds is not the test. Parsing is.
+    """
+    if not blob:
+        return None
+    try:
+        import xml.etree.ElementTree as ET
+        ET.fromstring(blob)
+        return blob
+    except Exception as exc:  # noqa: BLE001
+        print(f"[brand] static/favicon.svg is not well-formed ({exc}) — "
+              f"using the embedded copy", flush=True)
+        return None
+
+
+FAVICON_SVG: bytes = _wellformed(_read("favicon.svg")) or _FALLBACK_SVG.encode()
 APPLE_ICON: bytes | None = _read("apple-touch-icon.png")
 
 _DATA_URI = "data:image/svg+xml;base64," + base64.b64encode(FAVICON_SVG).decode()

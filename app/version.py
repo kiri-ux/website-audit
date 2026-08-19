@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.19-10"
-BUILD_NOTES = ("Re-run button; verb-led plan items; score column no longer "
-               "overlaps the bars; scope wording removed")
+BUILD = "2026.08.19-11"
+BUILD_NOTES = ("Favicon actually renders — the SVG was invalid XML (bare '&'), "
+               "so every delivery route served a file no browser could parse")
 # ---------------------------------------------------------------------------
 
 
