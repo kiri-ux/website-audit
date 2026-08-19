@@ -136,7 +136,13 @@ class SiteArtifact:
     www_resolve: dict = field(default_factory=dict)
     http_to_https: dict = field(default_factory=dict)
     crawled_at: float = 0.0
-    truncated: str | None = None   # set when a time budget cut work short
+    # `truncated` means ONE thing: we did not reach every page we intended to,
+    # so coverage-dependent findings must be gated. It is NOT set when a
+    # post-crawl verification pass runs out of time — that costs us link
+    # sampling, not pages, and flagging the whole report as a partial crawl for
+    # it over-claims a problem that isn't there.
+    truncated: str | None = None          # page crawl cut short → gate coverage
+    link_check_truncated: str | None = None   # link sampling cut short only
 
     @property
     def coverage_ratio(self) -> float:
@@ -456,7 +462,9 @@ class Crawler:
                 queue.append((u, 1))
         while queue and len(self.art.pages) < self.max_pages:
             if self._out_of_time():
-                self.art.truncated = "page crawl hit the time budget"
+                self.art.truncated = (
+                    f"the crawl reached {len(self.art.pages)} pages before hitting "
+                    f"the time budget")
                 break
             url, depth = queue.pop(0)
             if self.respect_robots and self.rp and not self.rp.can_fetch(self.ua, url):
@@ -592,7 +600,10 @@ class Crawler:
             if SKIP_EXT.search(u):
                 continue
             if self._out_of_time():
-                self.art.truncated = "internal link verification hit the time budget"
+                self.art.link_check_truncated = (
+                    f"internal link checking stopped after "
+                    f"{len(self.art.external_checked) or 'some'} of "
+                    f"{len(to_check)} targets")
                 break
             try:
                 r = self.sess.head(u, timeout=6, allow_redirects=True)
@@ -612,7 +623,10 @@ class Crawler:
         self.progress("verifying external links", len(self.art.pages), self.max_pages)
         for u in sorted(set(ext))[:60]:
             if self._out_of_time():
-                self.art.truncated = "external link verification hit the time budget"
+                self.art.link_check_truncated = (
+                    f"outbound link checking stopped after "
+                    f"{len(self.art.external_checked)} of "
+                    f"{min(len(set(ext)), 60)} sampled links")
                 break
             try:
                 r = self.sess.head(u, timeout=5, allow_redirects=True)

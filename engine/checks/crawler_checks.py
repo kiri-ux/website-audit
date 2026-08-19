@@ -90,11 +90,24 @@ def tech06(a, c):
 def tech07(a, c):
     b = [x for x in a.broken_links if x["kind"] == "external"]
     n = len(a.external_checked)
-    return finding("Fail" if b else "Pass", {"count": len(b), "checked": n},
-                   f"{len(b)} of {n} sampled external links returned an error."
-                   if b else f"All {n} sampled external links resolved successfully.",
-                   [x["to"] for x in b], "Low" if len(b) < 5 else "Medium",
-                   "Update or remove dead outbound links." if b else "")
+    short = getattr(a, "link_check_truncated", None)
+    if not n:
+        return finding("N/A", {"checked": 0},
+                       "No outbound links were verified.", [], "Low", "", 1.0)
+    ev = (f"{len(b)} of {n} sampled outbound links returned an error."
+          if b else f"All {n} sampled outbound links resolved successfully.")
+    if short:
+        # Say so on the row that is actually affected, rather than banner-ing
+        # the whole report. A short sample can prove links ARE broken; it can
+        # never prove they are all fine, so a clean short sample is a Warning.
+        ev += " The sample was cut short by the time budget, so this is a "\
+              "partial view of outbound links."
+    return finding("Fail" if b else ("Warning" if short else "Pass"),
+                   {"count": len(b), "checked": n, "sample_truncated": bool(short)},
+                   ev, [x["to"] for x in b],
+                   "Low" if len(b) < 5 else "Medium",
+                   "Update or remove dead outbound links." if b else "",
+                   0.7 if short and not b else 1.0)
 
 
 @check("TECH-08")  # [SEMRUSH-SPIKE] Internal image is broken

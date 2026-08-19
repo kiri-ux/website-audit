@@ -307,19 +307,6 @@ def dashboard_html(audits, principal, queue_depth):
         <input name='primary_conversion' form='auditform'
                placeholder='Book an appointment'></div>
     </div>
-    <div style='margin-top:12px'>
-      <label>Paid channels running
-        <span style='font-weight:400;color:var(--muted)'>— a missing pixel is only
-        a finding for a channel you actually run</span></label>
-      <div style='display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;
-                  color:var(--ink2);margin-top:4px'>
-        {"".join(f"<label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>"
-                 f"<input type='checkbox' name='channels' value='{v}' form='auditform' "
-                 f"style='width:auto'> {l}</label>"
-                 for v, l in (("google_ads", "Google Ads"), ("meta", "Meta"),
-                              ("linkedin", "LinkedIn")))}
-      </div>
-    </div>
     <div style='margin-top:12px;display:flex;gap:20px;font-size:12.5px;color:var(--ink2)'>
       <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
         <input type='checkbox' name='browser_ua' value='1' form='auditform'

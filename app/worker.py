@@ -74,7 +74,10 @@ def run_audit_job(audit_id: str):
     )
     art = cr.crawl()
     if art.truncated:
-        print(f"[worker] {audit_id} TRUNCATED: {art.truncated}", flush=True)
+        print(f"[worker] {audit_id} CRAWL TRUNCATED: {art.truncated}", flush=True)
+    if getattr(art, "link_check_truncated", None):
+        print(f"[worker] {audit_id} link sample short: "
+              f"{art.link_check_truncated}", flush=True)
     q = art.quality
     if q.degenerate:
         # Do not silently produce a report full of false findings. Park the audit
@@ -94,11 +97,7 @@ def run_audit_job(audit_id: str):
         step("checking", f"crawled {len(art.pages)} pages; running checkpoints")
 
     ctx = {"psi_key": cfg.psi_key,
-           "skip_psi": bool(opts.get("skip_psi", cfg.skip_psi)),
-           # Which ad channels the client actually runs. Without this, a missing
-           # Meta pixel is reported as a defect on a site that has never bought
-           # a Meta ad. See engine/checks/tagdetect.py.
-           "channels": opts.get("channels") or []}
+           "skip_psi": bool(opts.get("skip_psi", cfg.skip_psi))}
     findings = engine_checks.run_all(art, ctx)
 
     # ---- Phase 3: judgment layer (E-E-A-T + GEO assessment) ----

@@ -771,7 +771,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         rows.append([
             Paragraph(SECTION_NAMES[k], S["cell"]),
             Paragraph("—" if sc is None else f"<b>{sc}</b>", S["cell"]),
-            MiniMeter(sc),
+            MiniMeter(sc) if sc is not None else "",
             Paragraph(_p(v.get("rating")), S["cell"]),
             Paragraph(f"{v.get('checked')}/{v.get('total')}", S["cellsm"]),
             Paragraph(str(v.get("failing", 0)), S["cellsm"]),
@@ -901,8 +901,12 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             ]))
             block = [head]
             if phase.get("rationale"):
-                block.append(Paragraph(_p(phase["rationale"]), S["small"]))
-            block.append(Spacer(1, 4))
+                # Centered: it is a caption for the phase, not body copy, and
+                # left-aligning it made it read as the first bullet.
+                mid = ParagraphStyle("phasecap", parent=S["small"], alignment=1,
+                                     textColor=INK2)
+                block.append(Paragraph(_p(phase["rationale"]), mid))
+            block.append(Spacer(1, 5))
 
             # Work items, not instructions: the checkpoint name is what we are
             # taking on. The fix itself is the engagement.
@@ -1059,7 +1063,9 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                     "we couldn't measure is not a failing one."),
     ]
     if meta.get("truncated"):
-        method.append(("Coverage limit", _p(meta["truncated"])))
+        method.append(("Coverage limit",
+                       _p(meta["truncated"]) + ". Sitewide counts describe the "
+                       "pages we reached, not the whole site."))
     story.append(_kv_table([[Paragraph(f"<b>{_p(k)}</b>", S["cellsm"]),
                              Paragraph(_p(v), S["cellsm"])] for k, v in method],
                            w1=1.55, w2=5.05))

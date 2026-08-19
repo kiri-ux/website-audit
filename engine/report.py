@@ -173,10 +173,12 @@ def render_html(meta, sc, findings, catalog, summary=None):
          f"<title>SEO/GEO Audit — {e(meta['client'])}</title><style>{CSS}</style>",
          "</head><body class='viz-root'><div class='wrap'>"]
 
+    # Only a shortfall in PAGES warrants a document-level banner. A link-sample
+    # that ran short is noted on the two rows it affects instead — see TECH-07.
     if meta.get("truncated"):
         P.append(f"<div class='note' style='border-left-color:var(--warning)'>"
-                 f"<b>Partial crawl.</b> {e(meta['truncated'])} — coverage below "
-                 f"reflects only the pages reached within the time budget.</div>")
+                 f"<b>Partial crawl.</b> {e(meta['truncated'])}. Sitewide counts "
+                 f"below describe the pages we reached, not the whole site.</div>")
 
     if meta.get("crawl_blocked"):
         P.append(

@@ -12,8 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.19-05"
-BUILD_NOTES = ("Evidence screenshots, AI Search Visibility page, Vici favicon")
+BUILD = "2026.08.19-07"
+BUILD_NOTES = ("Paid-media pixels out of scope; roadmap wording normalized; "
+               "copy fixes")
 # ---------------------------------------------------------------------------
 
 

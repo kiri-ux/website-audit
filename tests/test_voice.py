@@ -154,22 +154,20 @@ def main():
           bool(bc.sections or bc.locations or bc.brand),
           f"brand={bc.brand!r} sections={bc.sections}")
 
-    print("\n4b. NO PIXEL IS RECOMMENDED FOR A CHANNEL THEY DON'T RUN")
+    print("\n4b. PAID-MEDIA PIXELS ARE NEVER REPORTED AS DEFECTS")
+    # Paid media is a different team and often a different agency. Reporting a
+    # missing ad pixel as a finding bills work nobody asked for.
     from engine import checks as _checks
-    no_chan = _checks.run_all(art, {"skip_psi": True})
+    ana = _checks.run_all(art, {"skip_psi": True})
     for cid in ("ANA-06", "ANA-07", "ANA-08", "ANA-09"):
-        f = no_chan.get(cid, {})
-        if f.get("status") == "Pass":
-            continue          # the fixture actually has it installed
-        check(f"{cid} is N/A, not a defect, with no channel stated",
-              f.get("status") == "N/A", f"{f.get('status')} / {f.get('severity')}")
-    ran = _checks.run_all(art, {"skip_psi": True, "channels": ["linkedin"]})
-    li = ran.get("ANA-07", {})
-    check("a stated channel turns the same row into a real finding",
-          li.get("status") in ("Not Implemented", "Pass"), li.get("status"))
-    check("and it says why it now matters",
-          li.get("status") == "Pass" or "running" in (li.get("evidence") or ""),
-          (li.get("evidence") or "")[:70])
+        f = ana.get(cid, {})
+        check(f"{cid} is never a defect",
+              f.get("status") in ("N/A", "Pass"),
+              f"{f.get('status')} / {f.get('severity')}")
+    joined = " ".join((f.get("evidence") or "") for f in ana.values())
+    check("no ad pixel is recommended anywhere",
+          "Implement Meta Pixel" not in joined
+          and "Install Google Ads" not in joined, "")
 
     print("\n5. NO MARKETING FILLER ANYWHERE IN THE PROSE")
     blob = " ".join([s["overview"], s.get("headline", ""), s["opportunity"],

@@ -97,7 +97,14 @@ class BusinessContext:
         """
         name = self.brand or "This site"
         if self.self_description:
-            return f'{name} describes itself as "{self.self_description}"'
+            desc = self.self_description.strip()
+            # If their own sentence already opens with the brand name, quoting
+            # it after "X describes itself as" prints the name twice in nine
+            # words. Use their sentence on its own — it is still their words,
+            # and it reads like a person wrote the paragraph.
+            if name and desc.lower().startswith(name.lower()):
+                return desc.rstrip(".") + "."
+            return f'{name} describes itself as "{desc}"'
         if self.locations:
             n = len(self.locations)
             where = ""

@@ -10,26 +10,20 @@ import re
 from . import check, finding
 
 # ---------------------------------------------------------------------------
-# Which of these is a DEFECT depends on what the client actually runs.
+# Which of these is a DEFECT depends on what the row is for.
 #
-# The first draft reported "LinkedIn Insight Tag not detected" as a Medium
-# issue on every site — including clients who have never bought a LinkedIn ad.
-# Recommending a pixel for a channel someone does not use is noise at best, and
-# it is the kind of wrong that makes a client distrust the rest of the document.
+# The first draft reported "LinkedIn Insight Tag not detected" as a Medium issue
+# on every site, including clients who have never bought a LinkedIn ad. Paid
+# media is a different team at Vici and often a different agency entirely, so
+# those rows are now detected and reported but never scored as defects.
 #
-# Brendan's own template lists these as a STATE ("Implemented") with a
-# Priority column, not as a pass/fail. So:
+# Brendan's own template lists all twelve of these as a STATE ("Implemented")
+# with a Priority column, not as a pass/fail. So:
 #
-#   CORE     — every site should have these. Absent is a real finding.
-#   CHANNEL  — only meaningful if the client runs that channel. Absent is N/A
-#              unless we have evidence they run it, and then it is a real gap:
-#              spending on a channel you cannot measure is worse than not
-#              running it.
-#   OPTIONAL — genuinely nice-to-have. Absent is never a defect.
-#
-# "Evidence they run it" is either the intake (`channels` on the audit) or a
-# sibling tag from the same platform showing up in the page source. If the
-# Meta Pixel is installed, they run Meta — we do not need to be told.
+#   CORE      — every site should have these. Absent is a real finding.
+#   AD_PIXELS — paid media. Detected and reported, never a defect.
+#   OPTIONAL  — genuinely nice-to-have. Absent is never a defect.
+#   PHONE_LED — only a finding when the site actually sells by phone.
 # ---------------------------------------------------------------------------
 SIGNATURES = {
     "ANA-01": ("Google Tag Manager",
@@ -61,33 +55,19 @@ SIGNATURES = {
 }
 
 CORE = {"ANA-01", "ANA-02", "ANA-12"}
-CHANNEL = {"ANA-06": "meta", "ANA-07": "linkedin",
-           "ANA-08": "google_ads", "ANA-09": "google_ads"}
+
+# Paid-media pixels. NEVER a finding, in either direction.
+#
+# Vici's paid team owns these, and the client may not be running that channel at
+# all — so "Meta Pixel not detected" is at best noise and at worst an invoice
+# for work nobody asked for. We still DETECT them, because knowing a pixel is
+# present is useful context, but the row is informational: N/A when absent, Pass
+# when present, never a defect and never in the roadmap.
+AD_PIXELS = {"ANA-06": "Meta Pixel", "ANA-07": "LinkedIn Insight Tag",
+             "ANA-08": "Google Ads Conversion Tracking",
+             "ANA-09": "Google Ads Remarketing"}
 OPTIONAL = {"ANA-04", "ANA-11"}          # analytics extras, never required
 PHONE_LED = {"ANA-10"}                   # only if the business sells by phone
-
-CHANNEL_LABEL = {"meta": "Meta (Facebook/Instagram) ads",
-                 "linkedin": "LinkedIn ads", "google_ads": "Google Ads"}
-
-
-def _channels_in_use(a, c) -> set:
-    """
-    Channels we have EVIDENCE for: named at intake, or a sibling tag detected.
-
-    Detection beats intake here rather than the other way round — a tag in the
-    page source is a fact, an intake field is a memory.
-    """
-    if "_channels" in c:
-        return c["_channels"]
-    stated = {str(x).strip().lower().replace(" ", "_")
-              for x in (c.get("channels") or []) if str(x).strip()}
-    hay = c.setdefault("_tag_haystack", _haystack(a))
-    for cid, chan in CHANNEL.items():
-        pats = SIGNATURES[cid][1]
-        if any(re.search(p, hay, re.I) for p in pats):
-            stated.add(chan)
-    c["_channels"] = stated
-    return stated
 
 
 def _haystack(art) -> str:
@@ -108,49 +88,36 @@ def _make(cid, label, patterns):
         val = {"implemented": found, "matched": hits[:3]}
 
         if found:
-            return finding("Pass", val, f"{_l} detected on the site.", [], "Low")
+            note = (" Paid media tracking — noted for completeness, not audited."
+                    if _cid in AD_PIXELS else "")
+            return finding("Pass", val, f"{_l} detected on the site.{note}",
+                           [], "Low")
 
-        # ---- absent. Whether that is a problem depends on the client. ----
+        # ---- absent ----
+        if _cid in AD_PIXELS:
+            return finding("N/A", val,
+                           "Not detected. Paid media tracking — outside the "
+                           "scope of this audit.", [], "Low", "", 1.0)
+
         if _cid in OPTIONAL:
-            return finding("N/A", val, "Not in use. Optional.", [], "Low", "", 1.0)
+            return finding("N/A", val,
+                           "Not in use. Optional.", [], "Low", "", 1.0)
 
         if _cid in PHONE_LED:
-            # Only relevant if the phone is a real conversion path. A published
-            # number on the page is the evidence for that.
-            phone = bool(re.search(r"tel:\+?[\d\-\(\) ]{7,}", 
-                                   "\n".join((p.rendered_text or "") + 
-                                              " ".join(str(x) for x in (p.links_internal or []))
-                                              for p in a.pages.values())[:400000], re.I))
+            phone = bool(re.search(r"tel:\+?[\d\-\(\) ]{7,}",
+                                   "\n".join((p.rendered_text or "")
+                                              for p in a.pages.values())[:400000],
+                                   re.I))
             if not phone:
                 return finding("N/A", val,
                                "Not in use. No click-to-call links on the site.",
                                [], "Low", "", 1.0)
             return finding(
                 "Not Implemented", val,
-                f"{_l} not detected, but the site publishes click-to-call links. "
-                f"Calls are converting and nothing is counting them.",
+                "Not detected, but the site publishes click-to-call links — "
+                "phone conversions are not being counted.",
                 [], "Medium",
                 "Add call tracking so phone conversions show up next to form fills.")
-
-        chan = CHANNEL.get(_cid)
-        if chan:
-            in_use = _channels_in_use(a, c)
-            if chan not in in_use:
-                # One line. If it is not installed and does not apply, a
-                # paragraph explaining why is just noise in a 313-row table.
-                return finding("N/A", val,
-                               f"Not in use. Only needed if you run "
-                               f"{CHANNEL_LABEL.get(chan, chan)}.",
-                               [], "Low", "", 1.0)
-            # They DO run this channel. Missing measurement is now a real gap.
-            return finding(
-                "Not Implemented", val,
-                f"{_l} not detected, but you are running "
-                f"{CHANNEL_LABEL.get(chan, chan)} — that spend cannot be "
-                f"attributed without it.",
-                [], "High",
-                f"Install {_l} so {CHANNEL_LABEL.get(chan, chan)} conversions "
-                f"are measurable.")
 
         # CORE
         return finding(

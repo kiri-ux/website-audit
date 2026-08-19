@@ -58,7 +58,6 @@ class AuditRequest(BaseModel):
     # what makes a missing LinkedIn pixel a defect instead of a non-event.
     primary_markets: str | None = None
     primary_conversion: str | None = None
-    channels: list[str] | None = None
     max_pages: int | None = None
     max_depth: int | None = None
     render_js: bool | None = None
@@ -84,8 +83,8 @@ def create_audit(req: AuditRequest, x_api_key: str | None = Header(None)):
         raise HTTPException(400, "target_url must include a scheme")
     opts = {k: v for k, v in req.model_dump().items()
             if k in ("max_pages", "max_depth", "render_js", "skip_psi",
-                     "user_agent", "primary_markets", "primary_conversion",
-                     "channels") and v is not None}
+                     "user_agent", "primary_markets",
+                     "primary_conversion") and v is not None}
     aid = db.create_audit(tenancy.owner_for_new_audit(p), req.client_name,
                           req.target_url, req.vertical, req.business_model, opts)
     Q.enqueue(aid)
@@ -186,7 +185,7 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
                 vertical: str = Form(""), max_pages: int = Form(150),
                 render_js: str = Form(""), browser_ua: str = Form(""),
                 skip_psi: str = Form(""), primary_markets: str = Form(""),
-                primary_conversion: str = Form(""), channels: list = Form([]),
+                primary_conversion: str = Form(""),
                 x_api_key: str | None = Header(None)):
     p = principal(x_api_key)
     opts = {"max_pages": max_pages, "skip_psi": bool(skip_psi),
@@ -195,8 +194,6 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
                  ("primary_conversion", primary_conversion)):
         if v.strip():
             opts[k] = v.strip()
-    if channels:
-        opts["channels"] = [c for c in channels if c]
     if browser_ua:
         opts["user_agent"] = (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -376,7 +373,6 @@ def _report_meta(a: dict) -> dict:
             "business_model": a.get("business_model"),
             "primary_markets": _o.get("primary_markets"),
             "primary_conversion": _o.get("primary_conversion"),
-            "channels": _o.get("channels") or [],
             "pages_crawled": a["pages_crawled"] or 0,
             "coverage": a["coverage"] or "",
             "generated": time.strftime("%Y-%m-%d %H:%M",

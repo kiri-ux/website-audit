@@ -102,6 +102,12 @@ TERMS = {
         "Whether a page has actually been stored in Google's database. A page "
         "that is crawled but not indexed cannot appear in results at all.",
         (r"\bnoindex\b", r"index coverage", r"\bindexab", r"\bindexed\b")),
+    "lazyload": (
+        "Lazy loading", "🐢", "◷",
+        "Telling the browser to hold off downloading images until the visitor "
+        "scrolls near them. The page above the fold appears sooner, which is "
+        "what both Google and your visitors actually measure.",
+        (r"lazy.?load", r'loading="lazy"', r"loading=lazy")),
     "compression": (
         "GZIP / Brotli compression", "📦", "⬟",
         "Server-side squashing of page code before it is sent, typically "

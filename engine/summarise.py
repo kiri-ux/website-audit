@@ -19,6 +19,7 @@ Letting it only rephrase pre-selected findings bounds the damage to tone.
 from __future__ import annotations
 import json
 import os
+import re
 
 from .scoring import FAILING, top_issues
 
@@ -338,7 +339,7 @@ SERVICE_ACTION = {
     "schema": "We design and deploy structured data for your key page types, "
               "then monitor how it renders in results.",
     "titles": "Title and heading rewrites across priority templates are part of "
-              "the on-page workstream.",
+              "the on-page optimization.",
     "images": "Image optimization and alt text are handled in the on-page and "
               "performance work.",
     "speed": "Performance work — server response, asset delivery and Core Web "
@@ -350,7 +351,7 @@ SERVICE_ACTION = {
     "authority": "Link acquisition and digital PR run continuously through the "
                  "campaign.",
     "eeat": "We build out authorship, credentials and trust signals as part of "
-            "the content workstream.",
+            "the content optimization.",
     "hreflang": "Language and region targeting is corrected during technical "
                 "setup.",
     "architecture": "We restructure internal linking so authority reaches the "
@@ -378,6 +379,98 @@ def service_action(theme_key: str, prefix: str) -> str:
             or SERVICE_BY_SECTION.get(prefix)
             or "Covered in the campaign scope — we'll walk you through the "
                "sequencing on the kickoff call.")
+
+
+
+# ---------------------------------------------------------------------------
+# ROADMAP ITEM WORDING.
+#
+# Checkpoint names come from the template in whatever grammar each one happened
+# to be written in — "Pages have more than one H1 tag", "Issues with duplicate
+# title tags", "Title length optimized", "Unique title on every page". Printed
+# as a list they read as four different documents.
+#
+# These rules normalize them into one shape: a noun phrase naming the DEFECT.
+# Not the fix — the fix is the engagement — and not the check's own sentence.
+# ---------------------------------------------------------------------------
+_ITEM_RULES = [
+    (r"^issues? with\s+", ""),
+    (r"^pages?\s+(?:do not|don't|dont)\s+have\s+", "Missing "),
+    (r"^pages?\s+have\s+more than one\s+", "Multiple "),
+    (r"^pages?\s+have\s+too much\s+", "Excess "),
+    (r"^pages?\s+have\s+low\s+", "Low "),
+    (r"^pages?\s+have\s+only one\s+", "Only one "),
+    (r"^pages?\s+have\s+duplicate\s+", "Duplicate "),
+    (r"^pages?\s+have\s+no\s+", "Missing "),
+    (r"^pages?\s+have\s+", ""),
+    (r"^pages?\s+are\s+", ""),
+    (r"^pages?\s+returned\s+", "Pages returning "),
+    (r"^links?\s+have\s+no\s+", "Missing "),
+    (r"^links?\s+have\s+", ""),
+    (r"^links?\s+on\s+", "Links on "),
+    (r"^images?\s+don'?t\s+have\s+", "Missing image "),
+]
+
+
+# Names written as the DESIRED STATE rather than the defect. The rules above
+# cannot invert those — "Title length optimized" is not a problem statement —
+# so the handful that actually occur are written out.
+_ITEM_OVERRIDES = {
+    "title length optimized": "Title length",
+    "unique title on every page": "Titles not unique",
+    "proper length": "Meta description length",
+    "lazy loading": "Lazy loading not enabled",
+    "descriptive filenames": "Non-descriptive image filenames",
+    "clear heading hierarchy": "Heading hierarchy",
+    "logical h2-h6 hierarchy": "Heading hierarchy below H1",
+    "structured data completeness": "Incomplete structured data",
+    "author pages": "Missing author pages",
+    "terms & conditions": "Missing Terms & Conditions",
+    "disclosure pages": "Missing disclosure pages",
+    "refund policy": "Missing refund policy",
+    "microsoft bing webmaster tools": "Bing Webmaster Tools not connected",
+    "cookie consent implementation": "No cookie consent banner",
+    "llms.txt file has formatting issues": "llms.txt formatting",
+    "internal links are broken": "Broken internal links",
+    "unique meta description": "Meta descriptions not unique",
+    "one h1 per page": "More than one H1",
+    "trust badges": "No trust badges",
+    "responsive images": "Images not responsive",
+    "website schema": "Missing Website schema",
+    "article schema": "Missing Article schema",
+    "product schema": "Missing Product schema",
+    "faq schema": "Missing FAQ schema",
+    "organization schema": "Missing Organization schema",
+    "breadcrumb schema": "Missing Breadcrumb schema",
+    "ai crawler accessibility": "AI crawlers blocked",
+    "https consistency": "Mixed HTTP and HTTPS pages",
+    "entire website uses https": "Site not fully on HTTPS",
+    "homepage does not use https encryption": "Homepage not on HTTPS",
+    "no redirect or canonical to https homepage from http version":
+        "No HTTP to HTTPS redirect",
+}
+
+
+def roadmap_item(name: str) -> str:
+    """One consistent shape for every line in the plan."""
+    s = re.sub(r"\s*\(if applicable\)\s*$", "", str(name or "").strip())
+    if s.lower() in _ITEM_OVERRIDES:
+        return _ITEM_OVERRIDES[s.lower()]
+    low = s
+    for pat, repl in _ITEM_RULES:
+        new = re.sub(pat, repl, low, flags=re.I)
+        if new != low:
+            low = new
+            break
+    low = low.strip()
+    if not low:
+        return s
+    # "Multiple H1 tag" -> "Multiple H1 tags"
+    if low.lower().startswith(("multiple ", "duplicate ")) and not low.endswith("s"):
+        low += "s"
+    # Capitalise the first letter only — never .capitalize(), which would turn
+    # "H1 tags" into "H1 tags" but "HTML usage" into "Html usage".
+    return low[0].upper() + low[1:]
 
 
 SEV_RANK = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Opportunity": 4}
@@ -547,7 +640,6 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
     parts.append(
         f"We crawled {meta.get('pages_crawled') or 0} pages of "
         f"{_host(meta.get('url'))}"
-        + (f" on {_nice_date(meta.get('generated'))}" if meta.get("generated") else "")
         + (f" and looked at {checked}." if checked else "."))
     if o.get("score") is not None:
         urgent = sum(1 for f in findings.values()
@@ -565,9 +657,9 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
                      f"{n_fail} things are worth fixing in the areas we could "
                      f"check.")
     if n_na:
-        parts.append(f"Another {n_na} checks need access to your own Search "
-                     f"Console and Analytics — those are marked Need Access, not "
-                     f"counted against you.")
+        parts.append(f"Another {n_na} checks need access to your Search Console "
+                     f"and Analytics. Those are marked Need Access and left out "
+                     f"of the score.")
     overview = " ".join(parts)
 
     # The single most consequential finding, said plainly and once.
@@ -577,8 +669,7 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
         # The SHORT form here on purpose: the pull quote sits a few inches
         # above the same item written out in full, and repeating the grouping
         # clause verbatim in both places is its own kind of machine tell.
-        headline = (f"The biggest thing we found: {top['title'].lower()[0]}"
-                    f"{top['title'][1:]} — "
+        headline = (f"Top issue: {top['title']} — "
                     f"{top.get('finding_short', top['finding']).rstrip('.')}.")
 
     return {"overview": overview, "headline": headline, "working": working,
@@ -609,33 +700,33 @@ def build_roadmap(findings: dict, catalog: dict) -> list:
         sev = f.get("severity", "Medium")
         if sev in buckets:
             m = catalog.get(cid, {})
-            buckets[sev].append(
-                f"{m.get('checkpoint', cid)} — "
-                f"{f.get('recommendation') or f.get('evidence', '')}".strip().rstrip(".") + ".")
+            item = roadmap_item(m.get("checkpoint", cid))
+            # Two checkpoints often describe one defect ("One H1 per page" and
+            # "Pages have more than one H1 tag"). Once normalized they collide,
+            # and a plan that lists the same job twice looks careless.
+            if item not in buckets[sev]:
+                buckets[sev].append(item)
 
     phases = []
     if buckets["Critical"] or buckets["High"]:
         phases.append({
             "phase": "Phase 1 — Immediate (0–30 days)",
-            "rationale": "These block indexing, create risk, or affect the whole "
-                         "site. Get them done before any content work.",
+            "rationale": "Blocking issues. These come before any content work.",
             "actions": (buckets["Critical"] + buckets["High"])[:10]})
     if buckets["Medium"]:
         phases.append({
             "phase": "Phase 2 — Short term (30–90 days)",
-            "rationale": "Real gains for moderate effort — structured data and "
-                         "on-page work, mostly.",
+            "rationale": "Meaningful gains for moderate effort.",
             "actions": buckets["Medium"][:12]})
     if buckets["Low"]:
         phases.append({
             "phase": "Phase 3 — Ongoing (90+ days)",
-            "rationale": "Cleanup. Fold this into your normal release cycle "
-                         "rather than making a project of it.",
+            "rationale": "Cleanup, folded into normal release work.",
             "actions": buckets["Low"][:10]})
     if buckets["Opportunity"]:
         phases.append({
             "phase": "Growth initiatives",
-            "rationale": "Not fixes — this is where new visibility gets won.",
+            "rationale": "Growth work, not repairs.",
             "actions": buckets["Opportunity"][:8]})
     return phases
 
