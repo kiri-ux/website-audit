@@ -36,6 +36,9 @@ Q = get_queue()
 @app.on_event("startup")
 def _startup():
     db.init_db()
+
+    from .config import warn_startup
+    warn_startup()
     print(f"[api] up · {version.label()} · {cfg.summary()}", flush=True)
 
 

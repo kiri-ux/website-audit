@@ -112,3 +112,20 @@ class Config:
 
 
 cfg = Config()
+
+
+def warn_startup() -> None:
+    """
+    Configuration that is not wrong enough to refuse, but wrong enough to name.
+
+    A local:// artifact store is the one that has cost the most: the API and
+    the worker have separate disks, so each can read only what it wrote, and
+    the failures it produces ("no stored crawl", artifact download 404) point
+    anywhere but at this setting.
+    """
+    store = (cfg.artifact_store or "").strip()
+    if store.startswith("local"):
+        print("[config] WARNING: ARTIFACT_STORE is a local path. The API and "
+              "the worker do not share a filesystem, so crawl reuse and "
+              "artifact download will fail in one direction or both. Unset it "
+              "to use the database, or set an s3:// bucket.", flush=True)

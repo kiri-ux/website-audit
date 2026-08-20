@@ -456,6 +456,8 @@ def main():
         signal.signal(signal.SIGINT, _sig)
     db.init_db()
     q = get_queue()
+    from .config import warn_startup
+    warn_startup()
     print(f"[worker] up · {version.label()} · {cfg.summary()} · waiting for jobs",
           flush=True)
 

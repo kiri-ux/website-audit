@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-07"
-BUILD_NOTES = ("Restyled to the adtini design system — navy rail, top bar, "
-               "breadcrumb, pastel status pills, rounded action buttons")
+BUILD = "2026.08.20-08"
+BUILD_NOTES = ("adtini styling; GOOGLE_TOKENS declared in the blueprint so a "
+               "sync cannot drop it; startup warns on a local ARTIFACT_STORE")
 # ---------------------------------------------------------------------------
 
 

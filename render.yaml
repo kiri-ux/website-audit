@@ -22,8 +22,12 @@ services:
         fromDatabase: {name: vici-audit-db, property: connectionString}
       - key: REDIS_URL
         fromService: {type: keyvalue, name: vici-audit-queue, property: connectionString}
+      # Leave UNSET. The default is db://, which is the only store the API and
+      # the worker actually share — they are separate containers with separate
+      # disks. Set it only for s3:// or r2://. A local:// path here silently
+      # breaks crawl reuse and artifact download in both directions.
       - key: ARTIFACT_STORE
-        sync: false                # s3://your-bucket  (or Cloudflare R2)
+        sync: false                # unset = db://   |   s3://your-bucket
       - key: PSI_API_KEY
         sync: false
       # The PDF is rendered by the API, so authorship must be set HERE as well
@@ -45,6 +49,17 @@ services:
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      # ALSO on the API, not only the worker. The homepage access check and the
+      # property dropdowns answer synchronously, so they run here.
+      #
+      # It must be DECLARED in this blueprint even though the value is set by
+      # hand: this service is Blueprint-managed, and Render reconciles a
+      # managed service's environment against the blueprint. A variable added
+      # in the dashboard but missing here can be removed on a later sync — and
+      # the symptom would be the access check quietly reporting "not set on
+      # this service" weeks later, with nothing in the deploy log to blame.
+      - key: GOOGLE_TOKENS
         sync: false
       # Set to any random string to OPEN the setup routes, then REMOVE it. With
       # it unset, /oauth/google/start and /oauth/google/callback return 404 and
@@ -69,8 +84,9 @@ services:
         fromDatabase: {name: vici-audit-db, property: connectionString}
       - key: REDIS_URL
         fromService: {type: keyvalue, name: vici-audit-queue, property: connectionString}
+      # Leave UNSET — see the note on the API service above.
       - key: ARTIFACT_STORE
-        sync: false
+        sync: false                # unset = db://   |   s3://your-bucket
       - key: PSI_API_KEY
         sync: false
       - key: CRAWL_USER_AGENT
