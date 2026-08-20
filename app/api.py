@@ -222,6 +222,32 @@ def access_check(target_url: str = ""):
     return _ga.probe(target_url)
 
 
+@app.get("/extension.zip")
+def extension_zip():
+    """
+    The Chrome extension, zipped on the fly.
+
+    It is an unpacked extension, which means the operator needs the actual
+    folder — and "ask someone for the folder" is not a step that survives
+    contact with a Tuesday. Building it here means the download is always the
+    version this deployment expects.
+    """
+    import io, zipfile
+    root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "extension")
+    if not os.path.isdir(root):
+        raise HTTPException(404, "extension source not present in this image")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for base, _dirs, files in os.walk(root):
+            for fn in files:
+                full = os.path.join(base, fn)
+                z.write(full, os.path.relpath(full, root))
+    return Response(buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition":
+                             'attachment; filename="vici-audit-capture.zip"'})
+
+
 @app.get("/api/properties")
 def list_properties():
     """

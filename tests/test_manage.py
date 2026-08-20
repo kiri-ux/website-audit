@@ -171,6 +171,10 @@ def main():
 
     st, body = req("GET", "/")
     check("dashboard renders grouped", st == 200 and b"Clients" in body)
+    check("each client exposes the settings its last run used",
+          b"Settings used" in body)
+    check("and can seed a new audit from them without retyping",
+          b"data-prefill" in body and b"function prefill" in body)
 
     print("\nPHASE SELECTION — RUN ONLY WHAT YOU NEED")
     # An unticked checkbox sends nothing, which looks identical to a caller

@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-05"
-BUILD_NOTES = ("Reuse-the-crawl actually works (the API could not see the "
-               "artifacts); extension follows sitemap indexes, survives tab "
-               "switches, and starts from the audit page in one click")
+BUILD = "2026.08.20-06"
+BUILD_NOTES = ("Artifacts live in the database, so the API and the worker "
+               "can finally see each other's; settings panel per client; "
+               "extension download and install steps")
 # ---------------------------------------------------------------------------
 
 

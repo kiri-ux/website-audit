@@ -178,6 +178,16 @@ def main():
     check("the dashboard offers the check next to the URL field",
           b"/api/access-check" in dash2 and b"Check GA4" in dash2)
 
+    print("\nTHE EXTENSION IS DOWNLOADABLE FROM THE APP")
+    # "Ask someone for the folder" is not a step that survives a Tuesday, and
+    # an unpacked extension vanishes whenever its folder moves.
+    st, ct, z = GET("/extension.zip")
+    check("extension.zip is served", st == 200 and z[:2] == b"PK", f"{st} {ct}")
+    import io as _io, zipfile as _zf
+    names = set(_zf.ZipFile(_io.BytesIO(z)).namelist())
+    check("and it is a loadable extension, manifest included",
+          {"manifest.json", "background.js", "content.js"} <= names, str(sorted(names)))
+
     print("\nPROPERTY PICKERS — A MISS IS CHECKABLE, NOT FINAL")
     st, _, body = GET("/api/properties")
     check("property list returns 200 with nothing configured", st == 200, str(st))

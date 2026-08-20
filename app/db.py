@@ -97,6 +97,24 @@ CREATE TABLE IF NOT EXISTS checkpoints (
   collector     TEXT
 );
 
+-- Crawl artifacts, in the DATABASE rather than a filesystem.
+--
+-- The API and the worker are separate containers with separate disks, so a
+-- local-path artifact store means each service can only read what IT wrote.
+-- The worker wrote the crawl; the API wrote browser captures; neither could
+-- see the other's. That broke "reuse the last crawl" in both directions and it
+-- broke artifact download, and it did so silently, which is worse.
+--
+-- The database is the one thing both services demonstrably share. A crawl
+-- artifact is JSON in the low megabytes and gzips to a fraction of that.
+CREATE TABLE IF NOT EXISTS artifacts (
+  audit_id   TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  body       BLOB,
+  created_at REAL NOT NULL,
+  PRIMARY KEY (audit_id, name)
+);
+
 -- DB-backed queue. Used when REDIS_URL is unset; harmless when it is.
 CREATE TABLE IF NOT EXISTS jobs (
   id           TEXT PRIMARY KEY,
@@ -259,8 +277,10 @@ def init_db(seed_catalog: str = "seed/checkpoints.csv"):
     with conn() as c:
         cur = c.cursor()
         for stmt in _statements(SCHEMA):
-            cur.execute(stmt if not cfg.is_postgres
-                        else stmt.replace("REAL", "DOUBLE PRECISION"))
+            if cfg.is_postgres:
+                # Postgres has no BLOB; the binary type is BYTEA.
+                stmt = stmt.replace("REAL", "DOUBLE PRECISION").replace("BLOB", "BYTEA")
+            cur.execute(stmt)
         _apply_migrations(cur)
         # default tenant — exists in internal mode so every row has an owner
         cur.execute(_q("SELECT 1 FROM partners WHERE id=?"), (cfg.default_partner,))
@@ -620,3 +640,64 @@ def latest_ai_run_for_audit(audit_id) -> dict | None:
         if not r:
             return None
         return dict(zip([d[0] for d in cur.description], r))
+
+
+# ---------------------------------------------------------------- artifacts
+def put_blob(audit_id: str, name: str, data: bytes) -> None:
+    """
+    Store a crawl artifact where BOTH services can read it.
+
+    Gzipped: a 118-page artifact is a couple of megabytes of very repetitive
+    JSON and compresses by an order of magnitude, which keeps this a sensible
+    thing to keep in a row rather than an abuse of one.
+    """
+    import gzip
+    blob = gzip.compress(data)
+    with conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("DELETE FROM artifacts WHERE audit_id=? AND name=?"),
+                    (audit_id, name))
+        cur.execute(_q("INSERT INTO artifacts (audit_id,name,body,created_at) "
+                       "VALUES (?,?,?,?)"),
+                    (audit_id, name,
+                     memoryview(blob) if cfg.is_postgres else sqlite3.Binary(blob),
+                     time.time()))
+
+
+def get_blob(audit_id: str, name: str) -> bytes | None:
+    import gzip
+    with conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT body FROM artifacts WHERE audit_id=? AND name=?"),
+                    (audit_id, name))
+        row = cur.fetchone()
+    if not row or row[0] is None:
+        return None
+    raw = bytes(row[0])
+    try:
+        return gzip.decompress(raw)
+    except Exception:
+        return raw          # tolerate anything written before compression
+
+
+def blob_names(audit_id: str) -> list:
+    with conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT name FROM artifacts WHERE audit_id=?"), (audit_id,))
+        return [r[0] for r in cur.fetchall()]
+
+
+def delete_blobs(audit_id: str) -> int:
+    with conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT COUNT(*) FROM artifacts WHERE audit_id=?"), (audit_id,))
+        n = int((cur.fetchone() or [0])[0])
+        cur.execute(_q("DELETE FROM artifacts WHERE audit_id=?"), (audit_id,))
+    return n
+
+
+def audits_with_blob(name: str) -> set:
+    with conn() as c:
+        cur = c.cursor()
+        cur.execute(_q("SELECT audit_id FROM artifacts WHERE name=?"), (name,))
+        return {r[0] for r in cur.fetchall()}

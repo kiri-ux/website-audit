@@ -1,4 +1,60 @@
-# Changed files — build 2026.08.20-05
+# Changed files — build 2026.08.20-06
+
+## "No stored crawl when there is" — the same split, the other way
+
+Ooten's earlier run came from a **browser capture**, and the capture endpoint
+runs on the **API**, which wrote the artifact to the API's disk. The worker
+then looked for it on the worker's disk and found nothing. Last build I moved
+resolution to the worker to fix the crawl direction; this is the same bug
+mirrored, and it was sitting right behind it.
+
+There is no arrangement of a local path that fixes this, because the two
+services do not share a filesystem at all. So **artifacts now live in the
+database** — `ARTIFACT_STORE` defaults to `db://`. The database is the one
+store both services demonstrably share, and a crawl artifact is a few megabytes
+of very repetitive JSON that gzips to a fraction of that. `s3://` is still
+there and still right at volume; `local://` is now honestly documented as
+single-process only.
+
+This also fixes artifact download, which had been quietly 404ing for the same
+reason since the first two-service deploy.
+
+The failure message now names what it looked at: *"3 earlier run(s) of this URL
+exist, but none has a stored crawl"* rather than a flat "none available" while
+the dashboard shows three.
+
+## Settings used — the expand arrow
+
+Every client card gets **Settings used**: vertical, max pages, primary markets,
+primary conversion, the hand-picked Search Console and GA4 properties, and the
+render/user-agent flags. Under it, **Start a new audit with these settings**
+fills the form at the top — including re-selecting the properties you chose by
+hand, which is the part that was being lost on every re-audit.
+
+That last bit matters more than it looks: a property picked by hand was picked
+because the matcher was wrong about that client, and re-deriving it from the
+domain would quietly undo the correction.
+
+## Installing the extension
+
+The blocked-audit page now carries the steps, because an unpacked extension
+disappears whenever its folder moves and "ask someone for the folder" is not a
+step that survives a Tuesday. **`GET /extension.zip`** builds the extension
+from the running image, so the download always matches the deployment.
+
+`chrome://extensions` gets a copy button rather than a link — Chrome refuses to
+let a page link there.
+
+## Smaller
+
+- Access-check results are pills: green found, amber "could not tell quickly",
+  red no. The amber state exists because GA4's quick check genuinely cannot
+  answer, and that must not look like a no.
+- One back link on the audit page, not two.
+
+---
+
+# Build 2026.08.20-05
 
 ## "I ticked reuse and it crawled anyway"
 

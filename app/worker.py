@@ -76,9 +76,22 @@ def run_audit_job(audit_id: str):
             # site blocks crawlers, or because 150 requests to a client's server
             # is not free. Doing the expensive, rude thing after being told not
             # to is worse than stopping and saying why.
-            msg = ("Asked to reuse a previous crawl, but no stored crawl of "
-                   f"{a['target_url']} is available. Nothing was crawled. "
-                   "Untick 'Reuse the last crawl' to run a fresh one.")
+            # Name what was considered. "No stored crawl" reads as a lie when
+            # the dashboard is showing three earlier runs of the same client —
+            # the reason is that those runs were blocked or their artifact was
+            # pruned, and saying so is the difference between a useful error
+            # and an argument.
+            seen = [r for r in db.list_audits()
+                    if (r.get("target_url") or "").rstrip("/").lower()
+                    == (a["target_url"] or "").rstrip("/").lower()
+                    and r["id"] != audit_id]
+            detail = (f"{len(seen)} earlier run(s) of this URL exist, but none "
+                      f"has a stored crawl — a run that was blocked, failed or "
+                      f"had its artifact pruned has nothing to reuse."
+                      if seen else "There are no earlier runs of this URL.")
+            msg = ("Asked to reuse a previous crawl, and there is none to "
+                   f"reuse. {detail} Nothing was crawled. Untick 'Reuse the "
+                   "last crawl' to run a fresh one.")
             print(f"[worker] {audit_id} {msg}", flush=True)
             db.update_audit(audit_id, status="failed", progress=msg, error=msg,
                             completed_at=time.time())

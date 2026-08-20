@@ -103,6 +103,18 @@ code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
 table.sub{margin-top:8px;font-size:12.5px}
 table.sub td{padding:7px 8px;border-bottom:1px solid var(--line)}
 td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+/* --- access-check verdicts: a pill carries the state, text carries the
+       detail. Three colors because there are genuinely three answers, and
+       "we could not tell quickly" must not look like "no". --- */
+.vrow{display:flex;gap:9px;align-items:baseline;margin-top:6px;flex-wrap:wrap}
+.vpill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;
+ font-weight:640;padding:3px 10px;border-radius:20px;white-space:nowrap;
+ border:1px solid transparent}
+.vpill b{font-size:12px;line-height:1}
+.vpill.good{background:#e3f5e3;color:#0b6b0b;border-color:#c7e8c7}
+.vpill.warn{background:#fdf1d9;color:#8a5d05;border-color:#f3e0b4}
+.vpill.bad{background:#fbe4e4;color:#a32020;border-color:#f2cccc}
+.vdet{font-size:12.5px;color:var(--ink2)}
 /* --- live progress rail --- */
 .rail{position:relative;height:6px;background:var(--track);border-radius:3px;
  margin:20px 0 4px;overflow:hidden}
@@ -198,6 +210,53 @@ def dashboard_html(audits, principal, queue_depth):
     from . import db
     groups = db.group_by_client(audits)
 
+    import json as _json
+
+    def _settings(a):
+        """
+        The intake that is NOT recoverable from the crawl: vertical, markets,
+        conversion, page cap, and any hand-picked GA4 / Search Console
+        property. Someone re-auditing a client was reading these off an old
+        report and retyping them, which is how a re-run silently loses the
+        property you picked last month.
+        """
+        o = a.get("options") or {}
+        for _ in range(2):
+            if isinstance(o, str):
+                try: o = _json.loads(o)
+                except Exception: o = {}
+        return {
+            "target_url": a.get("target_url") or "",
+            "client_name": a.get("client_name") or "",
+            "vertical": a.get("vertical") or "",
+            "max_pages": o.get("max_pages") or 150,
+            "primary_markets": o.get("primary_markets") or "",
+            "primary_conversion": o.get("primary_conversion") or "",
+            "gsc_property": o.get("gsc_property") or "",
+            "ga4_property_id": o.get("ga4_property_id") or "",
+            "render_js": bool(o.get("render_js")),
+            "browser_ua": bool(o.get("user_agent")),
+        }
+
+    def _settings_panel(a):
+        st = _settings(a)
+        shown = [("Vertical", st["vertical"] or "generic"),
+                 ("Max pages", st["max_pages"]),
+                 ("Primary markets", st["primary_markets"] or "—"),
+                 ("Primary conversion", st["primary_conversion"] or "—"),
+                 ("Search Console property", st["gsc_property"] or "auto"),
+                 ("GA4 property", st["ga4_property_id"] or "auto"),
+                 ("Render JavaScript", "yes" if st["render_js"] else "no"),
+                 ("Browser user-agent", "yes" if st["browser_ua"] else "no")]
+        rows = "".join(f"<tr><td class='hw'>{e(k)}</td><td>{e(v)}</td></tr>"
+                       for k, v in shown)
+        blob = _h.escape(_json.dumps(st), quote=True)
+        return (f"<details class='hist'><summary>Settings used</summary>"
+                f"<table class='sub'>{rows}</table>"
+                f"<button class='del wide' type='button' data-prefill=\"{blob}\" "
+                f"onclick='prefill(this)'>Start a new audit with these "
+                f"settings</button></details>")
+
     cards = []
     for g in groups:
         a = g["latest"]
@@ -246,6 +305,7 @@ def dashboard_html(audits, principal, queue_depth):
                f"Chrome, launch <b>Vici Audit Capture</b>, and paste audit id "
                f"<code>{a['id']}</code>.</div>"
                if a["status"] == "needs_capture" else "")
+            + _settings_panel(a)
             + hist
             + f"</div>"
             f"<div class='cact'>"
@@ -401,19 +461,26 @@ def dashboard_html(audits, principal, queue_depth):
         var r = await fetch('/api/access-check?target_url=' + encodeURIComponent(u));
         var d = await r.json();
         if (!r.ok) {{ throw new Error(d.detail || r.status); }}
-        var bits = [];
-        bits.push(d.gsc.ok
-          ? '\\u2713 Search Console: ' + d.gsc.property + ' (via ' + d.gsc.login + ')'
-          : '\\u2717 Search Console: ' + (d.gsc.detail || 'not found'));
-        bits.push(d.ga4.ok
-          ? '\\u2713 GA4: ' + d.ga4.name + ' (' + d.ga4.property + ', via ' + d.ga4.login + ')'
-          : (d.ga4.partial ? '? GA4: no quick match — the audit looks wider'
-                           : '\\u2717 GA4: ' + (d.ga4.detail || 'not found')));
-        out.style.color = (d.gsc.ok && d.ga4.ok) ? 'var(--good)'
-                        : (d.gsc.ok || d.ga4.ok) ? 'var(--warning)' : 'var(--serious)';
-        out.innerHTML = bits.map(function (b) {{
-          return b.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-        }}).join('<br>');
+        // Pills, so the shape of the answer reads before the words do. Three
+        // states, three colors: found, ours to fix, and "the quick check
+        // could not tell" — which is NOT the same as no.
+        function esc(t) {{
+          return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+        }}
+        function pill(name, st) {{
+          var cls  = st.ok ? 'good' : (st.partial ? 'warn' : 'bad');
+          var mark = st.ok ? '\u2713' : (st.partial ? '?' : '\u2717');
+          var text = st.ok
+            ? (st.name ? st.name + ' \u00b7 ' + st.property : st.property)
+              + ' \u00b7 via ' + st.login
+            : (st.partial ? 'no quick match \u2014 the audit looks wider'
+                          : (st.detail || 'not found'));
+          return '<div class="vrow"><span class="vpill ' + cls + '"><b>' + mark +
+                 '</b>' + esc(name) + '</span><span class="vdet">' + esc(text) +
+                 '</span></div>';
+        }}
+        out.style.color = '';
+        out.innerHTML = pill('Search Console', d.gsc) + pill('GA4', d.ga4);
         loadProperties(d);
       }} catch (e) {{
         out.style.color = 'var(--serious)';
@@ -462,6 +529,31 @@ def dashboard_html(audits, principal, queue_depth):
       if (selected) {{ sel.value = selected; }}
     }}
 
+    // Re-audit a client without retyping their intake. The button carries the
+    // whole settings object, so nothing is read off an old report by eye.
+    function prefill(btn) {{
+      var st = JSON.parse(btn.dataset.prefill);
+      var f = document.getElementById('auditform');
+      ['target_url', 'client_name', 'vertical', 'max_pages',
+       'primary_markets', 'primary_conversion'].forEach(function (k) {{
+        var el = f.querySelector('[name=' + k + ']')
+              || document.querySelector('[name=' + k + ']');
+        if (el && st[k] !== undefined && st[k] !== '') el.value = st[k];
+      }});
+      [['render_js', st.render_js], ['browser_ua', st.browser_ua]].forEach(
+        function (p) {{
+          var el = document.querySelector('[name=' + p[0] + ']');
+          if (el) el.checked = !!p[1];
+        }});
+      // The chosen properties need the dropdowns populated first, so run the
+      // access check and apply them when it returns.
+      window._pendingProps = {{ gsc: st.gsc_property, ga4: st.ga4_property_id }};
+      document.getElementById('turl').scrollIntoView(
+        {{ behavior: 'smooth', block: 'center' }});
+      document.getElementById('turl').focus();
+      if (st.gsc_property || st.ga4_property_id) checkAccess();
+    }}
+
     function filterSel(which) {{
       var q = document.getElementById(which + 'filter').value.toLowerCase();
       var sel = document.getElementById(which + 'sel');
@@ -490,7 +582,7 @@ def audit_html(a):
     if cur == "failed":
         inner = (f"<div class='card'><b style='color:var(--critical)'>Audit failed</b>"
                  f"<p class='sub'>{e(a.get('error'))}</p>"
-                 f"<p><a href='/'>← back to dashboard</a></p></div>")
+                 f"</div>")
         refresh = None
     elif cur == "needs_capture":
         # One button, no copying. The extension's content script finds
@@ -509,12 +601,31 @@ def audit_html(a):
             f"{e(a['target_url'])}</a> in a tab, then start the capture.</p>"
             f"<p><button id='vici-capture-go' class='btn' type='button'>"
             f"Start capture with the Chrome extension</button></p>"
-            f"<p class='sub' id='vici-capture-manual'>Extension not detected. "
-            f"Install <b>Vici Audit Capture</b>, then use audit id "
-            f"<code id='vici-audit-id'>{e(a['id'])}</code> "
+            f"<div id='vici-capture-manual'>"
+            f"<p class='sub'><b>Vici Audit Capture is not installed in this "
+            f"browser.</b> It is an unpacked Chrome extension, so it lives in a "
+            f"folder rather than the Web Store — and it disappears if that "
+            f"folder moves or is deleted, which is the usual reason it is "
+            f"suddenly gone.</p>"
+            f"<ol class='sub' style='margin:8px 0 0 18px;line-height:1.75'>"
+            f"<li><a href='/extension.zip'>Download the extension</a> and "
+            f"unzip it somewhere permanent — not Downloads, which gets "
+            f"cleared.</li>"
+            f"<li>Open <code>chrome://extensions</code> "
+            f"<button class='del' type='button' onclick=\"navigator.clipboard"
+            f".writeText('chrome://extensions');this.textContent='copied'\">"
+            f"copy</button> — Chrome will not let a page link there.</li>"
+            f"<li>Turn on <b>Developer mode</b>, top right.</li>"
+            f"<li><b>Load unpacked</b>, and choose the folder you unzipped. "
+            f"You should see <b>Vici Audit Capture 1.1.0</b>.</li>"
+            f"<li>Reload this page — the Start capture button appears once "
+            f"the extension is detected.</li></ol>"
+            f"<p class='sub' style='margin-top:10px'>Or drive it by hand: open "
+            f"the site, click the extension, and paste audit id "
+            f"<code>{e(a['id'])}</code> "
             f"<button class='del' type='button' onclick=\"navigator.clipboard"
             f".writeText('{e(a['id'])}');this.textContent='copied'\">copy</button>"
-            f"</p></div>"
+            f"</p></div></div>"
             f"<script>"
             f"(function(){{var el=document.getElementById('vici-capture');"
             f"var go=document.getElementById('vici-capture-go');"

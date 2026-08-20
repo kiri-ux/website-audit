@@ -1,12 +1,26 @@
 """
 Artifact storage — crawl artifacts and generated reports.
 
-local://dir  → filesystem (local dev, and fine for a single-box internal deploy)
+db://        → the application database (DEFAULT)
 s3://bucket  → S3 or any S3-compatible store (Cloudflare R2, Backblaze B2)
+local://dir  → filesystem. Single-process only. See the warning below.
+
+The default changed to `db://`, and the reason is worth keeping.
+
+The API and the worker are separate containers with separate disks. A local
+path therefore means each service can read only what IT wrote: the worker
+writes crawl artifacts the API cannot serve, and the API writes browser
+captures the worker cannot reuse. Both directions failed silently — "reuse the
+last crawl" simply found nothing and crawled the site again, which is the
+opposite of what was asked for.
+
+The database is the one store both services demonstrably share, and a crawl
+artifact is a few megabytes of extremely repetitive JSON that gzips to a
+fraction of that. S3/R2 remains the right answer at volume; `local://` is now
+only correct when one process does everything.
 
 Deliberately NOT a Render persistent disk: disks pin a service to a single
-instance and block zero-downtime deploys. Artifacts are write-once blobs, which
-is exactly what object storage is for.
+instance and block zero-downtime deploys.
 """
 from __future__ import annotations
 import os
@@ -16,13 +30,20 @@ from .config import cfg
 
 
 def _backend():
-    u = urlparse(cfg.artifact_store)
+    store = (cfg.artifact_store or "").strip()
+    if not store or store.startswith("db"):
+        return "db", ""
+    u = urlparse(store)
     return u.scheme, (u.netloc + u.path).rstrip("/")
 
 
 def put_artifact(audit_id: str, name: str, data: bytes) -> str:
     scheme, loc = _backend()
     key = f"{audit_id}/{name}"
+    if scheme == "db":
+        from . import db
+        db.put_blob(audit_id, name, data)
+        return f"db://{key}"
     if scheme == "s3":
         import boto3
         boto3.client("s3").put_object(Bucket=loc, Key=key, Body=data)
@@ -37,6 +58,9 @@ def put_artifact(audit_id: str, name: str, data: bytes) -> str:
 def get_artifact(audit_id: str, name: str) -> bytes | None:
     scheme, loc = _backend()
     key = f"{audit_id}/{name}"
+    if scheme == "db":
+        from . import db
+        return db.get_blob(audit_id, name)
     if scheme == "s3":
         import boto3
         try:
@@ -58,6 +82,9 @@ def delete_artifacts(audit_id: str) -> int:
     scheme, loc = _backend()
     n = 0
     try:
+        if scheme == "db":
+            from . import db
+            return db.delete_blobs(audit_id)
         if scheme == "s3":
             import boto3
             s3 = boto3.client("s3")

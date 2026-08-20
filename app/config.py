@@ -46,7 +46,10 @@ class Config:
 
     # ---- artifact storage ----------------------------------------------
     # local://dir  (default)  |  s3://bucket  (production)
-    artifact_store: str = _s("ARTIFACT_STORE", "local://data/artifacts")
+    # db:// by default. A local path only works when one process does everything,
+    # and in production the API and the worker are separate containers with
+    # separate disks — so each could read only what it wrote, silently.
+    artifact_store: str = _s("ARTIFACT_STORE", "db://")
 
     # ---- tenancy -------------------------------------------------------
     # "internal": single implicit tenant, no auth, everything visible.
