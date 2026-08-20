@@ -155,36 +155,63 @@ def _need_access(ids, reason, src):
 GSC_IDS = [f"GSC-{i:02d}" for i in range(1, 23)]
 
 
-def _first_login_that_can_see(site_url: str) -> tuple[str | None, str | None]:
+def _candidates(site_url: str) -> set:
+    """
+    Every property string that could legitimately hold this site's data.
+
+    Search Console properties are exact strings, and a URL-prefix property for
+    `https://example.com/` is a DIFFERENT property from `http://example.com/`
+    or `https://www.example.com/`. We were comparing the audit's target URL
+    against them literally, so an audit submitted as `http://ootenlawfirm.com/`
+    — which is what someone types, and what the site then redirects from — did
+    not match the `https://ootenlawfirm.com/` property that holds the data, and
+    the report said no Vici login had access to a property we could read
+    perfectly well.
+
+    Scheme and `www` are not meaningful distinctions for "is this the client's
+    site", so try all four, plus the domain property.
+    """
+    host = site_url.split("//")[-1].split("/")[0].lower()
+    bare = host[4:] if host.startswith("www.") else host
+    out = {f"sc-domain:{bare}"}
+    for h in (bare, f"www.{bare}"):
+        for scheme in ("https", "http"):
+            out.add(f"{scheme}://{h}")
+    return out
+
+
+def _first_login_that_can_see(site_url: str):
     """
     Walk the Vici logins and return the first whose token can read this property.
 
-    Returns (access_token, label). This is the whole point of the index: no
-    per-client OAuth, and a property added to any Vici login tomorrow works
-    without redeploying anything.
+    Returns (access_token, label, site_url_as_google_spells_it). That third
+    value matters: every later call has to use the property string the API
+    returned, not the URL the audit was submitted with, or the query 404s even
+    though the match succeeded.
     """
+    want = _candidates(site_url)
     for label, refresh in (_token_index() or {}).items():
         tok = access_token(refresh)
         if not tok:
             continue
         try:
             sites = _api(f"{GSC_API}/sites", tok)
-            urls = {s.get("siteUrl", "").rstrip("/")
-                    for s in sites.get("siteEntry", [])}
-            want = site_url.rstrip("/")
-            if want in urls or f"sc-domain:{want.split('//')[-1]}" in urls:
-                return tok, label
+            for s in sites.get("siteEntry", []):
+                raw = s.get("siteUrl", "")
+                if raw.rstrip("/").lower() in want:
+                    return tok, label, raw
         except Exception:
             continue
-    return None, None
+    return None, None, None
 
 
 def collect_gsc(site_url: str, refresh_token: str | None = None,
                 days: int = 90) -> dict:
     tok = access_token(refresh_token) if refresh_token else None
     label = "per-audit token" if tok else None
+    prop_url = site_url
     if not tok:
-        tok, label = _first_login_that_can_see(site_url)
+        tok, label, prop_url = _first_login_that_can_see(site_url)
     if not tok:
         idx = _token_index()
         if idx and not oauth_configured():
@@ -200,7 +227,10 @@ def collect_gsc(site_url: str, refresh_token: str | None = None,
         return _need_access(GSC_IDS, reason, "gsc")
     end = date.today() - timedelta(days=2)      # GSC data lags ~2 days
     start = end - timedelta(days=days)
-    prop = urllib.parse.quote(site_url, safe="")
+    # The property string Google returned, not the URL the audit was submitted
+    # with. Matching on one and querying with the other is how a successful
+    # match still comes back empty.
+    prop = urllib.parse.quote(prop_url or site_url, safe="")
     out = {}
     try:
         tot = _api(f"{GSC_API}/sites/{prop}/searchAnalytics/query", tok,
@@ -254,6 +284,11 @@ GA4_IDS = [f"GA4-{i:02d}" for i in range(1, 17)]
 GA4_STREAM_SCAN = int(os.getenv("GA4_STREAM_SCAN", "60"))
 
 
+def _squash(s: str) -> str:
+    """Letters and digits only, lower case. 'Ooten Law Firm' -> 'ootenlawfirm'."""
+    return "".join(ch for ch in (s or "").lower() if ch.isalnum())
+
+
 def _host(site_url: str) -> str:
     h = site_url.split("//")[-1].split("/")[0].lower()
     return h[4:] if h.startswith("www.") else h
@@ -301,6 +336,7 @@ def _find_ga4_property(site_url: str) -> tuple[str | None, str | None, str | Non
     order the scan, never as proof on their own.
     """
     want = _host(site_url)
+    slug = _squash(want.split(".")[0])
     for label, refresh in (_token_index() or {}).items():
         tok = access_token(refresh)
         if not tok:
@@ -309,8 +345,16 @@ def _find_ga4_property(site_url: str) -> tuple[str | None, str | None, str | Non
             props = _ga4_properties(tok)
         except Exception:
             continue
-        # Look at name-similar properties first, then the rest, up to the cap.
-        likely = [p for p in props if want.split(".")[0] in p[1].lower()]
+        # Order the scan by name similarity, then take the cap.
+        #
+        # This compared "ootenlawfirm" against the lower-cased display name
+        # "ooten law firm" — a domain slug has no spaces and a display name
+        # does, so the test could essentially never fire. Every property was
+        # therefore "unlikely", the scan ran in arbitrary order, and on a login
+        # holding hundreds of properties the right one sat past the cap. The
+        # report then said no property measured this domain, which was false.
+        # Squash both sides to letters and digits before comparing.
+        likely = [p for p in props if slug and slug in _squash(p[1])]
         rest = [p for p in props if p not in likely]
         for pid, _name in (likely + rest)[:GA4_STREAM_SCAN]:
             if want in _stream_hosts(tok, pid):

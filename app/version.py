@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-01"
-BUILD_NOTES = ("Roboto; severity pills; duplicate findings merged; repeated "
-               "evidence collapsed; plural agreement; footer text now reaches "
-               "the judgment layer; internal Action-needed panel")
+BUILD = "2026.08.20-02"
+BUILD_NOTES = ("Search Console and GA4 property matching fixed — an http "
+               "audit URL never matched an https property, and the GA4 name "
+               "filter could not match a display name with spaces")
 # ---------------------------------------------------------------------------
 
 

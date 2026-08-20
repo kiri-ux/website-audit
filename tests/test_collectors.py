@@ -176,6 +176,28 @@ def main():
     check("backlinks fall back to the Ahrefs/Semrush adapter when DFS is absent",
           all(f["status"] == "Need Access" for f in collect_backlinks("example.com").values()))
 
+    print("\nPROPERTY MATCHING — SCHEME, WWW AND DISPLAY NAMES")
+    # Both of these shipped and both produced the same false statement: "no
+    # Vici login has access to this property" about properties we could read.
+    from engine.collectors.analytics import _candidates, _squash, _host
+    cands = _candidates("http://ootenlawfirm.com/")
+    check("an http audit URL matches the https property that holds the data",
+          "https://ootenlawfirm.com" in cands, str(sorted(cands)))
+    check("www and non-www are the same site for this purpose",
+          "https://www.ootenlawfirm.com" in cands)
+    check("a domain property matches too",
+          "sc-domain:ootenlawfirm.com" in cands)
+    check("a different site does NOT match",
+          "https://junkbeegone.biz" not in cands)
+    # The GA4 ordering heuristic compared a domain slug against a display name
+    # with spaces in it, so nothing was ever "likely" and the scan cap decided
+    # the outcome on a login holding hundreds of properties.
+    slug = _squash(_host("http://ootenlawfirm.com/").split(".")[0])
+    check("a display name with spaces matches its domain slug",
+          slug in _squash("Ooten Law Firm"), f"{slug} vs ooten law firm")
+    check("an unrelated client is not dragged in",
+          slug not in _squash("Orme's Gym, LLC"))
+
     print("\nMULTI-LOGIN TOKEN INDEX")
     os.environ["GOOGLE_TOKENS"] = '{"vici-1":"x","vici-2":"y"}'
     # Client credentials too: without them the collector now (correctly) reports

@@ -1,4 +1,34 @@
-# Changed files — build 2026.08.20-01
+# Changed files — build 2026.08.20-02
+
+## Why Ooten's Search Console and GA4 came back empty
+
+Not a permissions problem. Two matching bugs, and both produced the same false
+sentence — "no Vici login has access to this property" — about properties
+`digital@reporting.zone` can read perfectly well.
+
+**Search Console: scheme.** The audit was submitted as
+`http://ootenlawfirm.com/`. The property is `https://ootenlawfirm.com/`. Those
+are genuinely different properties to Google, and we compared the two strings
+literally, so it did not match. Anyone typing a URL types `http://`, and the
+site then redirects — so this would have missed on most audits, not just this
+one. Now matches any of `http`/`https` x `www`/bare, plus the `sc-domain:`
+form, and **queries with the property string Google returned** rather than the
+URL the audit was submitted with. Matching on one and querying with the other
+is its own bug, waiting.
+
+**GA4: display names have spaces.** The scan ordered properties by name
+similarity — `"ootenlawfirm" in "ooten law firm"` — which can essentially never
+be true. So nothing was ever "likely", the scan ran in arbitrary order, and on
+a login holding hundreds of properties the right one sat past the 60-property
+cap. Both sides are now squashed to letters and digits, so "Ooten Law Firm"
+matches `ootenlawfirm` and sorts first.
+
+Neither is a scoring change. Both are the difference between the section
+filling and the section reading Not Assessed.
+
+---
+
+# Build 2026.08.20-01
 
 **Cumulative since 2026.08.18-16.** Apply and you are current whatever you last
 uploaded.
@@ -85,9 +115,13 @@ listed by section. Internal only — it never appears in the client PDF.
 ## Still empty, and why
 
 `DFS_LOGIN` / `DFS_PASSWORD` are not on the worker. That is Off-Page (0/29) and
-MOB-03..06 both reading "waiting on our data provider". Search Console and GA4
-correctly report that `reporting-zone` is not on Ooten's property — that one is
-a client grant, and the message is trustworthy on -16 or later.
+MOB-03..06 both reading "waiting on our data provider".
+
+*(Written before -02: this section also claimed the Search Console and GA4
+message was a real missing client grant. It was not — see the top of this file.
+Leaving the correction visible rather than quietly editing it, because "the
+tool said access was missing" is exactly the kind of claim that gets repeated
+to a client before anyone checks it.)*
 
 ## Verified before sending
 
