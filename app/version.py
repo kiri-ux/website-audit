@@ -12,10 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-06"
-BUILD_NOTES = ("Artifacts live in the database, so the API and the worker "
-               "can finally see each other's; settings panel per client; "
-               "extension download and install steps")
+BUILD = "2026.08.20-07"
+BUILD_NOTES = ("Restyled to the adtini design system — navy rail, top bar, "
+               "breadcrumb, pastel status pills, rounded action buttons")
 # ---------------------------------------------------------------------------
 
 

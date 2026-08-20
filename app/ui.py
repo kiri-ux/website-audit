@@ -12,119 +12,196 @@ from .config import cfg
 from . import version
 
 CSS = """
-:root{color-scheme:light dark}
+/*
+ * adtini design system.
+ *
+ * This tool is going to live inside adtini, so it should not arrive looking
+ * like a different product bolted on. Everything here is read off the
+ * workflow and forecast screens: the navy rail, the navy table header with
+ * white type, soft pastel status pills with dark text, fully-rounded action
+ * buttons in gold / orange / navy, and a pale blue-grey page behind white
+ * cards.
+ *
+ * Two deliberate departures. Severity keeps its ordinal blue ramp, because a
+ * ranked scale must not be recolored into adtini's categorical pastels — the
+ * ordering is the information. And the score ring keeps one hue, for the same
+ * reason it always has: length carries magnitude.
+ */
+:root{
+ --navy:#12356b; --navy-2:#0e2a56; --navy-line:#1d4a8a;
+ --blue:#1668c1; --blue-dk:#12539c;
+ --gold:#f0b429; --gold-dk:#d99e17;
+ --orange:#e2691a;
+ --plane:#f4f6f9; --surface:#ffffff; --line:#dfe4ec; --line-2:#eceff4;
+ --ink:#1b2733; --ink2:#48566b; --muted:#7d8a9c; --track:#e8ecf2;
+ --seq:#1668c1;
+ --good:#1a7f4b; --warning:#b7791f; --serious:#c05621; --critical:#c53030;
+ --pill-green:#d4ecd9; --pill-green-ink:#1a6b3c;
+ --pill-blue:#d3e5f7; --pill-blue-ink:#12539c;
+ --pill-pink:#fad4d4; --pill-pink-ink:#9b2c2c;
+ --pill-purple:#e8d5f2; --pill-purple-ink:#6b2f8f;
+ --pill-grey:#e6eaf0; --pill-grey-ink:#48566b;
+ --rail:34px;
+}
 *{box-sizing:border-box}
 body{margin:0;background:var(--plane);color:var(--ink);
- font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-.viz-root{--plane:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;
- --muted:#898781;--line:#e6e5e1;--seq:#2a78d6;--track:#eceae6;
- --good:#0ca30c;--warning:#fab219;--serious:#ec835a;--critical:#d03b3b}
-@media (prefers-color-scheme:dark){:root:where(:not([data-theme=light])) .viz-root{
- --plane:#0d0d0d;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;--muted:#898781;
- --line:#2c2c2a;--seq:#3987e5;--track:#262623}}
-.wrap{max-width:1080px;margin:0 auto;padding:36px 26px 70px}
-h1{font-size:23px;margin:0 0 4px;letter-spacing:-.02em}
-.sub{color:var(--ink2);font-size:13.5px}
-h2{font-size:12.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
- margin:34px 0 12px;font-weight:600}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:20px 22px}
+ font:14px/1.5 "Roboto",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+
+/* ---- chrome: rail, top bar, breadcrumb ---- */
+.rail{position:fixed;left:0;top:0;bottom:0;width:var(--rail);background:var(--navy);
+ display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:14px;z-index:20}
+.rail a,.rail span{width:20px;height:20px;border-radius:4px;display:flex;
+ align-items:center;justify-content:center;color:#8ea8cc;font-size:12px;
+ text-decoration:none}
+.rail .on{background:var(--gold);color:var(--navy-2)}
+.rail .sp{flex:1}
+.topbar{position:sticky;top:0;z-index:15;background:var(--surface);
+ border-bottom:1px solid var(--line);height:44px;display:flex;align-items:center;
+ gap:12px;padding:0 18px;margin-left:var(--rail)}
+.topbar .burger{color:var(--ink2);font-size:15px;line-height:1}
+.topbar h1{font-size:15px;font-weight:600;margin:0;letter-spacing:-.01em;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topbar .right{margin-left:auto;display:flex;align-items:center;gap:14px;
+ font-size:12.5px;color:var(--ink2)}
+.crumb{margin-left:var(--rail);padding:9px 18px 0;font-size:11.5px;color:var(--muted)}
+.crumb a{color:var(--muted);text-decoration:underline}
+.crumb a:hover{color:var(--blue)}
+.wrap{margin-left:var(--rail);max-width:1180px;padding:14px 18px 60px}
+
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
+ margin:26px 0 10px;font-weight:700}
+h3{font-size:14px;margin:0 0 8px;font-weight:600}
+.sub{color:var(--ink2);font-size:12.5px}
+.sm{font-size:12px}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
+
+/* ---- cards ---- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:6px;
+ padding:16px 18px}
+
+/* ---- forms ---- */
 form#auditform{display:grid;grid-template-columns:2fr 1.4fr 1fr .7fr auto;
  gap:10px;align-items:end}
-label{display:block;font-size:11.5px;color:var(--ink2);margin-bottom:5px;font-weight:600}
-input,select{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:7px;
- background:var(--plane);color:var(--ink);font:inherit;font-size:13.5px}
-button{padding:9px 20px;border:0;border-radius:7px;background:var(--seq);color:#fff;
- font:inherit;font-weight:620;font-size:13.5px;cursor:pointer;white-space:nowrap}
-button:hover{filter:brightness(1.08)}
-table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:6px}
-th{text-align:left;font-weight:600;color:var(--muted);font-size:11px;text-transform:uppercase;
- letter-spacing:.07em;padding:0 10px 9px;border-bottom:1px solid var(--line)}
-td{padding:10px;border-bottom:1px solid var(--line)}
+label{display:block;font-size:11px;color:var(--ink2);margin-bottom:4px;font-weight:600}
+input,select{width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:4px;
+ background:var(--surface);color:var(--ink);font:inherit;font-size:13px}
+input:focus,select:focus{outline:none;border-color:var(--blue);
+ box-shadow:0 0 0 2px rgba(22,104,193,.14)}
+button{padding:7px 18px;border:0;border-radius:20px;background:var(--blue);color:#fff;
+ font:inherit;font-weight:600;font-size:12.5px;cursor:pointer;white-space:nowrap}
+button:hover{filter:brightness(1.07)}
+
+/* Action buttons, adtini's rounded pill family. */
+.btn{display:inline-block;padding:6px 16px;border-radius:20px;background:var(--blue);
+ color:#fff;font-size:12.5px;font-weight:600;border:1px solid transparent}
+.btn:hover{text-decoration:none;filter:brightness(1.07)}
+.btn.ghost{background:var(--surface);color:var(--blue);border-color:var(--line)}
+.btn.ghost:hover{border-color:var(--blue);filter:none}
+.btn.navy{background:var(--navy);color:#fff}
+.btn.gold{background:var(--gold);color:var(--navy-2)}
+.btn.orange{background:var(--orange);color:#fff}
+.del{background:var(--surface);color:var(--muted);border:1px solid var(--line);
+ padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600}
+.del:hover{color:#fff;background:var(--critical);border-color:var(--critical);filter:none}
+.del.wide{margin-top:8px;width:100%}
+
+/* ---- tables: navy header, white body ---- */
+table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px;
+ background:var(--surface)}
+th{text-align:left;font-weight:600;color:#fff;background:var(--navy);font-size:11.5px;
+ padding:9px 10px;white-space:nowrap}
+th:first-child{border-radius:4px 0 0 0} th:last-child{border-radius:0 4px 0 0}
+td{padding:9px 10px;border-bottom:1px solid var(--line-2)}
+tr:hover td{background:#f8fafc}
 td.num{text-align:right;font-variant-numeric:tabular-nums}
-a{color:var(--seq);text-decoration:none}a:hover{text-decoration:underline}
-.chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;
- padding:2px 9px;border-radius:20px;border:1px solid var(--line);white-space:nowrap}
-.chip b{width:7px;height:7px;border-radius:50%;display:inline-block}
-.bar{height:8px;background:var(--track);border-radius:4px;overflow:hidden;min-width:90px}
-.bar>i{display:block;height:100%;background:var(--seq);border-radius:0 4px 4px 0}
-.empty{color:var(--muted);padding:26px 0;text-align:center;font-size:13.5px}
-.spin{display:inline-block;width:13px;height:13px;border:2px solid var(--track);
- border-top-color:var(--seq);border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px}
-@keyframes s{to{transform:rotate(360deg)}}
-code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
-.steps{display:flex;gap:0;margin:22px 0 8px}
-.steps div{flex:1;padding:9px 12px;font-size:12.5px;border-top:3px solid var(--track);
- color:var(--muted)}
-.steps div.on{border-top-color:var(--seq);color:var(--ink);font-weight:620}
-.steps div.done{border-top-color:var(--seq);color:var(--ink2)}
-/* --- stat strip: the fleet at a glance, above the per-audit detail --- */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px;
- margin-top:14px}
-.stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;
- padding:12px 14px}
-.stat .n{font-size:23px;font-weight:680;letter-spacing:-.02em;
+table.sub{margin-top:8px;font-size:12px;border:1px solid var(--line);border-radius:4px}
+table.sub td{padding:7px 9px}
+td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* ---- pills ---- */
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;
+ padding:3px 11px;border-radius:20px;background:var(--pill-grey);
+ color:var(--pill-grey-ink);border:0;white-space:nowrap}
+.chip b{width:6px;height:6px;border-radius:50%;display:inline-block}
+.chip.ready{background:var(--pill-green);color:var(--pill-green-ink)}
+.chip.run{background:var(--pill-blue);color:var(--pill-blue-ink)}
+.chip.stop{background:var(--pill-pink);color:var(--pill-pink-ink)}
+.chip.hold{background:var(--pill-purple);color:var(--pill-purple-ink)}
+.chip.build{background:var(--navy);color:#fff}
+
+.vrow{display:flex;gap:9px;align-items:baseline;margin-top:6px;flex-wrap:wrap}
+.vpill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;
+ padding:3px 11px;border-radius:20px;white-space:nowrap}
+.vpill b{font-size:11px;line-height:1}
+.vpill.good{background:var(--pill-green);color:var(--pill-green-ink)}
+.vpill.warn{background:#fbecc8;color:#8a5d05}
+.vpill.bad{background:var(--pill-pink);color:var(--pill-pink-ink)}
+.vdet{font-size:12px;color:var(--ink2)}
+
+/* ---- stat strip ---- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:10px;
+ margin-top:12px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:6px;
+ padding:11px 13px}
+.stat .n{font-size:21px;font-weight:700;letter-spacing:-.02em;
  font-variant-numeric:tabular-nums;line-height:1.15}
-.stat .k{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
- margin-top:2px}
-.stat .k b{width:7px;height:7px;border-radius:50%;display:inline-block;
- margin-right:4px;vertical-align:0}
-/* --- ring: score as an arc so the number has context, not just a value --- */
+.stat .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;
+ color:var(--muted);margin-top:2px;font-weight:600}
+.stat .k b{width:6px;height:6px;border-radius:50%;display:inline-block;
+ margin-right:4px;vertical-align:1px}
+
+/* ---- score ring: one hue, length carries magnitude ---- */
 .ring{display:block}
-.ring text{font:600 13px ui-sans-serif,system-ui,sans-serif;fill:var(--ink);
+.ring text{font:700 13px "Roboto",ui-sans-serif,sans-serif;fill:var(--ink);
  font-variant-numeric:tabular-nums}
 .ring text.sm{font-size:11px;fill:var(--muted);font-weight:500}
-/* --- client cards: the list is grouped by CLIENT, not by run --- */
-.crow{display:flex;gap:16px;align-items:flex-start;background:var(--surface);
- border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:10px}
+
+/* ---- client rows ---- */
+.crow{display:flex;gap:14px;align-items:flex-start;background:var(--surface);
+ border:1px solid var(--line);border-radius:6px;padding:13px 16px;margin-bottom:8px}
+.crow:hover{border-color:#c7d2e0}
 .cscore{flex:none;padding-top:2px}
 .cmain{flex:1;min-width:0}
-.cname{font-size:15.5px;font-weight:640}
-.curl{margin-top:2px}
-.cmeta{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:8px;
- font-size:12.5px;color:var(--ink2)}
-.cact{flex:none;display:flex;gap:8px;align-items:center}
-.btn{display:inline-block;padding:7px 14px;border-radius:7px;background:var(--seq);
- color:#fff;font-size:12.5px;font-weight:620}
-.btn:hover{text-decoration:none;filter:brightness(1.08)}
-.btn.ghost{background:transparent;color:var(--seq);border:1px solid var(--line)}
-.del{background:transparent;color:var(--muted);border:1px solid var(--line);
- padding:6px 12px;font-size:12.5px;font-weight:600}
-.del:hover{color:#fff;background:var(--critical);border-color:var(--critical);
- filter:none}
-.del.wide{margin-top:8px;width:100%}
-.warn{margin-top:8px;font-size:12.5px;color:var(--ink2);background:var(--plane);
- border-left:3px solid var(--serious);border-radius:6px;padding:8px 12px}
-.hist{margin-top:10px}
-.hist summary{cursor:pointer;font-size:12.5px;color:var(--seq);
- list-style:none;display:inline-block}
+.cname{font-size:14px;font-weight:600;color:var(--blue)}
+.curl{margin-top:1px}
+.cmeta{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:7px;
+ font-size:12px;color:var(--ink2)}
+.cact{flex:none;display:flex;gap:6px;align-items:center}
+.warn{margin-top:8px;font-size:12px;color:var(--ink2);background:#fdf6ec;
+ border-left:3px solid var(--gold);border-radius:4px;padding:8px 11px}
+.empty{color:var(--muted);padding:24px 0;text-align:center;font-size:13px}
+
+/* ---- disclosure: adtini uses a tab strip; a details row is the same idea ---- */
+.hist{margin-top:9px}
+.hist summary{cursor:pointer;font-size:12px;color:var(--blue);
+ list-style:none;display:inline-block;font-weight:600}
 .hist summary::-webkit-details-marker{display:none}
-.hist summary:before{content:"▸ ";}
-.hist[open] summary:before{content:"▾ ";}
-table.sub{margin-top:8px;font-size:12.5px}
-table.sub td{padding:7px 8px;border-bottom:1px solid var(--line)}
-td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
-/* --- access-check verdicts: a pill carries the state, text carries the
-       detail. Three colors because there are genuinely three answers, and
-       "we could not tell quickly" must not look like "no". --- */
-.vrow{display:flex;gap:9px;align-items:baseline;margin-top:6px;flex-wrap:wrap}
-.vpill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;
- font-weight:640;padding:3px 10px;border-radius:20px;white-space:nowrap;
- border:1px solid transparent}
-.vpill b{font-size:12px;line-height:1}
-.vpill.good{background:#e3f5e3;color:#0b6b0b;border-color:#c7e8c7}
-.vpill.warn{background:#fdf1d9;color:#8a5d05;border-color:#f3e0b4}
-.vpill.bad{background:#fbe4e4;color:#a32020;border-color:#f2cccc}
-.vdet{font-size:12.5px;color:var(--ink2)}
-/* --- live progress rail --- */
-.rail{position:relative;height:6px;background:var(--track);border-radius:3px;
- margin:20px 0 4px;overflow:hidden}
-.rail>i{display:block;height:100%;background:var(--seq);border-radius:3px;
+.hist summary:before{content:"▸";margin-right:5px}
+.hist[open] summary:before{content:"▾";margin-right:5px}
+
+/* ---- progress ---- */
+.spin{display:inline-block;width:11px;height:11px;border:2px solid var(--track);
+ border-top-color:var(--blue);border-radius:50%;animation:s .8s linear infinite;
+ vertical-align:-1px}
+@keyframes s{to{transform:rotate(360deg)}}
+.bar{height:7px;background:var(--track);border-radius:4px;overflow:hidden;min-width:90px}
+.bar>i{display:block;height:100%;background:var(--blue);border-radius:0 4px 4px 0}
+.rail-p{position:relative;height:5px;background:var(--track);border-radius:3px;
+ margin:18px 0 4px;overflow:hidden}
+.rail-p>i{display:block;height:100%;background:var(--blue);border-radius:3px;
  transition:width .4s ease}
-.rail.indet>i{width:38%;animation:slide 1.5s ease-in-out infinite}
+.rail-p.indet>i{width:38%;animation:slide 1.5s ease-in-out infinite}
 @keyframes slide{0%{margin-left:-38%}100%{margin-left:100%}}
-.marks{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);
- letter-spacing:.04em}
-.marks span.on{color:var(--ink);font-weight:640}
+.steps{display:flex;gap:0;margin:20px 0 8px}
+.steps div{flex:1;padding:8px 11px;font-size:12px;border-top:3px solid var(--track);
+ color:var(--muted)}
+.steps div.on{border-top-color:var(--gold);color:var(--ink);font-weight:600}
+.steps div.done{border-top-color:var(--blue);color:var(--ink2)}
+.marks{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);
+ letter-spacing:.03em}
+.marks span.on{color:var(--ink);font-weight:700}
 .marks span.done{color:var(--ink2)}
 """
 
@@ -134,6 +211,11 @@ STATUS_COLOR = {"ready": "var(--good)", "failed": "var(--critical)",
                 "queued": "var(--muted)", "crawling": "var(--warning)",
                 "checking": "var(--warning)", "scoring": "var(--warning)",
                 "needs_capture": "var(--serious)"}
+
+# adtini states are pastel pills with dark text, not a dot beside grey text.
+STATUS_PILL = {"ready": "ready", "failed": "stop", "queued": "",
+               "crawling": "run", "checking": "run", "scoring": "run",
+               "needs_capture": "hold"}
 
 
 def e(x):
@@ -176,13 +258,45 @@ def _stat(n, label, dot=None):
             f"<div class='k'>{d}{e(label)}</div></div>")
 
 
-def _shell(title, body, refresh=None):
+RAIL = (
+    "<nav class='rail' aria-label='sections'>"
+    "<a href='/' class='on' title='Audits'>\u25a3</a>"
+    "<a href='/visibility' title='AI visibility'>\u25c9</a>"
+    "<span class='sp'></span>"
+    "<span title='build'>\u2699</span>"
+    "</nav>")
+
+
+def _shell(title, body, refresh=None, heading=None, crumbs=None):
+    """
+    adtini chrome: fixed navy rail, white top bar, breadcrumb, content.
+
+    The rail is decorative here — this app has two screens — but it is what
+    makes the tool read as part of adtini rather than a separate site opened
+    in a new tab, which is the whole point of the exercise.
+    """
     r = f"<meta http-equiv='refresh' content='{refresh}'>" if refresh else ""
+    trail = ""
+    if crumbs:
+        parts = []
+        for label, href in crumbs:
+            parts.append(f"<a href='{href}'>{e(label)}</a>" if href
+                         else f"<span>{e(label)}</span>")
+        trail = f"<div class='crumb'>{' &rsaquo; '.join(parts)}</div>"
     return (f"<!doctype html><html><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width,initial-scale=1'>{r}"
             f"{HEAD}"
+            f"<link rel='preconnect' href='https://fonts.googleapis.com'>"
+            f"<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
+            f"<link rel='stylesheet' href='https://fonts.googleapis.com/css2?"
+            f"family=Roboto:wght@400;500;600;700&display=swap'>"
             f"<title>{e(title)}</title><style>{CSS}</style></head>"
-            f"<body class='viz-root'><div class='wrap'>{body}</div></body></html>")
+            f"<body class='viz-root'>{RAIL}"
+            f"<header class='topbar'><span class='burger'>\u2630</span>"
+            f"<h1>{e(heading or title)}</h1>"
+            f"<div class='right'><span>Vici Media</span>"
+            f"<span title='notifications'>\u25cf</span></div></header>"
+            f"{trail}<div class='wrap'>{body}</div></body></html>")
 
 
 def _fmt_when(ts):
@@ -253,9 +367,9 @@ def dashboard_html(audits, principal, queue_depth):
         blob = _h.escape(_json.dumps(st), quote=True)
         return (f"<details class='hist'><summary>Settings used</summary>"
                 f"<table class='sub'>{rows}</table>"
-                f"<button class='del wide' type='button' data-prefill=\"{blob}\" "
-                f"onclick='prefill(this)'>Start a new audit with these "
-                f"settings</button></details>")
+                f"<button class='btn ghost' type='button' style='margin-top:9px;"
+                f"width:100%' data-prefill=\"{blob}\" onclick='prefill(this)'>"
+                f"Start a new audit with these settings</button></details>")
 
     cards = []
     for g in groups:
@@ -294,8 +408,8 @@ def dashboard_html(audits, principal, queue_depth):
             f"<a class='cname' href='/audits/{a['id']}'>{e(g['client'])}</a>"
             f"<div class='curl'><code>{e(a['target_url'])[:70]}</code></div>"
             f"<div class='cmeta'>"
-            f"<span class='chip'><b style='background:{col}'></b>{spin}"
-            f"{e(a['status'])}</span>"
+            f"<span class='chip {STATUS_PILL.get(a['status'], '')}'>{spin}"
+            f"{e(a['status'].replace('_', ' '))}</span>"
             f"<span>{e(a.get('overall_rating') or 'Not Assessed')}</span>"
             f"<span>{e(a.get('coverage') or '—')} checks</span>"
             f"<span>{a.get('pages_crawled') or '—'} pages</span>"
@@ -343,13 +457,10 @@ def dashboard_html(audits, principal, queue_depth):
     ]) + "</div>"
 
     body = f"""
-    <h1>SEO &amp; AI Search Audit Engine</h1>
-    <div class='sub'>{e(principal.name)} · mode <code>{e(cfg.mode)}</code></div>
-    <div style='margin-top:10px'>
-      <span class='chip' style='background:var(--seq);color:#fff;border-color:var(--seq);
-        font-size:12px;padding:4px 12px'>{e(version.label())}</span>
-      <span style='color:var(--muted);font-size:12px;margin-left:8px'>
-        {e(version.BUILD_NOTES)}</span></div>
+    <div class='sub'>{e(principal.name)} · mode <code>{e(cfg.mode)}</code>
+      <span class='chip build' style='margin-left:6px'>{e(version.label())}</span></div>
+    <div style='color:var(--muted);font-size:11.5px;margin-top:4px'>
+      {e(version.BUILD_NOTES)}</div>
     {stats}
 
     <h2>New audit</h2>
@@ -566,7 +677,9 @@ def dashboard_html(audits, principal, queue_depth):
     }}
     </script>
     """
-    return _shell("Vici Audit Engine", body, refresh=8 if running else None)
+    return _shell("Vici Audit Engine", body, refresh=8 if running else None,
+                  heading="SEO & AI Search Audit Engine",
+                  crumbs=[("Audits", None)])
 
 
 def audit_html(a):
@@ -658,12 +771,12 @@ def audit_html(a):
         target = int(opts.get("max_pages") or 0)
         if cur == "crawling" and target and done:
             pct = max(3, min(97, round(100 * done / target)))
-            rail = (f"<div class='rail'><i style='width:{pct}%'></i></div>"
+            rail = (f"<div class='rail-p'><i style='width:{pct}%'></i></div>"
                     f"<div class='marks' style='margin-bottom:14px'>"
                     f"<span class='on'>{done} of up to {target} pages</span>"
                     f"<span>{pct}%</span></div>")
         else:
-            rail = "<div class='rail indet'><i></i></div>"
+            rail = "<div class='rail-p indet'><i></i></div>"
         inner = (rail + f"<div class='marks'>{marks}</div>"
                  f"<div class='card' style='margin-top:16px'>"
                  f"<span class='spin'></span> <b>{e(a.get('progress') or cur)}</b>"
@@ -671,8 +784,8 @@ def audit_html(a):
                  f"150 pages typically takes 2–5 minutes.</p></div>")
         refresh = 4
 
-    body = (f"<h1>{e(a['client_name'])}</h1>"
-            f"<div class='sub'><code>{e(a['target_url'])}</code> · "
-            f"audit <code>{e(a['id'])}</code></div>{inner}"
-            f"<p style='margin-top:22px'><a href='/'>← all audits</a></p>")
-    return _shell(f"{a['client_name']} — running", body, refresh=refresh)
+    body = (f"<div class='sub'><code>{e(a['target_url'])}</code> · "
+            f"audit <code>{e(a['id'])}</code></div>{inner}")
+    return _shell(f"{a['client_name']} — running", body, refresh=refresh,
+                  heading=a["client_name"],
+                  crumbs=[("Audits", "/"), (a["client_name"], None)])

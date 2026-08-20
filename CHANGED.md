@@ -1,4 +1,37 @@
-# Changed files — build 2026.08.20-06
+# Changed files — build 2026.08.20-07
+
+## Restyled to adtini
+
+The operator UI now uses adtini's design language, so it does not arrive
+looking like a separate product bolted on when it moves into that site.
+
+Read off the workflow and forecast screens:
+
+| | |
+|---|---|
+| Navy rail, fixed left, gold active item | `#12356b` / `#f0b429` |
+| White top bar with the page title, sticky | 44px, matching the Forecast header |
+| Breadcrumb under it | `Audits › The Ooten Law Firm` |
+| Pale blue-grey page, white cards, 6px radius | `#f4f6f9` on `#ffffff` |
+| Navy table header, white type | matches the Workflow list |
+| Pastel status pills, dark text | green ready, blue running, purple needs-capture, pink failed |
+| Fully-rounded action buttons | blue primary, ghost, plus navy / gold / orange to hand |
+| Roboto | loaded from Google Fonts, same as the PDF |
+
+**Two things deliberately did not change.** Severity keeps its ordinal blue
+ramp rather than adtini's categorical pastels, because on a ranked scale the
+ordering *is* the information and four unrelated hues would destroy it. And the
+score ring stays one hue with length carrying magnitude, for the same reason it
+always has.
+
+This is the operator UI only — `app/ui.py`. The client-facing HTML report has
+its own stylesheet and is untouched, since it is a deliverable that goes out
+under the client's nose rather than a screen inside adtini. Say the word if you
+want that moved over too.
+
+---
+
+# Build 2026.08.20-06
 
 ## "No stored crawl when there is" — the same split, the other way
 
