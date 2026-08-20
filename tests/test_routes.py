@@ -169,8 +169,19 @@ def main():
     st, _, _b = GET("/oauth/google/callback?code=c&state=x|anything")
     check("callback 404s while OAUTH_SETUP_TOKEN is unset", st == 404, str(st))
 
+    st, _, hz = GET("/healthz")
+    check("healthz reports the setup surface as closed",
+          json.loads(hz).get("oauth_setup") is False, hz[:120].decode())
+
     os.environ["OAUTH_SETUP_TOKEN"] = "s3cret"
     try:
+        # The two ways start can 404 — old build, or token unset/mistyped —
+        # are indistinguishable from a browser. healthz tells them apart.
+        st, _, hz = GET("/healthz")
+        check("healthz reports the setup surface as open once it is",
+              json.loads(hz).get("oauth_setup") is True, hz[:120].decode())
+        check("healthz never echoes the token itself",
+              b"s3cret" not in hz, hz[:200].decode())
         st, _, _b = GET("/oauth/google/start?t=wrong&label=x")
         check("a wrong setup token still 404s, it does not 401", st == 404, str(st))
         st, _, _b = GET("/oauth/google/callback?code=c&state=x|wrong")

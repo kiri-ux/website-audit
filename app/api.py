@@ -68,7 +68,14 @@ class AuditRequest(BaseModel):
 # ------------------------------------------------------------------ API
 @app.get("/healthz")
 def healthz():
+    # `oauth_setup` disambiguates the two ways /oauth/google/start can 404:
+    # the build is too old to have the route, or OAUTH_SETUP_TOKEN is unset or
+    # mistyped. Both look identical from a browser, which is a bad place to
+    # leave someone mid-setup. It reports whether the door is open, never the
+    # key — the routes still refuse anything but an exact token match.
     return {"ok": True, "mode": cfg.mode, "queue_depth": Q.depth(),
+            "oauth_setup": bool(os.getenv("OAUTH_SETUP_TOKEN")),
+            "google_client": bool(os.getenv("GOOGLE_CLIENT_ID")),
             **version.info()}
 
 

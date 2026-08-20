@@ -48,6 +48,28 @@ TOKEN_URL = "https://oauth2.googleapis.com/token"
 # ---------------------------------------------------------------------------
 
 
+def oauth_configured() -> bool:
+    """
+    Can we even exchange a refresh token?
+
+    A refresh token is spent AGAINST the client credentials that issued it, so
+    the worker needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET as well as
+    GOOGLE_TOKENS. Setting the client id only on the API — which is where you
+    mint the token, so it is the natural place to put it — leaves the worker
+    unable to refresh anything, and `access_token()` returns None with no
+    explanation. The rows downstream then reported "no Vici login has access to
+    this property", blaming the client for a variable we forgot to set. Hence
+    this predicate and the branches that use it.
+    """
+    return bool(os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET"))
+
+
+_MISCONFIGURED = ("GOOGLE_TOKENS is set but GOOGLE_CLIENT_ID / "
+                  "GOOGLE_CLIENT_SECRET are not — a refresh token can only be "
+                  "exchanged against the client that issued it. Set both ON THE "
+                  "WORKER. This is our configuration, not a missing client grant.")
+
+
 def _token_index() -> dict:
     raw = os.getenv("GOOGLE_TOKENS", "")
     if not raw:
@@ -165,6 +187,9 @@ def collect_gsc(site_url: str, refresh_token: str | None = None,
         tok, label = _first_login_that_can_see(site_url)
     if not tok:
         idx = _token_index()
+        if idx and not oauth_configured():
+            # Our fault, and it must not read as the client's.
+            return _need_access(GSC_IDS, _MISCONFIGURED, "gsc_misconfigured")
         reason = ("No Vici login has access to this Search Console property"
                   if idx else
                   "Search Console access not configured.")
@@ -301,6 +326,8 @@ def collect_ga4(property_id: str | None, refresh_token: str | None,
         tok, property_id, label = _find_ga4_property(site_url)
     if not (tok and property_id):
         idx = _token_index()
+        if idx and not oauth_configured():
+            return _need_access(GA4_IDS, _MISCONFIGURED, "ga4_misconfigured")
         reason = ("Google Analytics access not granted by the client."
                   if not idx else
                   f"No GA4 property measuring this domain was found in "

@@ -33,7 +33,59 @@ def check(l, c, d=""):
     print(f"  {'PASS' if c else 'FAIL'}  {l}" + (f"  ({d})" if d else ""))
     if not c: FAILURES.append(l)
 
+
+def _analytics_misconfig_checks():
+    """
+    The three ways Search Console / GA4 come back empty must be tellable apart.
+
+    Only ONE of them is the client's to fix. The other two are ours, and the
+    message used to blame the client for both: with GOOGLE_TOKENS set but no
+    client id/secret on the worker, every row read "no Vici login has access to
+    this property" — which would have been read out loud on a client call.
+    """
+    import os
+    from engine.collectors import analytics as A
+    saved = {k: os.environ.get(k) for k in
+             ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_TOKENS")}
+    try:
+        for k in saved:
+            os.environ.pop(k, None)
+        r = A.collect_gsc("https://x.test/")
+        check("nothing configured reads as not configured",
+              r["GSC-01"]["source"] == "gsc"
+              and "not configured" in r["GSC-01"]["evidence"],
+              r["GSC-01"]["evidence"][:70])
+
+        os.environ["GOOGLE_TOKENS"] = '{"reporting-zone":"1//fake"}'
+        r = A.collect_gsc("https://x.test/")
+        check("tokens without client credentials is named as OUR mistake",
+              r["GSC-01"]["source"] == "gsc_misconfigured", r["GSC-01"]["source"])
+        check("and does not accuse the client of a missing grant",
+              "add a Vici login" not in r["GSC-01"]["evidence"])
+        check("GA4 says the same thing rather than something different",
+              A.collect_ga4(None, None, site_url="https://x.test/"
+                            )["GA4-01"]["source"] == "ga4_misconfigured")
+
+        os.environ["GOOGLE_CLIENT_ID"] = "cid"
+        os.environ["GOOGLE_CLIENT_SECRET"] = "sec"
+        r = A.collect_gsc("https://x.test/")
+        check("fully configured but unauthorised IS the client's grant",
+              r["GSC-01"]["source"] == "gsc"
+              and "add a Vici login" in r["GSC-01"]["evidence"],
+              r["GSC-01"]["evidence"][:70])
+        check("and it names which logins were tried",
+              "reporting-zone" in r["GSC-01"]["evidence"])
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
 def main():
+    print("\nSEARCH CONSOLE / GA4 FAILURE STATES ARE DISTINGUISHABLE")
+    _analytics_misconfig_checks()
     root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         "fixture", "site")
     class Quiet(http.server.SimpleHTTPRequestHandler):
@@ -126,6 +178,11 @@ def main():
 
     print("\nMULTI-LOGIN TOKEN INDEX")
     os.environ["GOOGLE_TOKENS"] = '{"vici-1":"x","vici-2":"y"}'
+    # Client credentials too: without them the collector now (correctly) reports
+    # OUR misconfiguration instead of walking the logins, which is a different
+    # code path from the one this block is about.
+    os.environ["GOOGLE_CLIENT_ID"] = "cid"
+    os.environ["GOOGLE_CLIENT_SECRET"] = "sec"
     g2 = collect_gsc("https://example.com/", None)
     a42 = collect_ga4(None, None, site_url="https://example.com/")
     check("GSC still degrades to Need Access when no login can see the property",
@@ -136,7 +193,8 @@ def main():
           all(f["status"] == "Need Access" for f in a42.values())
           and "properties per login" in a42["GA4-01"]["evidence"],
           a42["GA4-01"]["evidence"][:90])
-    os.environ.pop("GOOGLE_TOKENS", None)
+    for _k in ("GOOGLE_TOKENS", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"):
+        os.environ.pop(_k, None)
 
     print("\nKEYWORD RANKINGS SECTION")
     meta_rk = dict(meta)

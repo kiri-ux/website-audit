@@ -132,9 +132,103 @@ which is why the variable is a JSON object rather than one token.
 
 - Enable three APIs: *Google Search Console API*, *Google Analytics Data API*,
   *Google Analytics Admin API*.
-- OAuth consent screen: **Internal** if the Vici logins are on Workspace
-  (no review, no test-user list). External means a 7-day token expiry until
-  the app is verified, which will silently break collection a week later.
+- Audience: **Google Auth Platform → Audience**
+  (`console.cloud.google.com/auth/audience`). This is the page that used to be
+  called "OAuth consent screen" and moved out from under APIs & Services, so
+  older write-ups send you somewhere that no longer exists.
+
+  Pick **Internal**. It only appears if the project sits inside a Google Cloud
+  **Organization**. If it is greyed out that is what it is telling you, and the
+  fix is to create the project under the org (or have an admin move it) rather
+  than to settle for External.
+
+  **Internal restricts who can CONSENT, not who can be audited.** Only accounts
+  belonging to the project's organization can complete the flow. The Vici login
+  that holds the client's Search Console and Analytics properties has to be in
+  that org — if it is a `@gmail.com` account or sits on an unrelated domain,
+  Google refuses at the approval screen with:
+
+  > Error 403: org_internal — This client is restricted to users within its
+  > organization.
+
+  That failure is loud and immediate, before any token is issued, so trying it
+  costs nothing: set the variables, hit `/oauth/google/start` signed in as the
+  login you actually want, and you will know in ten seconds. Do that before
+  reasoning about which domain owns what.
+
+  **Our case.** The Cloud org is `vicimediainc.com`; clients grant access to the
+  white-label address `digital@reporting.zone`. First attempt was refused:
+
+  > Access blocked: Site Scan can only be used within its organization.
+  > Error 403: org_internal
+
+  The cause: the *domain* `reporting.zone` is in our Workspace, but
+  `digital@reporting.zone` is an **unmanaged consumer Google account** that
+  merely uses that address. It is not a directory user, so it is not in the
+  org, so Internal rejects it.
+
+  **Fix it at the account, not at the consent screen.** Bring that account into
+  the directory with the **transfer tool for unmanaged users** and Internal
+  starts working with no other changes.
+
+  ⚠️ **Transfer it — do NOT create a new user with the same address.** Creating
+  one produces a conflicting account: Google makes the existing consumer
+  account rename itself, and every client's Search Console and Analytics grant
+  points at *that* account. You would keep the address and lose all the access
+  attached to it, then have to re-request from every client. A transfer keeps
+  the same address and the same account, so the grants come with it.
+
+  Admin console → **Directory → Users → More options → Transfer tool for
+  unmanaged users**. Searching "transfer tool" and clicking *Open Transfer
+  Tool* only gets you as far as the Users page — the tool itself is behind the
+  **More options** menu above the user list, which is easy to miss.
+
+  It lists unmanaged accounts on your **verified** domains. If
+  `digital@reporting.zone` is not there, the account is not the problem — it
+  demonstrably exists, since it got as far as an `org_internal` refusal. Check
+  **Account → Domains → Manage domains** and confirm `reporting.zone` is listed
+  *and verified*. A domain you own and route mail for is not necessarily
+  verified in Workspace. If you verified it recently, Google says the list can
+  take up to 24 hours to catch up.
+
+  Send the transfer request; whoever reads that mailbox accepts it; the account
+  becomes a managed user on a Workspace seat.
+
+  Two cautions. Google warns that a transferred personal account "may lose data
+  and content for some Google services" — have the mailbox owner run a Takeout
+  export first. And before trusting it, sign in as that account afterwards and
+  confirm Search Console still lists the client properties. Third-party grants
+  follow the account rather than the address, so they should survive, but this
+  is cheap to verify and expensive to assume.
+
+  Worth doing regardless of OAuth: today a consumer Gmail account outside admin
+  control holds read access to every client's analytics. No enforced 2FA, no
+  password reset, no offboarding. That is the actual finding here.
+
+  **If the transfer is not on:** External, in a NEW project. Do not flip
+  `site-scan-consent` to External — that consent screen is Site Scan's, in
+  production, and changing its audience changes Site Scan's posture too. Two
+  OAuth clients in one project is fine; two apps sharing one audience setting
+  is not.
+
+  **External, in a new project.** New project (`vici-audit-oauth`), enable the
+  three APIs there, then Google Auth Platform → Get started → app name and
+  support email → Audience **External** → contact email → Create.
+
+  Then, on the Audience page, **Publish app** and confirm. The status must read
+  **In production**, not Testing. This is the single step that matters most: an
+  external app left in Testing expires refresh tokens after **7 days**, so
+  collection works, then silently stops a week later with every Search Console
+  and GA4 row back at Need Access and nothing in the logs to explain it.
+  Published apps keep their tokens indefinitely.
+
+  Unverified is fine here. Google requires verification only above 100 users;
+  below that you get an interstitial reading "Google hasn't verified this app",
+  cleared once per login via **Advanced → Go to … (unsafe)**. Both scopes are
+  classed sensitive, which is what triggers that screen. No client ever sees
+  it — the only people who touch this flow are us, once per login — so it costs
+  nothing in white-label terms. It is not a foundation for a client-facing
+  consent flow later, but that was never the plan.
 - Credentials → Create → **OAuth client ID** → *Web application*.
 - Authorised redirect URI, exactly:
   `https://vici-audit-api.onrender.com/oauth/google/callback`
@@ -164,8 +258,37 @@ something you will recognise a year from now.
 new login merged in. Paste it onto **`vici-audit-worker`** — the collectors run
 there.
 
-**5. Unset `OAUTH_SETUP_TOKEN`.** Both routes vanish. Repeat from step 3 for
-each additional login.
+**5. Put `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` on the WORKER too.** Not
+just `GOOGLE_TOKENS`. A refresh token is exchanged *against the client that
+issued it*, so the worker cannot turn one into an access token without both.
+Setting them only on the API — the natural instinct, since that is where you
+mint the token — leaves every Search Console and GA4 row at Need Access.
+
+**6. Unset `OAUTH_SETUP_TOKEN`** on the API. Both routes vanish. Repeat from
+step 3 for each additional login.
+
+### Telling the three empty states apart
+
+Watch the worker log. Only the third is the client's to fix:
+
+```
+Search Console EMPTY — Search Console access not configured.
+    → GOOGLE_TOKENS is not set on the worker.
+
+Search Console EMPTY — GOOGLE_TOKENS is set but GOOGLE_CLIENT_ID / ...
+    → the step-5 mistake. Ours.
+
+Search Console EMPTY — No Vici login has access to this Search Console
+property (tried 1 login(s): reporting-zone). Ask the client to add a Vici
+login as a user on the property...
+    → credentials are fine; that login is not on the property. Theirs.
+
+Search Console answered 5/22 rows
+    → working.
+```
+
+The middle one used to render as the third, which would have had us asking a
+client to re-grant access they had already given.
 
 Google only issues a refresh token on the first consent for a login. The app
 sends `prompt=consent` to force one on repeat runs; if it still comes back

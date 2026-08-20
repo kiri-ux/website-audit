@@ -124,10 +124,22 @@ def run_audit_job(audit_id: str):
 
     # ---- external collectors (client credentials / vendor keys) ----
     step("checking", "collecting Search Console, Analytics and backlink data")
-    findings.update(collect_gsc(a["target_url"], opts.get("gsc_refresh_token")))
-    findings.update(collect_ga4(opts.get("ga4_property_id"),
-                                opts.get("ga4_refresh_token"),
-                                site_url=a["target_url"]))
+    gsc = collect_gsc(a["target_url"], opts.get("gsc_refresh_token"))
+    ga4 = collect_ga4(opts.get("ga4_property_id"),
+                      opts.get("ga4_refresh_token"),
+                      site_url=a["target_url"])
+    findings.update(gsc)
+    findings.update(ga4)
+    # Say which of the three states we are in, because they are easy to confuse
+    # and only one of them is the client's to fix.
+    for name, rows in (("Search Console", gsc), ("GA4", ga4)):
+        got = sum(1 for f in rows.values() if f.get("status") != "Need Access")
+        if got:
+            print(f"[worker] {audit_id} {name} answered {got}/{len(rows)} rows",
+                  flush=True)
+        else:
+            why = next(iter(rows.values()), {}).get("evidence", "")
+            print(f"[worker] {audit_id} {name} EMPTY — {why}", flush=True)
     findings.update(collect_backlinks(art.host))
 
     # Business context: what the crawl learned about the CLIENT rather than

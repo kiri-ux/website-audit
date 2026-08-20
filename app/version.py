@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.19-14"
-BUILD_NOTES = ("Google OAuth setup routes — you can finally mint a "
-               "GOOGLE_TOKENS entry without leaving the app; Need Access "
-               "split by who it is blocked on; favicon renders")
+BUILD = "2026.08.19-16"
+BUILD_NOTES = ("The worker needs GOOGLE_CLIENT_ID/SECRET too, not just "
+               "GOOGLE_TOKENS — without them the rows blamed the client for "
+               "a variable we forgot to set. Now named as ours, and logged")
 # ---------------------------------------------------------------------------
 
 
