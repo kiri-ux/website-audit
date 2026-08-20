@@ -19,7 +19,8 @@ import json
 from collections import Counter
 
 SEV_ORDER = ["Critical", "High", "Medium", "Low", "Opportunity"]
-STATUS_ORDER = ["Fail", "Not Implemented", "Warning", "Pass", "Need Access", "N/A"]
+STATUS_ORDER = ["Fail", "Not Implemented", "Warning", "Pass", "Info",
+                "Need Access", "N/A"]
 
 SECTION_NAMES = {
     "ANA": "Analytics & Tracking", "GSC": "Search Console", "GA4": "Google Analytics 4",
@@ -138,7 +139,8 @@ code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
 
 STATUS_COLOR = {"Pass": "var(--good)", "Warning": "var(--warning)",
                 "Fail": "var(--critical)", "Not Implemented": "var(--serious)",
-                "Need Access": "var(--muted)", "N/A": "var(--muted)"}
+                "Need Access": "var(--muted)", "N/A": "var(--muted)",
+                "Info": "var(--ink2)"}
 SEV_RAMP = {"Critical": "var(--o4)", "High": "var(--o3)",
             "Medium": "var(--o2)", "Low": "var(--o1)", "Opportunity": "var(--track)"}
 

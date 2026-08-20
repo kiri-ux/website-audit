@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-09"
-BUILD_NOTES = ("Blocked-on is decided by the REASON, not the section — a "
-               "working Search Console grant no longer reports 27 rows as a "
-               "missing client grant")
+BUILD = "2026.08.20-10"
+BUILD_NOTES = ("Off-Page no longer scores 94 Excellent for retrieving "
+               "numbers; four rows that carried the wrong metric now say we "
+               "do not have it")
 # ---------------------------------------------------------------------------
 
 

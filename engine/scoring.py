@@ -14,7 +14,14 @@ from collections import defaultdict
 
 PENALTY = {"Critical": 25, "High": 12, "Medium": 6, "Low": 2, "Opportunity": 0}
 FAILING = {"Fail", "Not Implemented", "Warning"}
-EXCLUDED = {"N/A", "Need Access"}
+# "Info" is a MEASUREMENT, not a test: a backlink count, a referring-IP count.
+# There is no number of backlinks that is correct, so such a row can neither
+# pass nor fail, and counting it as a pass is how retrieving thirteen numbers
+# scored Off-Page authority 94/100 Excellent. Excluded from the score the same
+# way N/A is — and, like N/A, excluded from the coverage denominator too, since
+# it is not something we failed to see.
+EXCLUDED = {"N/A", "Need Access", "Info"}
+INFORMATIONAL = {"Info"}
 CAP = 70  # max penalty a single section can accrue
 
 # A section must have at least this fraction of its checkpoints assessable
@@ -101,7 +108,8 @@ def score(findings: dict, catalog: dict, vertical: str | None = None):
         # the denominator would mark a section unassessable for the crime of
         # having irrelevant rows in the template. Without this, a site that runs
         # no paid ads can never score its Analytics section.
-        assessable = [r for r in rows if r[1]["status"] != "N/A"]
+        assessable = [r for r in rows
+                      if r[1]["status"] not in ("N/A", "Info")]
         if len(applicable) / max(1, len(assessable)) < MIN_SECTION_COVERAGE:
             per_section[sec] = {"score": None, "rating": "Not Assessed",
                                 "checked": len(applicable),

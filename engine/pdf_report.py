@@ -71,8 +71,8 @@ SHORT_NAMES = {
     "OFF": "Off-Page & Authority",
 }
 ORDER = list(SECTION_NAMES)
-STATUS_ORDER = ["Fail", "Not Implemented", "Warning", "Pass", "Need Access",
-                "Manual", "N/A"]
+STATUS_ORDER = ["Fail", "Not Implemented", "Warning", "Pass", "Info",
+                "Need Access", "Manual", "N/A"]
 
 
 def _synthetic_rows(catalog: dict, findings: dict, prefix: str) -> list:
@@ -317,6 +317,7 @@ STATUS_PILL = {
     "Not Implemented": (colors.HexColor("#fdeadf"), colors.HexColor("#9c4a1e")),
     "Need Access":     (colors.HexColor("#f1f0ec"), colors.HexColor("#52514e")),
     "Manual":          (colors.HexColor("#eaf1fb"), colors.HexColor("#2a5ea8")),
+    "Info":            (colors.HexColor("#eef2f7"), colors.HexColor("#48566b")),
     "N/A":             (colors.HexColor("#f6f5f2"), colors.HexColor("#898781")),
 }
 

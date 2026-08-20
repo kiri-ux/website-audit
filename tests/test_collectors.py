@@ -198,6 +198,35 @@ def main():
     check("an unrelated client is not dragged in",
           slug not in _squash("Orme's Gym, LLC"))
 
+    print("\nA MEASUREMENT IS NOT A PASS")
+    # Off-Page scored 94/100 EXCELLENT for a firm with 131 referring domains,
+    # because thirteen retrieved numbers were each recorded as Pass. There is
+    # no number of backlinks that is correct; a count cannot pass or fail.
+    from engine import scoring as _sc
+    check("Info is excluded from scoring, like N/A",
+          "Info" in _sc.EXCLUDED, str(sorted(_sc.EXCLUDED)))
+    cat_off = {f"OFF-{i:02d}": {"prefix": "OFF", "checkpoint": f"c{i}"}
+               for i in range(1, 30)}
+    def _row(st):
+        return {"status": st, "severity": "Low", "value": {}, "evidence": "n",
+                "affected_pages": [], "recommendation": "", "confidence": 1.0,
+                "source": "dataforseo"}
+    only_counts = {c: _row("Info") for c in list(cat_off)[:13]}
+    only_counts.update({c: _row("Need Access") for c in list(cat_off)[13:]})
+    v = _sc.score(only_counts, cat_off)["sections"]["OFF"]
+    check("a section of pure measurements is Not Assessed, never Excellent",
+          v["score"] is None, f"{v['score']} {v['rating']}")
+
+    print("\nWRONG DATA UNDER A CONFIDENT LABEL IS THE WORST OUTCOME")
+    # "Lost backlinks" printed the nofollow percentage and "New backlinks"
+    # printed a count of broken OUTBOUND pages. Both looked authoritative.
+    src_txt = open(os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "engine", "collectors",
+        "dataforseo.py")).read()
+    for cid in ("OFF-10", "OFF-11", "OFF-19", "OFF-20"):
+        check(f"{cid} is declared unmapped rather than given a stand-in",
+              f'unmapped("{cid}"' in src_txt)
+
     print("\nAN OPERATOR-CHOSEN PROPERTY OVERRIDES THE MATCHER")
     # The whole point of the dropdown is the case the matcher gets wrong, so a
     # hand-picked property must not be quietly re-derived from the domain.

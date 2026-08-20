@@ -141,8 +141,37 @@ def collect_backlinks(domain: str) -> dict:
     def add(cid, ok, val, ev, sev="Low", rec=""):
         out[cid] = _f("Pass" if ok else "Fail", val, ev, sev, rec)
 
+    def info(cid, val, ev):
+        """
+        A measurement with no threshold behind it.
+
+        "727 total live backlinks" is context, not a verdict — there is no
+        number of backlinks that is correct. Recording it as Pass meant that
+        merely RETRIEVING it counted as the site doing well, and thirteen such
+        rows scored Off-Page authority 94/100 Excellent for a firm with 131
+        referring domains. Info is excluded from scoring entirely, so the
+        section is scored on the rows that actually judge something.
+        """
+        out[cid] = _f("Info", val, ev, "Low", "", 1.0, "dataforseo")
+
+    def unmapped(cid, what):
+        """
+        A checkpoint this endpoint does not answer.
+
+        The previous version reached for the nearest available number, so
+        "Lost backlinks" printed the nofollow percentage and "New backlinks"
+        printed a count of broken outbound pages. Wrong data under a
+        confident-looking label is the one failure mode this whole tool is
+        built to avoid — say we do not have it.
+        """
+        out[cid] = _f("Need Access", {},
+                      f"Not retrieved — {what} needs an additional DataForSEO "
+                      f"backlinks endpoint.", "Low",
+                      "Extend the collector to the backlinks history endpoint.",
+                      0.0, "dataforseo_partial")
+
     if bl is not None:
-        add("OFF-01", True, {"backlinks": bl}, f"{bl:,} total live backlinks.")
+        info("OFF-01", {"backlinks": bl}, f"{bl:,} total live backlinks.")
     if rd is not None:
         sev = "Low" if rd >= 100 else ("Medium" if rd >= 25 else "High")
         add("OFF-02", rd >= 25, {"referring_domains": rd},
@@ -150,10 +179,10 @@ def collect_backlinks(domain: str) -> dict:
             "" if rd >= 25 else "Referring-domain count is low — prioritise digital "
                                 "PR, resource pages and unlinked-mention reclamation.")
     if ips is not None:
-        add("OFF-03", True, {"referring_ips": ips}, f"{ips:,} referring IPs.")
+        info("OFF-03", {"referring_ips": ips}, f"{ips:,} referring IPs.")
     if subnets is not None:
-        add("OFF-04", True, {"referring_subnets": subnets},
-            f"{subnets:,} referring subnets.")
+        info("OFF-04", {"referring_subnets": subnets},
+             f"{subnets:,} referring subnets.")
     if rank is not None:
         sev = "Low" if rank >= 200 else ("Medium" if rank >= 100 else "High")
         add("OFF-05", rank >= 100, {"dfs_rank": rank},
@@ -173,28 +202,18 @@ def collect_backlinks(domain: str) -> dict:
             "" if not broken else "Redirect the target URLs to recover this equity.")
     types = s.get("referring_links_types") or {}
     if isinstance(types, dict) and types.get("image") is not None:
-        add("OFF-18", True, {"image_backlinks": types["image"]},
-            f"{types['image']:,} backlinks come from images.")
-    pages_ref = s.get("referring_pages")
-    if pages_ref is not None:
-        add("OFF-19", True, {"referring_pages": pages_ref},
-            f"{pages_ref:,} individual pages link to the site.")
-    main = s.get("referring_main_domains")
-    if main is not None and rd:
-        add("OFF-20", True, {"referring_main_domains": main},
-            f"{main:,} distinct root domains among {rd:,} referring domains.")
-    if s.get("referring_domains_nofollow") is not None and rd:
-        nf = s["referring_domains_nofollow"]
-        pct = round(100 * nf / rd, 1) if rd else 0
-        add("OFF-10", pct < 50, {"nofollow_domains": nf, "pct": pct},
-            f"{pct}% of referring domains link with nofollow only.",
-            "Low" if pct < 50 else "Medium")
-    if s.get("broken_pages") is not None:
-        bp = s["broken_pages"]
-        add("OFF-11", bp == 0, {"broken_pages": bp},
-            f"{bp:,} of your linked-to pages are broken.",
-            "Low" if not bp else "Medium",
-            "" if not bp else "Restore or redirect those URLs to recover the links.")
+        info("OFF-18", {"image_backlinks": types["image"]},
+             f"{types['image']:,} backlinks come from images.")
+    # `referring_pages` and `referring_main_domains` come back from this
+    # endpoint but answer no checkpoint in the template. Parking them on the
+    # nearest free row would be the same mistake in a new place, so they are
+    # dropped. The numbers live in OFF-01/OFF-02's value payload if wanted.
+
+    # These four are NOT in the summary endpoint. Do not substitute.
+    unmapped("OFF-10", "lost backlinks")
+    unmapped("OFF-11", "newly gained backlinks")
+    unmapped("OFF-19", "backlinks pointing specifically at the homepage")
+    unmapped("OFF-20", "backlinks pointing at deep pages")
 
     if follow is not None and nofollow is not None and bl:
         pct = round(100 * follow / bl, 1)
