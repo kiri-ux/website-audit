@@ -12,11 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.19-13"
-BUILD_NOTES = ("Need Access split by who it is blocked on — the client's ask "
-               "drops from 161 to 38; unautomated checkpoints are named rather "
-               "than hidden; worker says whether DataForSEO and the judgment "
-               "layer ran; favicon renders; gauge rating fits inside the arc")
+BUILD = "2026.08.19-14"
+BUILD_NOTES = ("Google OAuth setup routes — you can finally mint a "
+               "GOOGLE_TOKENS entry without leaving the app; Need Access "
+               "split by who it is blocked on; favicon renders")
 # ---------------------------------------------------------------------------
 
 

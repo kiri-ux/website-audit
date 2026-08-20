@@ -1,94 +1,85 @@
-# Changed files — build 2026.08.19-13
+# Changed files — build 2026.08.19-14
 
 **Cumulative since 2026.08.18-16.** Apply and you are current whatever you last
 uploaded.
 
-## Why E-E-A-T and AI Search were blank
+## Search Console + GA4: what was already there, and what wasn't
 
-Not a rendering problem. The worker never got the key:
+Both collectors were fully built — 38 checkpoints, real API calls, a multi-login
+token index, and GA4 property discovery that matches on the data stream's URI
+rather than trusting a property's display name. What was missing was the one
+step that turns a Google login into the token they spend: `consent_url()` and
+`exchange_code()` existed in `engine/collectors/analytics.py` and **nothing
+called them**. No route, no way to mint a token without leaving the app.
 
-```
-EEAT-01  Need Access  Not assessed — no LLM credentials configured for the judgment layer.
-OFF-01   Need Access  No backlink data provider is configured.
-```
-
-`ANTHROPIC_API_KEY`, `DFS_LOGIN` and `DFS_PASSWORD` have to be on
-**vici-audit-worker**. The API never runs a collector. With the judgment layer
-running, E-E-A-T goes 9/24 → 24/24 and AI Search 8/22 → 22/22, which is what
-clears the 50% coverage gate those two sections are failing.
-
-Both now say so in the log rather than degrading silently:
+Added, gated behind `OAUTH_SETUP_TOKEN`:
 
 ```
-[worker] <id> judgment layer answered 29/29 E-E-A-T and AI Search rows
-[worker] <id> judgment layer produced NOTHING — ANTHROPIC_API_KEY is not set ON THE WORKER
-[worker] <id> DataForSEO rankings OK — 412 keywords, 37 in the top 10
-[worker] <id> DataForSEO SKIPPED — DFS_LOGIN / DFS_PASSWORD are not set ON THE WORKER
+GET /oauth/google/start?t=<token>&label=seo-main   → Google consent
+GET /oauth/google/callback                          → prints the merged GOOGLE_TOKENS
 ```
 
-## "Only Search Console and GA4 need client access, right?"
+With `OAUTH_SETUP_TOKEN` unset both routes return **404** — not 401, not a login
+page. The surface does not exist. A token minted there inherits every client
+property that login can see across Search Console and Analytics, which makes it
+the most valuable credential this service touches, so the resting state is
+"absent" rather than "present and checking".
 
-Right — and the report was saying otherwise on every run:
+Full walkthrough in **DEPLOY.md → "Minting a `GOOGLE_TOKENS` entry"**.
 
-> 161 checks need access to accounts only you control — mostly Search Console
-> and Analytics.
+## The thing to know before you ask a client for access
 
-38 of those were the client's. The rest were our unset vendor keys and 58
-checkpoints with no automation at all, all filed as the client's homework.
+Access alone will **not** make these sections score:
 
-`engine/access.py` splits every unmeasured checkpoint three ways:
+| Section | Filled by the API today | Gate | Result |
+|---|---|---|---|
+| Search Console | 5/22 (23%) | 50% | still Not Assessed |
+| Google Analytics 4 | 6/16 (38%) | 50% | still Not Assessed |
 
-| Bucket | Junk Bee Gone | Meaning |
-|---|---|---|
-| `client` | **38** | Search Console + GA4. The only real ask |
-| `vendor` | 68 | Our keys — backlinks, judgment layer, Lighthouse |
-| `manual` | ~55 | No automation exists; reviewed by hand |
+Same shape as the E-E-A-T problem: the rows come back, the section stays
+suppressed. The remainder is reachable and just unwritten — GSC's
+`searchAppearance` dimension covers GSC-14..18, its links endpoint covers
+GSC-19..21, and the GA4 Admin API covers GA4-03/04/06/07/08. That is +8 for GSC
+(→59%) and +5 for GA4 (→69%), clearing both.
 
-The coverage strip is now **Measured / Need your access / We complete these /
-Not applicable**, and the methodology page splits "What we need from you" from
-"What we complete during the engagement".
-
-## The 58 checkpoints nobody could see
-
-The appendix is headed "the full record, by area" and was omitting every
-checkpoint that returned no finding — 58 of them — while still counting them in
-the coverage chart. Charged for, then not named. They now appear with a
-**Manual** pill, and section totals read against the template (`Technical SEO
-26/38`, not `26/26`). The scoring gate is deliberately unchanged, so no section
-newly drops to Not Assessed.
+I would rather write those **after** your first successful grant than before,
+so the response shapes get checked against a real payload instead of guessed
+at. Guessing at a vendor's JSON shape is what the DataForSEO rankings table is
+still waiting on.
 
 ## Files
 
 | File | Why |
 |---|---|
-| `engine/access.py` | **New.** One rule for who a missing checkpoint is blocked on |
-| `engine/pdf_report.py` | Four-way coverage; split methodology copy; Manual pill; appendix names unautomated rows |
-| `engine/summarise.py` | Exec summary quotes the client bucket, on the same denominator as the chart above it. It previously printed a different number for the same fact |
-| `engine/scoring.py` | Section totals count the template's rows, not ours |
-| `engine/charts.py` | Coverage gets a fourth segment. Gauge rating is fitted to the arc's opening — "Needs Improvement" was drawn struck through by the arc; "Strong" fit, which is how it passed review |
-| `app/worker.py` | Judgment layer and DataForSEO both report what happened |
-| `static/favicon.svg`, `app/brand.py`, `app/ui.py` | Favicon — see below |
-| `tests/test_charts.py` | Bucketing, four-way coverage, every rating band fits the arc |
-| `tests/test_routes.py` | The served favicon must parse as XML |
+| `app/api.py` | The two OAuth routes, the setup-token gate, and https-forcing on the redirect URI — Render terminates TLS in front of us, so the app sees `http://` and Google rejects a mismatched URI |
+| `render.yaml` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `OAUTH_SETUP_TOKEN` on the **API** service. `GOOGLE_TOKENS` stays on the worker |
+| `DEPLOY.md` | Step-by-step, including the Internal-vs-External consent screen trap: External expires refresh tokens after 7 days until the app is verified, which breaks collection a week later with no error |
+| `tests/test_routes.py` | The routes must not exist without the variable, must 404 (not 401) on a wrong token, and must force https |
 
-## Favicon (carried from -11)
+## Carried from earlier in this batch
 
-`static/favicon.svg` was not well-formed XML — `aria-label="Vici SEO & AI
-Search Audit"`. A bare `&` in an attribute is a parse error, SVG is parsed
-strictly, so all three delivery routes served a file no browser would render.
-Every test asserted the response contained `<svg`, which it did.
+- **Need Access split three ways** (`engine/access.py`): the client's ask drops
+  from 161 to 38. The other ~123 were our unset vendor keys and 58 checkpoints
+  with no automation, all printed as the client's homework.
+- **58 unautomated checkpoints** now named with a **Manual** pill instead of
+  being counted in the coverage chart and omitted from "the full record".
+- **Worker says what ran** — judgment layer and DataForSEO both log success or
+  the reason for silence.
+- **Favicon** — the SVG was invalid XML (`aria-label="… SEO & AI Search …"`),
+  so all three delivery routes served a file no browser would parse.
+- **Gauge rating** fitted to the arc's opening; "Needs Improvement" was drawn
+  struck through.
 
 ## Verified before sending
 
-- Re-rendered the cover at 150dpi and looked at it: the four-segment legend
-  wraps cleanly, the rating clears the arc.
-- Reconciled against the real Junk Bee Gone run: 145 measured, 38 client, 68
-  vendor, 55 manual, 7 N/A = 313.
+- Routes exercised over HTTP in all four states: variable unset, wrong token,
+  missing label, no client ID. 404 / 404 / 400 / 400.
+- `render.yaml` parses; 13 env vars on the API, 26 on the worker.
 - 14 suites green; `import app.api, app.worker` on a clean merged tree.
 
 ## What to check on this build
 
-- Header chip reads **2026.08.19-13**.
-- Worker env tab: `ANTHROPIC_API_KEY`, `DFS_LOGIN`, `DFS_PASSWORD`.
-- Re-run Junk Bee Gone, then read the worker log for the four lines above.
-- Cover page: "Need your access **38**", not 161.
+- Header chip reads **2026.08.19-14**.
+- `/oauth/google/start` returns 404 before you set `OAUTH_SETUP_TOKEN`.
+- Worker still needs `ANTHROPIC_API_KEY`, `DFS_LOGIN`, `DFS_PASSWORD` — the
+  E-E-A-T, AI Search and Off-Page sections are still empty without them.

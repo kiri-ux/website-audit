@@ -158,6 +158,113 @@ def apple_touch_icon():
     return _asset(APPLE_ICON, "image/png")
 
 
+# ------------------------------------------------------- Google OAuth setup
+#
+# A ONE-TIME, OPERATOR-FACING pair of routes. Their only job is to turn a Vici
+# Google login into a refresh token you can paste into GOOGLE_TOKENS. The
+# collectors have always known how to spend that token; there was simply no way
+# to mint one without leaving the app, so all 38 Search Console and Analytics
+# rows sat at Need Access with no route to change it.
+#
+# This is NOT a client-facing consent flow and must not become one. You are
+# authorising a VICI login, once, and the token then inherits every property
+# that login can already see — including properties added next month. A client
+# grants access by adding that Vici login to their property, exactly the way
+# they already do for GTM. See engine/collectors/analytics.py.
+#
+# Gated behind OAUTH_SETUP_TOKEN. With the variable unset both routes 404, so
+# the surface does not exist at all in normal operation. Set it, mint the
+# tokens, unset it.
+import html as _html  # noqa: E402
+
+from engine.collectors import analytics as _ga  # noqa: E402
+
+
+def _hesc(x) -> str:
+    return _html.escape(str(x if x is not None else ""))
+
+
+def _setup_token() -> str:
+    return os.getenv("OAUTH_SETUP_TOKEN", "")
+
+
+def _redirect_uri(request: Request) -> str:
+    # Must match the Authorised redirect URI in the Google Cloud console
+    # EXACTLY, including scheme and trailing path. Render terminates TLS in
+    # front of us, so the app sees http:// and Google would reject it.
+    base = str(request.base_url).rstrip("/")
+    if base.startswith("http://") and "localhost" not in base \
+            and "127.0.0.1" not in base:
+        base = "https://" + base[len("http://"):]
+    return base + "/oauth/google/callback"
+
+
+@app.get("/oauth/google/start")
+def oauth_start(request: Request, t: str = "", label: str = ""):
+    if not _setup_token() or t != _setup_token():
+        raise HTTPException(404, "not found")
+    if not label:
+        raise HTTPException(400, "label is required — name the Vici login, e.g. "
+                                 "?label=seo-main")
+    url = _ga.consent_url(_redirect_uri(request), state=f"{label}|{t}")
+    if not url:
+        raise HTTPException(400, "GOOGLE_CLIENT_ID is not set on this service")
+    return RedirectResponse(url, status_code=302)
+
+
+@app.get("/oauth/google/callback", response_class=HTMLResponse)
+def oauth_callback(request: Request, code: str = "", state: str = "",
+                   error: str = ""):
+    label, _, tok = state.partition("|")
+    if not _setup_token() or tok != _setup_token():
+        raise HTTPException(404, "not found")
+    if error or not code:
+        raise HTTPException(400, f"Google returned: {error or 'no code'}")
+    try:
+        data = _ga.exchange_code(code, _redirect_uri(request))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(400, f"token exchange failed: {type(e).__name__}: {e}")
+    refresh = data.get("refresh_token")
+    if not refresh:
+        # Google only returns a refresh token on the FIRST consent for a given
+        # client/login pair. `prompt=consent` in consent_url() is what forces it
+        # on repeat runs; if it is still missing, the grant already exists.
+        raise HTTPException(
+            400, "Google did not return a refresh token. Remove this app at "
+                 "myaccount.google.com/permissions for that login and try again.")
+
+    # Show the merged value rather than the bare token, because GOOGLE_TOKENS is
+    # a JSON object of every login and hand-editing it is where the mistakes
+    # happen.
+    try:
+        current = json.loads(os.getenv("GOOGLE_TOKENS", "") or "{}")
+    except Exception:  # noqa: BLE001
+        current = {}
+    current[label] = refresh
+    merged = json.dumps(current, indent=2)
+    from .brand import HEAD_TAGS
+    return HTMLResponse(
+        f"<!doctype html><html><head><meta charset='utf-8'>{HEAD_TAGS}"
+        f"<title>Google access granted — {_hesc(label)}</title>"
+        f"<style>body{{font:15px/1.55 -apple-system,Segoe UI,Roboto,sans-serif;"
+        f"max-width:760px;margin:48px auto;padding:0 20px;color:#14140f}}"
+        f"code,pre{{background:#f6f5f2;border:1px solid #e6e5e1;border-radius:8px}}"
+        f"pre{{padding:14px;overflow:auto;font-size:13px}}"
+        f"h1{{font-size:20px}}</style></head><body>"
+        f"<h1>Access granted for <code>{_hesc(label)}</code></h1>"
+        f"<p>Paste this as <b>GOOGLE_TOKENS</b> on <b>vici-audit-worker</b>. It "
+        f"already includes every login this service currently knows about, so "
+        f"replace the whole value.</p>"
+        f"<pre>{_hesc(merged)}</pre>"
+        f"<p>Then unset <b>OAUTH_SETUP_TOKEN</b> — these two routes disappear "
+        f"when it is gone.</p>"
+        f"<p style='color:#898781;font-size:13px'>This token inherits whatever "
+        f"this login can already see in Search Console and Analytics, including "
+        f"properties added later. It does not grant access on its own: a client "
+        f"still has to add the login to their property.</p>"
+        f"</body></html>")
+
+
 # ------------------------------------------------------------------ UI
 from .ui import dashboard_html, audit_html  # noqa: E402
 from .ui_aivis import visibility_html, visibility_index_html  # noqa: E402

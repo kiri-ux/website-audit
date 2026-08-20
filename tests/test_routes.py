@@ -52,6 +52,13 @@ def GET(path, timeout=60):
         return e.code, e.headers.get("content-type", ""), e.read()
 
 
+class _FakeReq:
+    """Just enough of a Starlette Request for _redirect_uri()."""
+
+    def __init__(self, base):
+        self.base_url = base
+
+
 def main():
     for p in ("data/test_routes.db", "data/test_routes.db-wal",
               "data/test_routes.db-shm"):
@@ -150,6 +157,43 @@ def main():
     check("apple touch icon is a real PNG",
           st == 200 and body[:8] == b"\x89PNG\r\n\x1a\n", f"{st} {len(body)}B")
     check("dashboard links the icon", b"/favicon.svg" in dash)
+
+    print("\nTHE GOOGLE OAUTH SETUP SURFACE ONLY EXISTS WHEN YOU OPEN IT")
+    # These two routes mint a refresh token that inherits everything a Vici
+    # login can see across every client's Search Console and Analytics. That is
+    # the most valuable credential this service touches, so the default state is
+    # "the route does not exist" rather than "the route exists and checks".
+    import app.api as _api
+    st, _, _b = GET("/oauth/google/start?t=anything&label=x")
+    check("start 404s while OAUTH_SETUP_TOKEN is unset", st == 404, str(st))
+    st, _, _b = GET("/oauth/google/callback?code=c&state=x|anything")
+    check("callback 404s while OAUTH_SETUP_TOKEN is unset", st == 404, str(st))
+
+    os.environ["OAUTH_SETUP_TOKEN"] = "s3cret"
+    try:
+        st, _, _b = GET("/oauth/google/start?t=wrong&label=x")
+        check("a wrong setup token still 404s, it does not 401", st == 404, str(st))
+        st, _, _b = GET("/oauth/google/callback?code=c&state=x|wrong")
+        check("callback rejects a mismatched state token", st == 404, str(st))
+        st, _, _b = GET("/oauth/google/start?t=s3cret")
+        check("a missing label is refused before Google is involved",
+              st == 400, str(st))
+        # No GOOGLE_CLIENT_ID in the test environment: the route must say so
+        # rather than redirecting to a malformed consent URL.
+        st, _, _b = GET("/oauth/google/start?t=s3cret&label=seo-main")
+        check("without GOOGLE_CLIENT_ID it explains rather than redirecting",
+              st == 400, str(st))
+        check("the redirect URI is forced to https for Google",
+              _api._redirect_uri(_FakeReq("http://audit.example.com/"))
+              == "https://audit.example.com/oauth/google/callback",
+              _api._redirect_uri(_FakeReq("http://audit.example.com/")))
+        check("localhost stays http so local setup works",
+              _api._redirect_uri(_FakeReq("http://127.0.0.1:8000/"))
+              == "http://127.0.0.1:8000/oauth/google/callback")
+    finally:
+        os.environ.pop("OAUTH_SETUP_TOKEN", None)
+    st, _, _b = GET("/oauth/google/start?t=s3cret&label=seo-main")
+    check("and it is gone again once the variable is removed", st == 404, str(st))
     _, _, rep = GET(f"/audits/{aid}")
     check("the report page links it too", b"/favicon.svg" in rep)
 

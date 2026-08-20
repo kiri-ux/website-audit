@@ -39,6 +39,19 @@ services:
         sync: false
       - key: REPORT_LOGO_PATH
         sync: false
+      # Google OAuth setup, API-side only. The COLLECTORS run on the worker and
+      # need GOOGLE_TOKENS there; these three exist purely so you can mint a
+      # token from a browser. See "Minting a GOOGLE_TOKENS entry" in DEPLOY.md.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      # Set to any random string to OPEN the setup routes, then REMOVE it. With
+      # it unset, /oauth/google/start and /oauth/google/callback return 404 and
+      # the surface does not exist. A token minted there inherits every client
+      # property the login can see, so it does not stay open between uses.
+      - key: OAUTH_SETUP_TOKEN
+        sync: false
 
   # ---------------------------------------------------------------- worker
   - type: worker

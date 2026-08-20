@@ -122,6 +122,74 @@ added tomorrow. If nobody has added a Vici login to the client's Search Console
 property, no token helps — and the report says so, naming how many logins were
 tried, instead of reporting the site as failing.
 
+### Minting a `GOOGLE_TOKENS` entry
+
+You are authorising a **Vici** login once, not a client. Do this per Vici login
+that holds client properties; Google caps how many a single login can hold,
+which is why the variable is a JSON object rather than one token.
+
+**1. Create the OAuth client** — Google Cloud console, any project.
+
+- Enable three APIs: *Google Search Console API*, *Google Analytics Data API*,
+  *Google Analytics Admin API*.
+- OAuth consent screen: **Internal** if the Vici logins are on Workspace
+  (no review, no test-user list). External means a 7-day token expiry until
+  the app is verified, which will silently break collection a week later.
+- Credentials → Create → **OAuth client ID** → *Web application*.
+- Authorised redirect URI, exactly:
+  `https://vici-audit-api.onrender.com/oauth/google/callback`
+- Scopes are requested by the app: `webmasters.readonly`,
+  `analytics.readonly`. Read-only throughout — nothing here can change a
+  client's property.
+
+**2. Set three variables on `vici-audit-api`** (the API, not the worker — this
+is the only thing the API side needs): `GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET`, and `OAUTH_SETUP_TOKEN` set to any random string.
+
+With `OAUTH_SETUP_TOKEN` unset, `/oauth/google/start` and
+`/oauth/google/callback` return 404 — the surface does not exist. That is the
+normal resting state.
+
+**3. Visit, signed in as the Vici login you are authorising:**
+
+```
+https://vici-audit-api.onrender.com/oauth/google/start?t=<OAUTH_SETUP_TOKEN>&label=seo-main
+```
+
+`label` is your name for that login and becomes the key in `GOOGLE_TOKENS`. It
+is also what the report quotes when it says which login read the data, so use
+something you will recognise a year from now.
+
+**4. Approve.** The callback prints the complete `GOOGLE_TOKENS` value with the
+new login merged in. Paste it onto **`vici-audit-worker`** — the collectors run
+there.
+
+**5. Unset `OAUTH_SETUP_TOKEN`.** Both routes vanish. Repeat from step 3 for
+each additional login.
+
+Google only issues a refresh token on the first consent for a login. The app
+sends `prompt=consent` to force one on repeat runs; if it still comes back
+without one, remove the app at `myaccount.google.com/permissions` for that
+login and retry.
+
+### What access actually unlocks today
+
+Granting access does **not** by itself make these two sections score. The API
+answers 5 of the 22 Search Console rows and 6 of the 16 GA4 rows, and a section
+needs 50% coverage before a score is published:
+
+| Section | Filled by the API today | Gate | Result |
+|---|---|---|---|
+| Search Console | GSC-01..04, GSC-22 — 5/22 (23%) | 50% | still Not Assessed |
+| Google Analytics 4 | GA4-01, 02, 05, 09, 10, 11 — 6/16 (38%) | 50% | still Not Assessed |
+
+The rest are reachable, just not written yet: the GSC `searchAppearance`
+dimension covers GSC-14..18, the links endpoint covers GSC-19..21, and the GA4
+Admin API covers GA4-03/04/06/07/08. That is 8 more rows for GSC (→ 59%) and 5
+for GA4 (→ 69%), which clears both. Worth doing **after** the first successful
+grant, so the response shapes can be checked against a real payload rather than
+guessed at.
+
 ### ⚠️ The artifact-store gotcha
 
 `ARTIFACT_STORE` defaults to a local path. That works locally, where the API and
