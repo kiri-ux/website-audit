@@ -1,4 +1,36 @@
-# Changed files — build 2026.08.20-03
+# Changed files — build 2026.08.20-04
+
+## Pick the property yourself when the matcher misses
+
+Two dropdowns appear under the URL field after you click **Check access**, one
+for Search Console and one for GA4, each listing every property our logins can
+see. A matched property is preselected. When nothing matched, the first option
+reads *"No match — pick one, or leave blank"* and the list is right there.
+
+Each has a filter box above it, because `reporting-zone` holds hundreds of
+properties and a native select with 400 rows is not a control.
+
+This is the answer to a question the automatic match cannot answer: **is the
+client actually in there?** A miss currently means "email them for access", and
+that is the wrong move if the property exists under a name the matcher could
+not connect to the domain — a brand that is not the domain, a client on a
+subdomain, a Search Console entry that is a domain property. Now you look.
+
+Mechanics worth knowing:
+
+- A chosen property **wins over the automatic match**. It is stored on the
+  audit, so a re-run keeps the choice rather than making you find it twice.
+- Leaving the blank option selected is exactly the old behaviour — the audit
+  matches on its own.
+- `GET /api/properties` backs the lists. It uses `sites` and
+  `accountSummaries` only; neither opens a data stream, so it does not get
+  slower as the number of properties grows. Cached for two minutes.
+- A login whose token will not exchange is reported in `errors` and skipped,
+  rather than taking the whole list down with it.
+
+---
+
+# Build 2026.08.20-03
 
 ## Check access before you spend a crawl
 

@@ -178,6 +178,21 @@ def main():
     check("the dashboard offers the check next to the URL field",
           b"/api/access-check" in dash2 and b"Check GA4" in dash2)
 
+    print("\nPROPERTY PICKERS — A MISS IS CHECKABLE, NOT FINAL")
+    st, _, body = GET("/api/properties")
+    check("property list returns 200 with nothing configured", st == 200, str(st))
+    pl = json.loads(body)
+    check("it always returns both lists, even empty",
+          isinstance(pl.get("gsc"), list) and isinstance(pl.get("ga4"), list),
+          str(list(pl)))
+    check("and surfaces per-login errors rather than hiding them",
+          "errors" in pl and isinstance(pl["errors"], list))
+    _, _, dash3 = GET("/")
+    check("the form carries both dropdowns",
+          b"gsc_property" in dash3 and b"ga4_property_id" in dash3)
+    check("with a filter, because a login can hold hundreds",
+          b"filterSel" in dash3)
+
     print("\nTHE GOOGLE OAUTH SETUP SURFACE ONLY EXISTS WHEN YOU OPEN IT")
     # These two routes mint a refresh token that inherits everything a Vici
     # login can see across every client's Search Console and Analytics. That is

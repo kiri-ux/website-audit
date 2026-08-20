@@ -222,6 +222,19 @@ def access_check(target_url: str = ""):
     return _ga.probe(target_url)
 
 
+@app.get("/api/properties")
+def list_properties():
+    """
+    Every Search Console and GA4 property our logins can see.
+
+    Populates the two dropdowns on the audit form. The point is not the happy
+    path — the matcher usually gets that — it is the miss: when nothing
+    matches, "what IS in there?" is the only useful next question, and the
+    answer decides whether to email the client or just pick the right row.
+    """
+    return _ga.list_properties()
+
+
 @app.get("/oauth/google/start")
 def oauth_start(request: Request, t: str = "", label: str = ""):
     if not _setup_token() or t != _setup_token():
@@ -320,6 +333,7 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
                 run_collectors: str = Form(""),
                 run_screenshots: str = Form(""),
                 reuse_crawl: str = Form(""), phases: str = Form(""),
+                gsc_property: str = Form(""), ga4_property_id: str = Form(""),
                 x_api_key: str | None = Header(None)):
     p = principal(x_api_key)
     # Phases are opt-OUT in the options dict (skip_*) but opt-IN on the form,
@@ -344,6 +358,12 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
         prev = _newest_artifact_for(target_url, p.scope)
         if prev:
             opts["reuse_artifact_from"] = prev
+    # Operator-chosen properties beat the automatic match. Stored on the audit
+    # so a re-run keeps the choice rather than making someone find it again.
+    if gsc_property.strip():
+        opts["gsc_property"] = gsc_property.strip()
+    if ga4_property_id.strip():
+        opts["ga4_property_id"] = ga4_property_id.strip()
     for k, v in (("primary_markets", primary_markets),
                  ("primary_conversion", primary_conversion)):
         if v.strip():

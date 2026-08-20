@@ -302,6 +302,23 @@ def dashboard_html(audits, principal, queue_depth):
           <button type='button' class='btn' id='ckbtn'
                   onclick='checkAccess()'>Check GA4 / Search Console access</button>
           <span id='ckout' class='sm' style='color:var(--muted)'></span>
+        </div>
+        <div id='pickers' style='display:none;margin-top:10px;
+             display:none;grid-template-columns:1fr 1fr;gap:12px'>
+          <div>
+            <label>Search Console property</label>
+            <input id='gscfilter' placeholder='filter…'
+                   oninput='filterSel("gsc")'
+                   style='margin-bottom:4px;font-size:12.5px'>
+            <select name='gsc_property' id='gscsel' form='auditform'></select>
+          </div>
+          <div>
+            <label>GA4 property</label>
+            <input id='ga4filter' placeholder='filter…'
+                   oninput='filterSel("ga4")'
+                   style='margin-bottom:4px;font-size:12.5px'>
+            <select name='ga4_property_id' id='ga4sel' form='auditform'></select>
+          </div>
         </div></div>
       <div><label>Client name</label>
         <input name='client_name' placeholder='Grand Furniture' required></div>
@@ -394,10 +411,63 @@ def dashboard_html(audits, principal, queue_depth):
         out.innerHTML = bits.map(function (b) {{
           return b.replace(/&/g, '&amp;').replace(/</g, '&lt;');
         }}).join('<br>');
+        loadProperties(d);
       }} catch (e) {{
         out.style.color = 'var(--serious)';
         out.textContent = 'Check failed: ' + e.message;
       }} finally {{ btn.disabled = false; }}
+    }}
+
+    // Every property we can see, so a miss is checkable rather than final.
+    // The matcher is right most of the time and wrong in ways it cannot know
+    // about — a property named nothing like its domain, a client on a
+    // subdomain, a GSC entry that is a domain property. When it misses, the
+    // question is "what IS in there", and the answer is one click away.
+    var ALL = null;
+    async function loadProperties(probe) {{
+      var box = document.getElementById('pickers');
+      box.style.display = 'grid';
+      if (!ALL) {{
+        try {{ ALL = await (await fetch('/api/properties')).json(); }}
+        catch (e) {{ ALL = {{gsc: [], ga4: []}}; }}
+      }}
+      fill('gsc', ALL.gsc.map(function (r) {{
+        return {{v: r.site, t: r.site + '  ·  ' + r.login}};
+      }}), probe.gsc.ok ? probe.gsc.property : null);
+      fill('ga4', ALL.ga4.map(function (r) {{
+        return {{v: r.id, t: r.name + '  ·  ' + r.id + '  ·  ' + r.login}};
+      }}), probe.ga4.ok ? probe.ga4.property : null);
+    }}
+
+    function fill(which, rows, selected) {{
+      var sel = document.getElementById(which + 'sel');
+      sel.innerHTML = '';
+      var none = document.createElement('option');
+      none.value = '';
+      none.textContent = selected ? 'Matched automatically — leave as is'
+                                  : 'No match — pick one, or leave blank';
+      sel.appendChild(none);
+      sel._rows = rows;
+      rows.forEach(function (r) {{
+        var o = document.createElement('option');
+        o.value = r.v; o.textContent = r.t;
+        if (selected && r.v === selected) {{ o.selected = true; }}
+        sel.appendChild(o);
+      }});
+      // A matched property is preselected but NOT forced: leaving the blank
+      // option is the same as before this existed, and the audit re-matches.
+      if (selected) {{ sel.value = selected; }}
+    }}
+
+    function filterSel(which) {{
+      var q = document.getElementById(which + 'filter').value.toLowerCase();
+      var sel = document.getElementById(which + 'sel');
+      var keep = sel.value;
+      var rows = (sel._rows || []).filter(function (r) {{
+        return !q || r.t.toLowerCase().indexOf(q) >= 0;
+      }});
+      fill(which, rows, keep);
+      sel.size = q && rows.length > 1 ? Math.min(8, rows.length + 1) : 0;
     }}
     </script>
     """

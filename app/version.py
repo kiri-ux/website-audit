@@ -12,9 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-03"
-BUILD_NOTES = ("Access preflight on the form; pick which phases to run; "
-               "reuse a stored crawl instead of hitting the site again")
+BUILD = "2026.08.20-04"
+BUILD_NOTES = ("Searchable dropdowns of every GA4 and Search Console "
+               "property we can see — auto-selected on a match, and "
+               "browsable when there is not one")
 # ---------------------------------------------------------------------------
 
 

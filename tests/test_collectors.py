@@ -198,6 +198,21 @@ def main():
     check("an unrelated client is not dragged in",
           slug not in _squash("Orme's Gym, LLC"))
 
+    print("\nAN OPERATOR-CHOSEN PROPERTY OVERRIDES THE MATCHER")
+    # The whole point of the dropdown is the case the matcher gets wrong, so a
+    # hand-picked property must not be quietly re-derived from the domain.
+    import inspect
+    from engine.collectors import analytics as _A
+    check("collect_gsc accepts a chosen property",
+          "property_url" in inspect.signature(_A.collect_gsc).parameters)
+    check("collect_ga4 accepts a chosen property id",
+          "property_id" in inspect.signature(_A.collect_ga4).parameters)
+    check("listing properties never raises without credentials",
+          isinstance(_A.list_properties(max_age=0), dict))
+    lp = _A.list_properties(max_age=0)
+    check("an unconfigured list is empty rather than an error",
+          lp["gsc"] == [] and lp["ga4"] == [], str(lp)[:80])
+
     print("\nMULTI-LOGIN TOKEN INDEX")
     os.environ["GOOGLE_TOKENS"] = '{"vici-1":"x","vici-2":"y"}'
     # Client credentials too: without them the collector now (correctly) reports

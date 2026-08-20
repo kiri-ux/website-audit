@@ -173,7 +173,8 @@ def _after_crawl(a, opts, audit_id, art, findings, step):
         return _score_and_save(a, opts, audit_id, art, findings,
                                {"context": _context_of(art)}, step)
     step("checking", "collecting Search Console, Analytics and backlink data")
-    gsc = collect_gsc(a["target_url"], opts.get("gsc_refresh_token"))
+    gsc = collect_gsc(a["target_url"], opts.get("gsc_refresh_token"),
+                      property_url=opts.get("gsc_property"))
     ga4 = collect_ga4(opts.get("ga4_property_id"),
                       opts.get("ga4_refresh_token"),
                       site_url=a["target_url"])

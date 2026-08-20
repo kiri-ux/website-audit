@@ -206,10 +206,21 @@ def _first_login_that_can_see(site_url: str):
 
 
 def collect_gsc(site_url: str, refresh_token: str | None = None,
-                days: int = 90) -> dict:
+                days: int = 90, property_url: str | None = None) -> dict:
+    """
+    `property_url` is an operator override, chosen from the dropdown on the
+    audit form. It wins over the automatic match, because the person picking it
+    can see something the matcher cannot — a domain property, a subdomain, a
+    site whose GSC entry does not resemble its URL.
+    """
     tok = access_token(refresh_token) if refresh_token else None
     label = "per-audit token" if tok else None
     prop_url = site_url
+    if not tok and property_url:
+        tok, label = _token_for_gsc_property(property_url)
+        prop_url = property_url
+        if tok:
+            label = f"{label}, property chosen by hand"
     if not tok:
         tok, label, prop_url = _first_login_that_can_see(site_url)
     if not tok:
@@ -362,6 +373,87 @@ def _find_ga4_property(site_url: str) -> tuple[str | None, str | None, str | Non
     return None, None, None
 
 
+_LIST_CACHE: dict = {"at": 0.0, "data": None}
+
+
+def list_properties(max_age: float = 120.0) -> dict:
+    """
+    Everything every Vici login can see, for an operator to pick from by hand.
+
+    The automated match is good and still wrong sometimes — a property named
+    nothing like its domain, a client on a subdomain, a site whose GSC entry is
+    a domain property. When it misses, the useful next question is not "why"
+    but "what IS in there", and until now there was no way to look without
+    opening the Google console.
+
+    Cheap on purpose: `sites` for Search Console and `accountSummaries` for
+    GA4. Neither opens a data stream, so this does not grow with the number of
+    properties the way domain-matching does. Cached briefly because clicking
+    the button twice should not re-list several hundred properties.
+
+    A login that errors is skipped rather than failing the call — one bad
+    refresh token must not hide every other login's properties.
+    """
+    now = time.time()
+    if _LIST_CACHE["data"] is not None and now - _LIST_CACHE["at"] < max_age:
+        return _LIST_CACHE["data"]
+
+    out = {"gsc": [], "ga4": [], "logins": [], "errors": []}
+    for label, refresh in (_token_index() or {}).items():
+        tok = access_token(refresh)
+        if not tok:
+            out["errors"].append(f"{label}: refresh token would not exchange")
+            continue
+        out["logins"].append(label)
+        try:
+            sites = _api(f"{GSC_API}/sites", tok)
+            for s in sites.get("siteEntry", []):
+                out["gsc"].append({"site": s.get("siteUrl", ""), "login": label,
+                                   "permission": s.get("permissionLevel", "")})
+        except Exception as exc:  # noqa: BLE001
+            out["errors"].append(f"{label} Search Console: {type(exc).__name__}")
+        try:
+            for pid, name in _ga4_properties(tok):
+                out["ga4"].append({"id": pid, "name": name, "login": label})
+        except Exception as exc:  # noqa: BLE001
+            out["errors"].append(f"{label} GA4: {type(exc).__name__}")
+
+    out["gsc"].sort(key=lambda r: r["site"].lower())
+    out["ga4"].sort(key=lambda r: (r["name"] or "").lower())
+    _LIST_CACHE.update({"at": now, "data": out})
+    return out
+
+
+def _token_for_gsc_property(site: str):
+    """(token, label) for the first login that can read this exact property."""
+    for label, refresh in (_token_index() or {}).items():
+        tok = access_token(refresh)
+        if not tok:
+            continue
+        try:
+            sites = _api(f"{GSC_API}/sites", tok)
+            if any(s.get("siteUrl", "") == site
+                   for s in sites.get("siteEntry", [])):
+                return tok, label
+        except Exception:
+            continue
+    return None, None
+
+
+def _token_for_ga4_property(pid: str):
+    """(token, label) for the first login that can see this property id."""
+    for label, refresh in (_token_index() or {}).items():
+        tok = access_token(refresh)
+        if not tok:
+            continue
+        try:
+            if any(p == pid for p, _n in _ga4_properties(tok)):
+                return tok, label
+        except Exception:
+            continue
+    return None, None
+
+
 def probe(site_url: str, name_scan: int = 8) -> dict:
     """
     Fast, read-only "do we have access?" check. Answers BEFORE an audit runs.
@@ -434,6 +526,12 @@ def collect_ga4(property_id: str | None, refresh_token: str | None,
                 days: int = 90, site_url: str = "") -> dict:
     tok = access_token(refresh_token) if refresh_token else None
     label = "per-audit token" if tok else None
+    # An explicitly chosen property is authoritative — look for a login that
+    # can read it rather than going back to guessing from the domain.
+    if property_id and not tok:
+        tok, label = _token_for_ga4_property(property_id)
+        if tok:
+            label = f"{label}, property chosen by hand"
     if not (tok and property_id) and site_url:
         tok, property_id, label = _find_ga4_property(site_url)
     if not (tok and property_id):
