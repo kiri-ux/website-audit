@@ -41,61 +41,68 @@ CSS = """
  --pill-pink:#fad4d4; --pill-pink-ink:#9b2c2c;
  --pill-purple:#e8d5f2; --pill-purple-ink:#6b2f8f;
  --pill-grey:#e6eaf0; --pill-grey-ink:#48566b;
- --rail:34px;
+ --rail:64px;
 }
 *{box-sizing:border-box}
+/* Roboto, the same face adtini uses, and NOT a stack that quietly falls
+   through to the system font — the two look similar enough at a glance that a
+   fallback would go unnoticed and read as a different product up close. */
 body{margin:0;background:var(--plane);color:var(--ink);
- font:14px/1.5 "Roboto",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+ font:15px/1.55 Roboto,"Helvetica Neue",Arial,sans-serif;
+ -webkit-font-smoothing:antialiased}
 
 /* ---- chrome: rail, top bar, breadcrumb ---- */
 .rail{position:fixed;left:0;top:0;bottom:0;width:var(--rail);background:var(--navy);
- display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:14px;z-index:20}
-.rail a,.rail span{width:20px;height:20px;border-radius:4px;display:flex;
- align-items:center;justify-content:center;color:#8ea8cc;font-size:12px;
+ display:flex;flex-direction:column;align-items:center;padding:16px 0;gap:8px;z-index:20}
+.rail a,.rail span{width:40px;height:40px;border-radius:6px;display:flex;
+ align-items:center;justify-content:center;color:#93aed2;font-size:19px;
  text-decoration:none}
+.rail a:hover{background:rgba(255,255,255,.08);text-decoration:none}
 .rail .on{background:var(--gold);color:var(--navy-2)}
 .rail .sp{flex:1}
 .topbar{position:sticky;top:0;z-index:15;background:var(--surface);
- border-bottom:1px solid var(--line);height:44px;display:flex;align-items:center;
- gap:12px;padding:0 18px;margin-left:var(--rail)}
-.topbar .burger{color:var(--ink2);font-size:15px;line-height:1}
-.topbar h1{font-size:15px;font-weight:600;margin:0;letter-spacing:-.01em;
+ border-bottom:1px solid var(--line);height:60px;display:flex;align-items:center;
+ gap:18px;padding:0 30px;margin-left:var(--rail)}
+.topbar .burger{color:var(--ink2);font-size:20px;line-height:1}
+.topbar h1{font-size:22px;font-weight:500;margin:0;letter-spacing:-.01em;
  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.topbar .right{margin-left:auto;display:flex;align-items:center;gap:14px;
- font-size:12.5px;color:var(--ink2)}
-.crumb{margin-left:var(--rail);padding:9px 18px 0;font-size:11.5px;color:var(--muted)}
+.topbar .right{margin-left:auto;display:flex;align-items:center;gap:16px;
+ font-size:14px;color:var(--ink2)}
+.crumb{margin-left:var(--rail);padding:14px 30px 0;font-size:12.5px;color:var(--muted)}
 .crumb a{color:var(--muted);text-decoration:underline}
 .crumb a:hover{color:var(--blue)}
-.wrap{margin-left:var(--rail);max-width:1180px;padding:14px 18px 60px}
+/* Full width, the way adtini runs. A 1180px column inside a 2500px window
+   rendered this at half scale next to the app it is meant to sit inside. */
+.wrap{margin-left:var(--rail);padding:18px 30px 70px}
 
-h2{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
  margin:26px 0 10px;font-weight:700}
-h3{font-size:14px;margin:0 0 8px;font-weight:600}
-.sub{color:var(--ink2);font-size:12.5px}
-.sm{font-size:12px}
+h3{font-size:16px;margin:0 0 8px;font-weight:600}
+.sub{color:var(--ink2);font-size:13.5px}
+.sm{font-size:13px}
 a{color:var(--blue);text-decoration:none}
 a:hover{text-decoration:underline}
-code{font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
 
 /* ---- cards ---- */
 .card{background:var(--surface);border:1px solid var(--line);border-radius:6px;
- padding:16px 18px}
+ padding:22px 26px}
 
 /* ---- forms ---- */
 form#auditform{display:grid;grid-template-columns:2fr 1.4fr 1fr .7fr auto;
  gap:10px;align-items:end}
-label{display:block;font-size:11px;color:var(--ink2);margin-bottom:4px;font-weight:600}
-input,select{width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:4px;
- background:var(--surface);color:var(--ink);font:inherit;font-size:13px}
+label{display:block;font-size:12px;color:var(--ink2);margin-bottom:4px;font-weight:600}
+input,select{width:100%;padding:10px 13px;border:1px solid var(--line);border-radius:4px;
+ background:var(--surface);color:var(--ink);font:inherit;font-size:14.5px}
 input:focus,select:focus{outline:none;border-color:var(--blue);
  box-shadow:0 0 0 2px rgba(22,104,193,.14)}
-button{padding:7px 18px;border:0;border-radius:20px;background:var(--blue);color:#fff;
- font:inherit;font-weight:600;font-size:12.5px;cursor:pointer;white-space:nowrap}
+button{padding:10px 24px;border:0;border-radius:20px;background:var(--blue);color:#fff;
+ font:inherit;font-weight:500;font-size:14px;cursor:pointer;white-space:nowrap}
 button:hover{filter:brightness(1.07)}
 
 /* Action buttons, adtini's rounded pill family. */
-.btn{display:inline-block;padding:6px 16px;border-radius:20px;background:var(--blue);
- color:#fff;font-size:12.5px;font-weight:600;border:1px solid transparent}
+.btn{display:inline-block;padding:8px 20px;border-radius:20px;background:var(--blue);
+ color:#fff;font-size:13.5px;font-weight:500;border:1px solid transparent}
 .btn:hover{text-decoration:none;filter:brightness(1.07)}
 .btn.ghost{background:var(--surface);color:var(--blue);border-color:var(--line)}
 .btn.ghost:hover{border-color:var(--blue);filter:none}
@@ -103,17 +110,17 @@ button:hover{filter:brightness(1.07)}
 .btn.gold{background:var(--gold);color:var(--navy-2)}
 .btn.orange{background:var(--orange);color:#fff}
 .del{background:var(--surface);color:var(--muted);border:1px solid var(--line);
- padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600}
+ padding:7px 18px;border-radius:20px;font-size:13.5px;font-weight:500}
 .del:hover{color:#fff;background:var(--critical);border-color:var(--critical);filter:none}
 .del.wide{margin-top:8px;width:100%}
 
 /* ---- tables: navy header, white body ---- */
-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px;
+table{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px;
  background:var(--surface)}
-th{text-align:left;font-weight:600;color:#fff;background:var(--navy);font-size:11.5px;
- padding:9px 10px;white-space:nowrap}
+th{text-align:left;font-weight:500;color:#fff;background:var(--navy);font-size:14px;
+ padding:15px 16px;white-space:nowrap}
 th:first-child{border-radius:4px 0 0 0} th:last-child{border-radius:0 4px 0 0}
-td{padding:9px 10px;border-bottom:1px solid var(--line-2)}
+td{padding:15px 16px;border-bottom:1px solid var(--line-2)}
 tr:hover td{background:#f8fafc}
 td.num{text-align:right;font-variant-numeric:tabular-nums}
 table.sub{margin-top:8px;font-size:12px;border:1px solid var(--line);border-radius:4px}
@@ -121,8 +128,8 @@ table.sub td{padding:7px 9px}
 td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 
 /* ---- pills ---- */
-.chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;
- padding:3px 11px;border-radius:20px;background:var(--pill-grey);
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;
+ padding:5px 15px;border-radius:20px;background:var(--pill-grey);
  color:var(--pill-grey-ink);border:0;white-space:nowrap}
 .chip b{width:6px;height:6px;border-radius:50%;display:inline-block}
 .chip.ready{background:var(--pill-green);color:var(--pill-green-ink)}
@@ -132,42 +139,42 @@ td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .chip.build{background:var(--navy);color:#fff}
 
 .vrow{display:flex;gap:9px;align-items:baseline;margin-top:6px;flex-wrap:wrap}
-.vpill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;
- padding:3px 11px;border-radius:20px;white-space:nowrap}
+.vpill{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;
+ padding:5px 14px;border-radius:20px;white-space:nowrap}
 .vpill b{font-size:11px;line-height:1}
 .vpill.good{background:var(--pill-green);color:var(--pill-green-ink)}
 .vpill.warn{background:#fbecc8;color:#8a5d05}
 .vpill.bad{background:var(--pill-pink);color:var(--pill-pink-ink)}
-.vdet{font-size:12px;color:var(--ink2)}
+.vdet{font-size:13.5px;color:var(--ink2)}
 
 /* ---- stat strip ---- */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:10px;
- margin-top:12px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;
+ margin-top:14px}
 .stat{background:var(--surface);border:1px solid var(--line);border-radius:6px;
- padding:11px 13px}
-.stat .n{font-size:21px;font-weight:700;letter-spacing:-.02em;
+ padding:16px 18px}
+.stat .n{font-size:26px;font-weight:700;letter-spacing:-.02em;
  font-variant-numeric:tabular-nums;line-height:1.15}
-.stat .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;
+.stat .k{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;
  color:var(--muted);margin-top:2px;font-weight:600}
 .stat .k b{width:6px;height:6px;border-radius:50%;display:inline-block;
  margin-right:4px;vertical-align:1px}
 
 /* ---- score ring: one hue, length carries magnitude ---- */
 .ring{display:block}
-.ring text{font:700 13px "Roboto",ui-sans-serif,sans-serif;fill:var(--ink);
+.ring text{font:500 15px Roboto,"Helvetica Neue",Arial,sans-serif;fill:var(--ink);
  font-variant-numeric:tabular-nums}
 .ring text.sm{font-size:11px;fill:var(--muted);font-weight:500}
 
 /* ---- client rows ---- */
-.crow{display:flex;gap:14px;align-items:flex-start;background:var(--surface);
- border:1px solid var(--line);border-radius:6px;padding:13px 16px;margin-bottom:8px}
+.crow{display:flex;gap:18px;align-items:flex-start;background:var(--surface);
+ border:1px solid var(--line);border-radius:6px;padding:18px 22px;margin-bottom:10px}
 .crow:hover{border-color:#c7d2e0}
 .cscore{flex:none;padding-top:2px}
 .cmain{flex:1;min-width:0}
-.cname{font-size:14px;font-weight:600;color:var(--blue)}
+.cname{font-size:16px;font-weight:500;color:var(--blue)}
 .curl{margin-top:1px}
-.cmeta{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:7px;
- font-size:12px;color:var(--ink2)}
+.cmeta{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-top:7px;
+ font-size:13.5px;color:var(--ink2)}
 .cact{flex:none;display:flex;gap:6px;align-items:center}
 .warn{margin-top:8px;font-size:12px;color:var(--ink2);background:#fdf6ec;
  border-left:3px solid var(--gold);border-radius:4px;padding:8px 11px}
@@ -175,7 +182,7 @@ td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 
 /* ---- disclosure: adtini uses a tab strip; a details row is the same idea ---- */
 .hist{margin-top:9px}
-.hist summary{cursor:pointer;font-size:12px;color:var(--blue);
+.hist summary{cursor:pointer;font-size:13.5px;color:var(--blue);
  list-style:none;display:inline-block;font-weight:600}
 .hist summary::-webkit-details-marker{display:none}
 .hist summary:before{content:"▸";margin-right:5px}
@@ -258,12 +265,39 @@ def _stat(n, label, dot=None):
             f"<div class='k'>{d}{e(label)}</div></div>")
 
 
+def _icon(path: str, size: int = 21) -> str:
+    return (f"<svg width='{size}' height='{size}' viewBox='0 0 24 24' "
+            f"fill='none' stroke='currentColor' stroke-width='1.9' "
+            f"stroke-linecap='round' stroke-linejoin='round' "
+            f"aria-hidden='true'>{path}</svg>")
+
+
+# Inline SVG rather than Unicode glyphs. The glyph version rendered at wildly
+# different sizes depending on which font happened to carry each codepoint —
+# one icon came out full-size and the next as a 6px speck. A path is a path.
 RAIL = (
     "<nav class='rail' aria-label='sections'>"
-    "<a href='/' class='on' title='Audits'>\u25a3</a>"
-    "<a href='/visibility' title='AI visibility'>\u25c9</a>"
+    "<a href='/' class='on' title='Audits'>"
+    + _icon("<rect x='3' y='3' width='18' height='18' rx='2'/>"
+            "<path d='M3 9h18M9 21V9'/>") +
+    "</a>"
+    "<a href='/visibility' title='AI visibility'>"
+    + _icon("<circle cx='12' cy='12' r='9'/><path d='M12 3a9 9 0 0 1 0 18z'/>") +
+    "</a>"
     "<span class='sp'></span>"
-    "<span title='build'>\u2699</span>"
+    "<span title='settings'>"
+    + _icon("<circle cx='12' cy='12' r='3'/>"
+            "<path d='M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 "
+            "2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 "
+            "2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06"
+            ".06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 "
+            "0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 "
+            "0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 "
+            "4.6 1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 "
+            "1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A"
+            "1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 "
+            "4h-.09a1.65 1.65 0 0 0-1.51 1z'/>", 19) +
+    "</span>"
     "</nav>")
 
 

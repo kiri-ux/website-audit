@@ -12,10 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-10"
-BUILD_NOTES = ("Off-Page no longer scores 94 Excellent for retrieving "
-               "numbers; four rows that carried the wrong metric now say we "
-               "do not have it")
+BUILD = "2026.08.20-11"
+BUILD_NOTES = ("Four backlink endpoints wired; ten checkpoints moved from "
+               "manual to measured; UI scaled to adtini's proportions")
 # ---------------------------------------------------------------------------
 
 

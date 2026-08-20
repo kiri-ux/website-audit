@@ -209,7 +209,9 @@ def collect_backlinks(domain: str) -> dict:
     # nearest free row would be the same mistake in a new place, so they are
     # dropped. The numbers live in OFF-01/OFF-02's value payload if wanted.
 
-    # These four are NOT in the summary endpoint. Do not substitute.
+    # These four are NOT in the summary endpoint. They are filled by the
+    # history and page-intersection calls below; if either fails, they stay
+    # honestly unanswered rather than borrowing a nearby number.
     unmapped("OFF-10", "lost backlinks")
     unmapped("OFF-11", "newly gained backlinks")
     unmapped("OFF-19", "backlinks pointing specifically at the homepage")
@@ -245,6 +247,11 @@ def collect_backlinks(domain: str) -> dict:
                                f"{len(branded)} of the top anchors are branded.", "Low")
     except Exception:
         pass   # anchors are a bonus; never fail the section over them
+
+    _anchor_shape(domain, out)
+    _history(domain, out)
+    _page_split(domain, out, rd)
+    _toxicity(domain, out, spam)
 
     # OFF-21..29 are link PROSPECTING — competitor gap, guest posting, digital
     # PR, HARO, unlinked mentions. They are not measurements of the client's
@@ -312,6 +319,202 @@ def collect_rankings(domain: str, location_name: str | None = None,
     return {"available": True, "rows": rows, "total": len(rows),
             "top10": len(top10),
             "location": location_name or "United States"}
+
+
+def _keys(label: str, payload) -> None:
+    """
+    Log the keys a DataForSEO endpoint actually returned.
+
+    These four calls were written without live credentials to check them
+    against. Rather than guess and fail silently, every one logs the field
+    names it got back the first time it runs, so one real audit tells us
+    whether the parsing below is right. Cheap, and it turns "the rows are still
+    empty" into "the field is called X, not Y".
+    """
+    try:
+        item = (payload or [{}])[0]
+        if isinstance(item, dict):
+            print(f"[dataforseo] {label} returned keys: "
+                  f"{sorted(item.keys())[:24]}", flush=True)
+            for k in ("items", "history", "pages"):
+                row = (item.get(k) or [{}])
+                if row and isinstance(row[0], dict):
+                    print(f"[dataforseo] {label}.{k}[0] keys: "
+                          f"{sorted(row[0].keys())[:24]}", flush=True)
+                    break
+    except Exception:
+        pass
+
+
+def _anchor_shape(domain: str, out: dict) -> None:
+    """
+    OFF-13 follow/nofollow ratio, OFF-16 exact-match, OFF-17 naked-URL anchors.
+
+    All three are distributions over anchors, which is one endpoint, so they
+    are answered together or not at all.
+    """
+    try:
+        res = _result(dfs_post("/backlinks/anchors/live",
+                               [{"target": domain, "limit": 200,
+                                 "backlinks_status_type": "live"}]))
+    except Exception as e:  # noqa: BLE001
+        return
+    _keys("anchors", res)
+    items = (res[0].get("items") or []) if res else []
+    if not items:
+        return
+    total = sum(int(i.get("backlinks") or 0) for i in items) or 1
+    dofollow = sum(int(i.get("dofollow") or 0) for i in items)
+    pct = round(100 * dofollow / total, 1)
+    out["OFF-13"] = _f("Pass" if pct >= 50 else "Warning",
+                       {"dofollow_pct": pct, "backlinks": total},
+                       f"{pct}% of backlinks are followed.",
+                       "Low" if pct >= 50 else "Medium",
+                       "" if pct >= 50 else "A profile this heavily nofollowed "
+                                            "passes little authority; weight "
+                                            "outreach toward editorial links.")
+
+    bare = domain.lower().replace("www.", "")
+    brand = bare.split(".")[0]
+    exact, naked = 0, 0
+    for i in items:
+        a = (i.get("anchor") or "").strip().lower()
+        n = int(i.get("backlinks") or 0)
+        if not a:
+            continue
+        if a.startswith(("http://", "https://", "www.")) or a.rstrip("/") == bare:
+            naked += n
+        elif brand not in a and 1 <= len(a.split()) <= 4:
+            exact += n
+    e_pct = round(100 * exact / total, 1)
+    n_pct = round(100 * naked / total, 1)
+    # Over-optimised anchor text is a penalty risk; the threshold is the
+    # conventional one rather than anything DataForSEO computes for us.
+    out["OFF-16"] = _f("Pass" if e_pct < 20 else "Warning",
+                       {"exact_match_pct": e_pct},
+                       f"{e_pct}% of backlinks use a short non-branded anchor.",
+                       "Low" if e_pct < 20 else "Medium",
+                       "" if e_pct < 20 else "A high share of keyword-exact "
+                                             "anchors reads as manipulation.")
+    out["OFF-17"] = _f("Info", {"naked_url_pct": n_pct},
+                       f"{n_pct}% of backlinks use a bare URL as the anchor.",
+                       "Low", "", 1.0, "dataforseo")
+
+
+def _history(domain: str, out: dict) -> None:
+    """OFF-10 lost and OFF-11 new backlinks, from the history endpoint."""
+    try:
+        res = _result(dfs_post("/backlinks/history/live",
+                               [{"target": domain, "date_from": _months_ago(3)}]))
+    except Exception:  # noqa: BLE001
+        return
+    _keys("history", res)
+    items = (res[0].get("items") or []) if res else []
+    if not items:
+        return
+    new = sum(int(i.get("new_backlinks") or 0) for i in items)
+    lost = sum(int(i.get("lost_backlinks") or 0) for i in items)
+    net = new - lost
+    out["OFF-11"] = _f("Pass" if new else "Warning", {"new_backlinks": new},
+                       f"{new:,} new backlinks in the last 90 days.",
+                       "Low" if new else "Medium",
+                       "" if new else "No new links in a quarter means the "
+                                      "profile is static while competitors move.")
+    out["OFF-10"] = _f("Pass" if net >= 0 else "Warning",
+                       {"lost_backlinks": lost, "net": net},
+                       f"{lost:,} backlinks lost in the last 90 days "
+                       f"(net {net:+,}).",
+                       "Low" if net >= 0 else "Medium",
+                       "" if net >= 0 else "Losing links faster than earning "
+                                           "them — check for removed pages and "
+                                           "expired placements.")
+
+
+def _page_split(domain: str, out: dict, rd) -> None:
+    """
+    OFF-19 homepage vs OFF-20 deep-page backlinks.
+
+    A profile where everything points at the homepage cannot rank interior
+    pages, which is the usual shape for a local service business and worth
+    saying out loud.
+    """
+    try:
+        res = _result(dfs_post("/backlinks/domain_pages/live",
+                               [{"target": domain, "limit": 100,
+                                 "backlinks_status_type": "live"}]))
+    except Exception:  # noqa: BLE001
+        return
+    _keys("domain_pages", res)
+    items = (res[0].get("items") or []) if res else []
+    if not items:
+        return
+    home, deep = 0, 0
+    for i in items:
+        url = (i.get("page_address") or i.get("url") or "")
+        n = int((i.get("backlinks") or 0))
+        path = url.split("//")[-1].split("/", 1)
+        if len(path) == 1 or path[1] in ("", "/"):
+            home += n
+        else:
+            deep += n
+    total = home + deep or 1
+    d_pct = round(100 * deep / total, 1)
+    out["OFF-19"] = _f("Info", {"homepage_backlinks": home},
+                       f"{home:,} backlinks point at the homepage.",
+                       "Low", "", 1.0, "dataforseo")
+    out["OFF-20"] = _f("Pass" if d_pct >= 20 else "Warning",
+                       {"deep_backlinks": deep, "deep_pct": d_pct},
+                       f"{deep:,} backlinks point at interior pages "
+                       f"({d_pct}% of the profile).",
+                       "Low" if d_pct >= 20 else "Medium",
+                       "" if d_pct >= 20 else "Almost every link points at the "
+                                              "homepage, so service and "
+                                              "location pages have no authority "
+                                              "of their own.")
+
+
+def _toxicity(domain: str, out: dict, spam) -> None:
+    """
+    OFF-07 trust and OFF-09 toxic backlinks.
+
+    DataForSEO has no "trust score" field, so OFF-07 is answered from the
+    inverse of the spam score and SAYS SO rather than inventing a metric name
+    the vendor does not publish.
+    """
+    if spam is not None:
+        out["OFF-07"] = _f("Pass" if spam <= 30 else "Warning",
+                           {"trust_proxy": 100 - int(spam)},
+                           f"No vendor trust score exists; using the inverse of "
+                           f"the spam score, {100 - int(spam)}/100.",
+                           "Low" if spam <= 30 else "Medium")
+    try:
+        res = _result(dfs_post("/backlinks/referring_domains/live",
+                               [{"target": domain, "limit": 200,
+                                 "backlinks_status_type": "live",
+                                 "order_by": ["backlinks_spam_score,desc"]}]))
+    except Exception:  # noqa: BLE001
+        return
+    _keys("referring_domains", res)
+    items = (res[0].get("items") or []) if res else []
+    if not items:
+        return
+    toxic = [i for i in items
+             if int(i.get("backlinks_spam_score") or 0) >= 60]
+    pct = round(100 * len(toxic) / len(items), 1)
+    out["OFF-09"] = _f("Pass" if pct < 10 else "Warning",
+                       {"toxic_domains": len(toxic), "sampled": len(items),
+                        "pct": pct},
+                       f"{len(toxic)} of the {len(items)} highest-spam referring "
+                       f"domains score 60+ ({pct}% of the sample).",
+                       "Low" if pct < 10 else "Medium",
+                       "" if pct < 10 else "Review the worst of these and "
+                                           "consider a disavow file.")
+
+
+def _months_ago(n: int) -> str:
+    from datetime import date, timedelta
+    d = date.today() - timedelta(days=30 * n)
+    return d.isoformat()
 
 
 # ============================================================== LIGHTHOUSE

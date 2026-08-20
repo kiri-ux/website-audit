@@ -43,7 +43,8 @@ def escalate(count, bands):
 
 
 # import side-effect: populate REGISTRY
-from . import crawler_checks, tagdetect, security, geo_schema, perf  # noqa: E402,F401
+from . import (crawler_checks, tagdetect, security, geo_schema, perf,  # noqa: E402,F401
+               artifact_checks)  # noqa: E402,F401
 
 
 # Downstream consumers (severity escalation, the renderer, trend tracking) all
