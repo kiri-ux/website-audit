@@ -258,11 +258,20 @@ something you will recognise a year from now.
 new login merged in. Paste it onto **`vici-audit-worker`** — the collectors run
 there.
 
-**5. Put `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` on the WORKER too.** Not
-just `GOOGLE_TOKENS`. A refresh token is exchanged *against the client that
-issued it*, so the worker cannot turn one into an access token without both.
-Setting them only on the API — the natural instinct, since that is where you
-mint the token — leaves every Search Console and GA4 row at Need Access.
+**5. Put `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_TOKENS` on the
+WORKER.** All three. A refresh token is exchanged *against the client that
+issued it*, so the worker cannot turn one into an access token without the id
+and secret. Setting them only on the API — the natural instinct, since that is
+where you mint the token — leaves every Search Console and GA4 row at Need
+Access.
+
+**5b. Put `GOOGLE_TOKENS` on the API as well** if you want the *Check GA4 /
+Search Console access* button on the homepage to work. That check answers
+synchronously while someone is filling in the form, so it runs on the API. With
+the variable only on the worker the button reports "not set on this service",
+which is true of the API and says nothing about what the audit will find. The
+credentials are read-only and both services are already trusted, so this is a
+convenience rather than a widening worth agonising over.
 
 **6. Unset `OAUTH_SETUP_TOKEN`** on the API. Both routes vanish. Repeat from
 step 3 for each additional login.

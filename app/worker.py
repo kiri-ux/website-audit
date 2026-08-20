@@ -18,7 +18,7 @@ import traceback
 from .config import cfg
 from . import db, version
 from .queue import get_queue
-from .artifacts import put_artifact
+from .artifacts import put_artifact, get_artifact
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from engine.crawler import Crawler
@@ -55,6 +55,50 @@ def run_audit_job(audit_id: str):
         print(f"[worker] {audit_id} :: {progress}", flush=True)
 
     db.update_audit(audit_id, started_at=time.time(), error=None)
+    # REUSE A PREVIOUS CRAWL.
+    #
+    # The crawl is the slow, rude part — 150 pages against someone's server.
+    # Re-running an audit because the judgment layer had no API key should not
+    # cost the client's site another 150 requests. When `reuse_artifact_from`
+    # names an earlier audit whose artifact we still hold, the phases downstream
+    # run against those pages instead.
+    #
+    # The evidence is a snapshot, and the report says as much: pages_crawled and
+    # every sitewide count describe the site AS OF that crawl, not today. That is
+    # a fair trade for re-scoring, and a bad one for "has the fix landed yet" —
+    # which is why this is opt-in per run rather than a default.
+    art = None
+    src = opts.get("reuse_artifact_from")
+    if src:
+        blob = get_artifact(src, "crawl_artifact.json")
+        if blob:
+            from engine.crawler import artifact_from_json
+            art = artifact_from_json(blob.decode())
+            step("checking", f"reusing the crawl from {src} "
+                             f"({len(art.pages)} pages) — the site was not "
+                             f"re-crawled")
+            print(f"[worker] {audit_id} reusing crawl artifact from {src} "
+                  f"({len(art.pages)} pages)", flush=True)
+        else:
+            print(f"[worker] {audit_id} asked to reuse {src} but its artifact "
+                  f"is gone — crawling instead", flush=True)
+
+    if art is None:
+        art = _crawl(a, opts, audit_id, db, step)
+        if art is None:
+            return                      # parked for browser capture
+    else:
+        step("checking", f"{len(art.pages)} pages from the stored crawl; "
+                         f"running checkpoints")
+
+    ctx = {"psi_key": cfg.psi_key,
+           "skip_psi": bool(opts.get("skip_psi", cfg.skip_psi))}
+    findings = engine_checks.run_all(art, ctx)
+    return _after_crawl(a, opts, audit_id, art, findings, step)
+
+
+def _crawl(a, opts, audit_id, db, step):
+    """The crawl phase. Returns None when the audit was parked for capture."""
     step("crawling", "crawling site")
 
     def crawl_progress(msg, done, total):
@@ -92,14 +136,13 @@ def run_audit_job(audit_id: str):
             crawl_note=f"{q.likely_cause} · " + "; ".join(q.signals),
             completed_at=time.time())
         print(f"[worker] {audit_id} parked for browser capture", flush=True)
-        return
-    else:
-        step("checking", f"crawled {len(art.pages)} pages; running checkpoints")
+        return None
+    step("checking", f"crawled {len(art.pages)} pages; running checkpoints")
+    return art
 
-    ctx = {"psi_key": cfg.psi_key,
-           "skip_psi": bool(opts.get("skip_psi", cfg.skip_psi))}
-    findings = engine_checks.run_all(art, ctx)
 
+def _after_crawl(a, opts, audit_id, art, findings, step):
+    """Everything downstream of the pages: judgment, collectors, score, save."""
     # ---- Phase 3: judgment layer (E-E-A-T + GEO assessment) ----
     if not opts.get("skip_judgment"):
         step("checking", "assessing E-E-A-T and GEO checkpoints")
@@ -123,6 +166,12 @@ def run_audit_job(audit_id: str):
                   f"Search will report Not Assessed.", flush=True)
 
     # ---- external collectors (client credentials / vendor keys) ----
+    if opts.get("skip_collectors"):
+        print(f"[worker] {audit_id} collectors skipped by request — Search "
+              f"Console, Analytics, backlinks and rankings will be blank",
+              flush=True)
+        return _score_and_save(a, opts, audit_id, art, findings,
+                               {"context": _context_of(art)}, step)
     step("checking", "collecting Search Console, Analytics and backlink data")
     gsc = collect_gsc(a["target_url"], opts.get("gsc_refresh_token"))
     ga4 = collect_ga4(opts.get("ga4_property_id"),
@@ -197,6 +246,18 @@ def run_audit_job(audit_id: str):
                else "DFS_LOGIN / DFS_PASSWORD are not set ON THE WORKER")
         print(f"[worker] {audit_id} DataForSEO SKIPPED — {why}", flush=True)
 
+    return _score_and_save(a, opts, audit_id, art, findings, extras, step)
+
+
+def _context_of(art):
+    from engine.context import extract as extract_context
+    bc = extract_context(art)
+    return {**bc.to_dict(), "describe": bc.describe()}
+
+
+def _score_and_save(a, opts, audit_id, art, findings, extras, step):
+    """Screenshots, scoring, persistence. Reached by every path, including the
+    one that skips collectors entirely."""
     db.save_findings(audit_id, findings)
 
     # ---- evidence screenshots ------------------------------------------

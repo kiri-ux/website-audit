@@ -171,6 +171,51 @@ def main():
 
     st, body = req("GET", "/")
     check("dashboard renders grouped", st == 200 and b"Clients" in body)
+
+    print("\nPHASE SELECTION — RUN ONLY WHAT YOU NEED")
+    # An unticked checkbox sends nothing, which looks identical to a caller
+    # that predates the feature. Getting this backwards means either silently
+    # skipping the judgment layer or silently ignoring the operator's choice.
+    import urllib.parse as _up
+    src2 = db.create_audit(partner_id="vici-internal", client_name="Phase Co",
+                           target_url="https://phase.test/", options={})
+    db.update_audit(src2, status="ready")
+    put_artifact(src2, "crawl_artifact.json", b'{"pages":{}}')
+
+    def submit(extra):
+        d = {"target_url": "https://phase.test/", "client_name": "Phase Co"}
+        d.update(extra)
+        r = urllib.request.Request(API + "/audits",
+                                   data=_up.urlencode(d).encode(), method="POST")
+        class _NR(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *a, **k): return None
+        try:
+            resp = urllib.request.build_opener(_NR).open(r, timeout=30)
+            loc = resp.headers.get("Location")
+        except urllib.error.HTTPError as ex:
+            loc = ex.headers.get("Location")
+        return json.loads(db.get_audit(loc.rsplit("/", 1)[-1])["options"])
+
+    o = submit({"phases": "1", "run_judgment": "1", "run_collectors": "1",
+                "run_screenshots": "1"})
+    check("every box ticked skips nothing",
+          not any(o.get(k) for k in ("skip_judgment", "skip_collectors",
+                                     "skip_screenshots")), str(o))
+    o = submit({"phases": "1", "run_collectors": "1"})
+    check("an unticked box really does skip that phase",
+          o["skip_judgment"] and o["skip_screenshots"]
+          and not o["skip_collectors"], str(o))
+    o = submit({})
+    check("a caller with no phases field still runs everything",
+          not any(o.get(k) for k in ("skip_judgment", "skip_collectors",
+                                     "skip_screenshots")), str(o))
+    o = submit({"phases": "1", "run_judgment": "1", "reuse_crawl": "1"})
+    check("reuse points at the newest audit of that URL holding an artifact",
+          o.get("reuse_artifact_from") == src2, str(o.get("reuse_artifact_from")))
+    o = submit({"phases": "1", "reuse_crawl": "1",
+                "target_url": "https://never-audited.test/"})
+    check("reuse of a URL we have never crawled is simply not set",
+          o.get("reuse_artifact_from") is None, str(o.get("reuse_artifact_from")))
     check("dashboard offers a re-run", b"/rerun" in body)
 
     print("\nRE-RUN MAKES A NEW AUDIT, IT DOES NOT OVERWRITE")

@@ -158,6 +158,26 @@ def main():
           st == 200 and body[:8] == b"\x89PNG\r\n\x1a\n", f"{st} {len(body)}B")
     check("dashboard links the icon", b"/favicon.svg" in dash)
 
+    print("\nACCESS PREFLIGHT ANSWERS BEFORE THE AUDIT RUNS")
+    # The point of this endpoint is to be trusted, so it must never 500 and
+    # must never claim a client grant is missing when the truth is that THIS
+    # service has no credentials. Both states are reachable in the test env.
+    st, _, body = GET("/api/access-check?target_url=https://example.com/")
+    check("preflight returns 200 even with nothing configured", st == 200, str(st))
+    d = json.loads(body)
+    check("it reports both properties", {"gsc", "ga4"} <= set(d), str(list(d)))
+    check("an unconfigured service says so, and marks it as OURS",
+          d["gsc"].get("ours") is True and "not set" in d["gsc"]["detail"],
+          d["gsc"].get("detail", "")[:60])
+    check("it does not claim the client failed to grant anything",
+          "add a Vici login" not in json.dumps(d))
+    st, _, _b = GET("/api/access-check?target_url=example.com")
+    check("a URL without a scheme is refused rather than guessed at",
+          st == 400, str(st))
+    _, _, dash2 = GET("/")
+    check("the dashboard offers the check next to the URL field",
+          b"/api/access-check" in dash2 and b"Check GA4" in dash2)
+
     print("\nTHE GOOGLE OAUTH SETUP SURFACE ONLY EXISTS WHEN YOU OPEN IT")
     # These two routes mint a refresh token that inherits everything a Vici
     # login can see across every client's Search Console and Analytics. That is

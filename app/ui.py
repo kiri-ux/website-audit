@@ -294,8 +294,15 @@ def dashboard_html(audits, principal, queue_depth):
 
     <h2>New audit</h2>
     <div class='card'><form method='post' action='/audits' id='auditform'>
+      <input type='hidden' name='phases' value='1'>
       <div><label>Target URL</label>
-        <input name='target_url' placeholder='https://www.example.com/' required></div>
+        <input name='target_url' id='turl'
+               placeholder='https://www.example.com/' required>
+        <div style='margin-top:6px;display:flex;gap:10px;align-items:center'>
+          <button type='button' class='btn' id='ckbtn'
+                  onclick='checkAccess()'>Check GA4 / Search Console access</button>
+          <span id='ckout' class='sm' style='color:var(--muted)'></span>
+        </div></div>
       <div><label>Client name</label>
         <input name='client_name' placeholder='Grand Furniture' required></div>
       <div><label>Vertical</label><select name='vertical'>
@@ -324,9 +331,75 @@ def dashboard_html(audits, principal, queue_depth):
                style='width:auto'> Render JavaScript
         <span style='color:var(--muted)'>(slower; for SPA sites)</span></label>
     </div>
+
+    <div style='margin-top:14px;padding-top:12px;border-top:1px solid var(--line)'>
+      <div style='font-size:12.5px;font-weight:640;margin-bottom:6px'>
+        What to run</div>
+      <div style='font-size:12.5px;color:var(--ink2);display:grid;
+                  grid-template-columns:1fr 1fr;gap:6px 20px'>
+        <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
+          <input type='checkbox' name='run_judgment' value='1' checked
+                 form='auditform' style='width:auto'> E-E-A-T and AI Search
+          <span style='color:var(--muted)'>(needs the LLM key)</span></label>
+        <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
+          <input type='checkbox' name='run_collectors' value='1' checked
+                 form='auditform' style='width:auto'> Search Console, Analytics,
+          off-page</label>
+        <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
+          <input type='checkbox' name='run_screenshots' value='1' checked
+                 form='auditform' style='width:auto'> Evidence screenshots
+          <span style='color:var(--muted)'>(~30s)</span></label>
+        <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
+          <input type='checkbox' name='reuse_crawl' value='1'
+                 form='auditform' style='width:auto'> Reuse the last crawl of
+          this URL
+          <span style='color:var(--muted)'>(no new requests to their site)</span>
+        </label>
+      </div>
+      <div class='sm' style='color:var(--muted);margin-top:6px'>
+        Reusing a crawl re-scores the pages we already have. Sitewide counts
+        then describe the site as of that crawl, so use a fresh one to check
+        whether a fix has landed.</div>
+    </div>
     </div>
 
     <h2>Clients</h2>{listing}
+
+    <script>
+    // Preflight, not a gate. It never blocks submission — a probe that is
+    // wrong about GA4 (it scans by name only, for speed) must not stop a real
+    // audit from running.
+    async function checkAccess() {{
+      var u = document.getElementById('turl').value.trim();
+      var out = document.getElementById('ckout');
+      var btn = document.getElementById('ckbtn');
+      if (!u) {{ out.textContent = 'Enter a URL first.'; return; }}
+      if (!/^https?:\\/\\//.test(u)) {{ u = 'https://' + u; }}
+      btn.disabled = true; out.style.color = 'var(--muted)';
+      out.textContent = 'Checking…';
+      try {{
+        var r = await fetch('/api/access-check?target_url=' + encodeURIComponent(u));
+        var d = await r.json();
+        if (!r.ok) {{ throw new Error(d.detail || r.status); }}
+        var bits = [];
+        bits.push(d.gsc.ok
+          ? '\\u2713 Search Console: ' + d.gsc.property + ' (via ' + d.gsc.login + ')'
+          : '\\u2717 Search Console: ' + (d.gsc.detail || 'not found'));
+        bits.push(d.ga4.ok
+          ? '\\u2713 GA4: ' + d.ga4.name + ' (' + d.ga4.property + ', via ' + d.ga4.login + ')'
+          : (d.ga4.partial ? '? GA4: no quick match — the audit looks wider'
+                           : '\\u2717 GA4: ' + (d.ga4.detail || 'not found')));
+        out.style.color = (d.gsc.ok && d.ga4.ok) ? 'var(--good)'
+                        : (d.gsc.ok || d.ga4.ok) ? 'var(--warning)' : 'var(--serious)';
+        out.innerHTML = bits.map(function (b) {{
+          return b.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+        }}).join('<br>');
+      }} catch (e) {{
+        out.style.color = 'var(--serious)';
+        out.textContent = 'Check failed: ' + e.message;
+      }} finally {{ btn.disabled = false; }}
+    }}
+    </script>
     """
     return _shell("Vici Audit Engine", body, refresh=8 if running else None)
 

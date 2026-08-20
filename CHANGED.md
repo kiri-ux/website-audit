@@ -1,4 +1,53 @@
-# Changed files — build 2026.08.20-02
+# Changed files — build 2026.08.20-03
+
+## Check access before you spend a crawl
+
+**Check GA4 / Search Console access** sits next to the URL field on the
+homepage. It asks the same questions the collectors ask and answers in a
+second or two:
+
+```
+✓ Search Console: https://ootenlawfirm.com/ (via reporting-zone)
+✓ GA4: Ooten Law Firm (522482558, via reporting-zone)
+```
+
+Search Console is exact — one `sites` call per login lists everything, so a
+"no" there is a real no. **GA4 is not**, and the button says so rather than
+pretending. Matching a GA4 property to a domain means opening its data
+streams, one API call each, and `reporting-zone` holds hundreds. The quick
+check only opens streams for properties whose *name* already looks right; when
+that finds nothing it reports "no quick match — the audit looks wider" instead
+of claiming there is no property. An overconfident "no" is worse than a slow
+"maybe", because it would have us emailing clients for access they already
+gave.
+
+`GOOGLE_TOKENS` has to be on the **API** as well as the worker for this, since
+the API is what answers while you are still looking at the form. If it is only
+on the worker the button says "not set on this service" — accurate about the
+API, and it says nothing about whether the audit will find the data.
+
+## Run only the part you need
+
+Under the form: **E-E-A-T and AI Search**, **Search Console / Analytics /
+off-page**, **Evidence screenshots**, and **Reuse the last crawl of this URL**.
+
+The last one is the point. The crawl is the slow, rude phase — 150 requests to
+someone's server — and re-running because our LLM key was missing shouldn't
+cost the client's site another 150. Ticking it finds the newest audit of that
+exact URL whose artifact we still hold and re-scores those pages.
+
+The honest caveat is on the form: sitewide counts then describe the site as of
+that crawl, so a fresh crawl is the right choice for "has the fix landed".
+
+One subtlety worth knowing: an unticked checkbox sends nothing, which is
+indistinguishable from a script that predates the feature. A hidden `phases`
+field tells them apart — with it, an absent box really means off; without it,
+everything runs as before. Getting that backwards silently skips the judgment
+layer, which is the failure we have already had once.
+
+---
+
+# Build 2026.08.20-02
 
 ## Why Ooten's Search Console and GA4 came back empty
 

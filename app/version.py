@@ -12,10 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-02"
-BUILD_NOTES = ("Search Console and GA4 property matching fixed — an http "
-               "audit URL never matched an https property, and the GA4 name "
-               "filter could not match a display name with spaces")
+BUILD = "2026.08.20-03"
+BUILD_NOTES = ("Access preflight on the form; pick which phases to run; "
+               "reuse a stored crawl instead of hitting the site again")
 # ---------------------------------------------------------------------------
 
 

@@ -206,6 +206,22 @@ def _redirect_uri(request: Request) -> str:
     return base + "/oauth/google/callback"
 
 
+@app.get("/api/access-check")
+def access_check(target_url: str = ""):
+    """
+    Preflight: do we have Search Console and Analytics for this site?
+
+    Runs on the API so the answer comes back while someone is still filling in
+    the form. That means GOOGLE_TOKENS has to be readable here as well as on
+    the worker — see DEPLOY.md. If it is only on the worker this returns
+    "not set on this service", which is accurate about the API and says
+    nothing about whether the audit itself will find the data.
+    """
+    if not target_url.startswith(("http://", "https://")):
+        raise HTTPException(400, "target_url must include a scheme")
+    return _ga.probe(target_url)
+
+
 @app.get("/oauth/google/start")
 def oauth_start(request: Request, t: str = "", label: str = ""):
     if not _setup_token() or t != _setup_token():
@@ -283,16 +299,51 @@ def home(x_api_key: str | None = Header(None)):
     return dashboard_html(db.list_audits(p.scope), p, Q.depth())
 
 
+def _newest_artifact_for(target_url: str, scope) -> str | None:
+    """Most recent audit of this URL whose crawl artifact is still on disk."""
+    want = (target_url or "").rstrip("/").lower()
+    for a in db.list_audits(scope):
+        if (a.get("target_url") or "").rstrip("/").lower() != want:
+            continue
+        if get_artifact(a["id"], "crawl_artifact.json"):
+            return a["id"]
+    return None
+
+
 @app.post("/audits")
 def submit_form(target_url: str = Form(...), client_name: str = Form(...),
                 vertical: str = Form(""), max_pages: int = Form(150),
                 render_js: str = Form(""), browser_ua: str = Form(""),
                 skip_psi: str = Form(""), primary_markets: str = Form(""),
                 primary_conversion: str = Form(""),
+                run_judgment: str = Form(""),
+                run_collectors: str = Form(""),
+                run_screenshots: str = Form(""),
+                reuse_crawl: str = Form(""), phases: str = Form(""),
                 x_api_key: str | None = Header(None)):
     p = principal(x_api_key)
+    # Phases are opt-OUT in the options dict (skip_*) but opt-IN on the form,
+    # because a checkbox ticked to NOT do something is how people accidentally
+    # skip the judgment layer and then wonder why E-E-A-T is empty.
+    #
+    # An unticked checkbox sends NOTHING, which is indistinguishable from a
+    # caller that does not know about phases at all. The hidden `phases` field
+    # tells them apart: present means this form owns the choice and an absent
+    # box really means off; absent means an older client or a script, and
+    # everything runs, which is the pre-existing behaviour.
     opts = {"max_pages": max_pages, "skip_psi": bool(skip_psi),
             "render_js": bool(render_js)}
+    if phases:
+        opts["skip_judgment"] = not run_judgment
+        opts["skip_collectors"] = not run_collectors
+        opts["skip_screenshots"] = not run_screenshots
+    # Reuse the newest crawl we still hold for this exact URL. The client's
+    # server is not asked for another 150 pages just because our LLM key was
+    # missing last time.
+    if reuse_crawl:
+        prev = _newest_artifact_for(target_url, p.scope)
+        if prev:
+            opts["reuse_artifact_from"] = prev
     for k, v in (("primary_markets", primary_markets),
                  ("primary_conversion", primary_conversion)):
         if v.strip():

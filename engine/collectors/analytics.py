@@ -362,6 +362,74 @@ def _find_ga4_property(site_url: str) -> tuple[str | None, str | None, str | Non
     return None, None, None
 
 
+def probe(site_url: str, name_scan: int = 8) -> dict:
+    """
+    Fast, read-only "do we have access?" check. Answers BEFORE an audit runs.
+
+    Finding out at the end of a 150-page crawl that 38 rows are blank is the
+    wrong time to find out. This asks the same questions the collectors ask,
+    but bounded so it returns while someone is still looking at the form.
+
+    The bound is the honest part. Search Console is exact: one `sites` call per
+    login lists everything, so a "no" here is a real no. GA4 is not — matching
+    a property to a domain means opening its data streams, one call each, and a
+    login can hold hundreds. So the probe only opens streams for properties
+    whose NAME already looks right, and when that finds nothing it says the
+    quick check found nothing rather than claiming there is no property. The
+    full scan still runs during the audit.
+
+    Never raises. A probe that 500s teaches the operator to ignore the probe.
+    """
+    out = {"gsc": {"ok": False}, "ga4": {"ok": False},
+           "configured": bool(_token_index()) and oauth_configured()}
+    if not _token_index():
+        msg = "GOOGLE_TOKENS is not set on this service."
+        out["gsc"] = out["ga4"] = {"ok": False, "detail": msg, "ours": True}
+        return out
+    if not oauth_configured():
+        msg = ("GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set on this "
+               "service, so the refresh token cannot be exchanged.")
+        out["gsc"] = out["ga4"] = {"ok": False, "detail": msg, "ours": True}
+        return out
+
+    idx = _token_index()
+    try:
+        tok, label, prop = _first_login_that_can_see(site_url)
+        out["gsc"] = ({"ok": True, "property": prop, "login": label} if tok else
+                      {"ok": False, "detail": f"No property matching this site "
+                                              f"in {len(idx)} login(s): "
+                                              f"{', '.join(idx)}."})
+    except Exception as exc:  # noqa: BLE001
+        out["gsc"] = {"ok": False, "detail": f"{type(exc).__name__}: {exc}"}
+
+    want = _host(site_url)
+    slug = _squash(want.split(".")[0])
+    try:
+        found = None
+        for lbl, refresh in idx.items():
+            tok = access_token(refresh)
+            if not tok:
+                continue
+            named = [p for p in _ga4_properties(tok)
+                     if slug and slug in _squash(p[1])][:name_scan]
+            for pid, nm in named:
+                if want in _stream_hosts(tok, pid):
+                    found = {"ok": True, "property": pid, "name": nm,
+                             "login": lbl}
+                    break
+            if found:
+                break
+        out["ga4"] = found or {
+            "ok": False, "partial": True,
+            "detail": ("No property whose NAME resembles this domain also "
+                       "reports it. The audit still scans by data stream, "
+                       "which is slower and looks wider — this quick check "
+                       "can miss a property named unlike its site.")}
+    except Exception as exc:  # noqa: BLE001
+        out["ga4"] = {"ok": False, "detail": f"{type(exc).__name__}: {exc}"}
+    return out
+
+
 def collect_ga4(property_id: str | None, refresh_token: str | None,
                 days: int = 90, site_url: str = "") -> dict:
     tok = access_token(refresh_token) if refresh_token else None
