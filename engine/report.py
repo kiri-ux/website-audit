@@ -169,15 +169,14 @@ def _brand_head() -> str:
 
 def _todo_panel(findings: dict, catalog: dict) -> list:
     """
-    "Action needed" — what is unfinished on this run, and whose move it is.
+    "Action needed" — what is unfinished, and crucially WHOSE MOVE IT IS.
 
-    Three buckets, in the order you can act on them: a variable WE forgot is
-    fixable in a minute, a client grant takes an email, and manual review takes
-    an afternoon. See engine/access.py for the bucketing rule.
-
-    Blocked-on-us rows are grouped by the REASON rather than listed one per
-    checkpoint, because 29 rows that all say "no backlink provider configured"
-    are one job, not twenty-nine.
+    Ordered by what you can actually do about it: a variable we forgot takes a
+    minute, a client grant takes an email, and manual review takes an
+    afternoon and needs no decision at all. The last group is the largest and
+    the least urgent, so it is collapsed — a wall of 55 checkpoint IDs above
+    the one line that says "set two environment variables" buries the only
+    thing that matters.
     """
     from engine.access import buckets
     from collections import Counter, defaultdict
@@ -193,18 +192,33 @@ def _todo_panel(findings: dict, catalog: dict) -> list:
             c[" ".join(str(ev).split())[:110]] += 1
         return c.most_common(4)
 
-    rows = []
+    out = ["<div class='note' style='border-left-color:var(--seq);"
+           "margin:0 0 22px'>"
+           "<b>Action needed before this goes out.</b> "
+           "<span class='sm'>Internal only — none of this appears in the "
+           "client PDF.</span>"]
+
     if b["vendor"]:
-        items = "".join(
-            f"<li><b>{n}</b> — {e(why)}</li>" for why, n in reasons(b["vendor"]))
-        rows.append(("Blocked on our configuration", len(b["vendor"]),
-                     "var(--critical)", f"<ul style='margin:6px 0 0 18px'>{items}</ul>"))
+        items = "".join(f"<li><b>{n}</b> — {e(why)}</li>"
+                        for why, n in reasons(b["vendor"]))
+        out.append(
+            f"<div style='margin-top:12px'>"
+            f"<b style='color:var(--critical)'>Ours to fix &middot; "
+            f"{len(b['vendor'])}</b>"
+            f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
+            f"A credential we have not set, or a call we have not written. "
+            f"Nothing to ask anyone for.</div>"
+            f"<ul style='margin:6px 0 0 18px'>{items}</ul></div>")
+
     if b["client"]:
-        rows.append(("Waiting on a client grant", len(b["client"]),
-                     "var(--warning)",
-                     "<div style='margin-top:6px'>Search Console and Analytics. "
-                     "Ask the client to add the Vici login as a user on the "
-                     "property.</div>"))
+        out.append(
+            f"<div style='margin-top:12px'>"
+            f"<b style='color:var(--warning)'>Ask the client &middot; "
+            f"{len(b['client'])}</b>"
+            f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
+            f"Search Console or Analytics rows we could not read. Ask them to "
+            f"add the Vici login as a user on the property.</div></div>")
+
     if b["manual"]:
         by_sec = defaultdict(list)
         for cid in b["manual"]:
@@ -213,16 +227,19 @@ def _todo_panel(findings: dict, catalog: dict) -> list:
             f"<li><b>{e(SECTION_NAMES.get(k, k))}</b> — {len(v)}: "
             f"{e(', '.join(sorted(v)))}</li>"
             for k, v in sorted(by_sec.items(), key=lambda kv: -len(kv[1])))
-        rows.append(("Needs manual review", len(b["manual"]), "var(--seq)",
-                     f"<ul style='margin:6px 0 0 18px'>{items}</ul>"))
+        out.append(
+            f"<div style='margin-top:12px'>"
+            f"<b style='color:var(--seq)'>Reviewed by hand &middot; "
+            f"{len(b['manual'])}</b>"
+            f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
+            f"<b>Nothing to configure.</b> These checkpoints have no automated "
+            f"test — an analyst answers them during the engagement. They are "
+            f"listed so the count is auditable, not because they are blocking."
+            f"</div>"
+            f"<details class='hist'><summary>Show the {len(b['manual'])} "
+            f"checkpoints</summary>"
+            f"<ul style='margin:6px 0 0 18px'>{items}</ul></details></div>")
 
-    out = ["<div class='note' style='border-left-color:var(--seq);margin:0 0 22px'>"
-           "<b>Action needed before this goes out.</b> "
-           "<span class='sm'>Internal only — none of this appears in the client "
-           "PDF.</span>"]
-    for title, n, color, body in rows:
-        out.append(f"<div style='margin-top:10px'>"
-                   f"<b style='color:{color}'>{e(title)} · {n}</b>{body}</div>")
     out.append("</div>")
     return out
 

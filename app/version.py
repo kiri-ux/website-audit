@@ -12,9 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-08"
-BUILD_NOTES = ("adtini styling; GOOGLE_TOKENS declared in the blueprint so a "
-               "sync cannot drop it; startup warns on a local ARTIFACT_STORE")
+BUILD = "2026.08.20-09"
+BUILD_NOTES = ("Blocked-on is decided by the REASON, not the section — a "
+               "working Search Console grant no longer reports 27 rows as a "
+               "missing client grant")
 # ---------------------------------------------------------------------------
 
 

@@ -89,7 +89,7 @@ def _synthetic_rows(catalog: dict, findings: dict, prefix: str) -> list:
     for cid, m in catalog.items():
         if (m or {}).get("prefix") != prefix or cid in findings:
             continue
-        who = blocked_on(cid)
+        who = blocked_on(cid, None)
         if who == "manual":
             # No evidence text. The pill already says Manual and the appendix
             # intro says what Manual means; repeating the same sentence down

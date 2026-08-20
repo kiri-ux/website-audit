@@ -238,6 +238,19 @@ def main():
           blocked_on("EEAT-01") == "vendor")
     check("an unautomated checkpoint is ours to do by hand",
           blocked_on("ONP-34") == "manual")
+    # THE ONE THAT SHIPPED WRONG. A granted, working Search Console connection
+    # still left 27 rows the API does not expose, and bucketing by prefix
+    # called every one of them a missing client grant — telling us to email a
+    # client for access they had already given and that was demonstrably
+    # working two rows above.
+    check("a GSC row the API cannot expose is OURS, not the client's",
+          blocked_on("GSC-05", {"source": "gsc_ui_only"}) == "vendor")
+    check("a GA4 row needing the Admin API is OURS",
+          blocked_on("GA4-03", {"source": "ga4_admin_only"}) == "vendor")
+    check("a GSC row genuinely lacking a grant is still the client's",
+          blocked_on("GSC-01", {"source": "gsc"}) == "client")
+    check("our own missing credentials are never billed to the client",
+          blocked_on("GSC-01", {"source": "gsc_misconfigured"}) == "vendor")
     mixed_cat = {"GSC-01": {"prefix": "GSC"}, "OFF-01": {"prefix": "OFF"},
                  "ONP-34": {"prefix": "ONP"}, "TECH-01": {"prefix": "TECH"}}
     c = _acounts({"TECH-01": {"status": "Pass"}}, mixed_cat)

@@ -66,8 +66,28 @@ def vendor_ids() -> set:
     return _VENDOR_CACHE
 
 
-def blocked_on(cid: str) -> str:
-    """'client' | 'vendor' | 'manual' for a checkpoint we could not measure."""
+# Search Console and Analytics rows that the APIs simply do not expose. The
+# client granting access changes nothing about them — they are answered from
+# the Search Console UI or the GA4 Admin API, and until we write that, they are
+# OURS. Filing them under "waiting on a client grant" produced the worst kind
+# of error: a run where access demonstrably worked (11 of 38 rows filled with
+# real numbers) still told us to go and ask the client for access again.
+OURS_DESPITE_PREFIX = {"gsc_ui_only", "ga4_admin_only",
+                       "gsc_misconfigured", "ga4_misconfigured"}
+
+
+def blocked_on(cid: str, finding: dict | None = None) -> str:
+    """
+    'client' | 'vendor' | 'manual' for a checkpoint we could not measure.
+
+    The REASON decides, not the section. Two GSC rows can be blocked on
+    completely different people: GSC-01 needs the client's grant, GSC-05 needs
+    us to write the Index Inspection call. Bucketing by prefix called both the
+    client's problem.
+    """
+    src = (finding or {}).get("source") or ""
+    if src in OURS_DESPITE_PREFIX:
+        return "vendor"
     if cid.split("-")[0] in CLIENT_PREFIXES:
         return "client"
     if cid.startswith("OFF-") or cid in vendor_ids():
@@ -89,7 +109,7 @@ def buckets(findings: dict, catalog: dict) -> dict:
         if f is None:
             out[blocked_on(cid)].append(cid)
         elif f.get("status") == "Need Access":
-            out[blocked_on(cid)].append(cid)
+            out[blocked_on(cid, f)].append(cid)
         elif f.get("status") == "N/A":
             out["na"].append(cid)
         else:
