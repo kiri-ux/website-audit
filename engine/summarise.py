@@ -197,7 +197,10 @@ THEME_TITLE = {
     "indexing": "Crawling and indexing are not fully under control",
     "redirects": "Redirects are losing signal",
     "schema": "Structured data is thin or missing",
-    "titles": "Titles and headings are not doing their job",
+    # A title should name the problem in terms of the job the thing is failing
+    # at, not assert that it is failing. "Not doing their job" makes the reader
+    # ask what the job was.
+    "titles": "Page titles don't say what each page is about",
     "images": "Images are unoptimized",
     "speed": "The site is slower than the Core Web Vitals thresholds",
     "mobile": "The mobile experience has defects",
@@ -338,8 +341,11 @@ SERVICE_ACTION = {
                  "value carries across.",
     "schema": "We design and deploy structured data for your key page types, "
               "then monitor how it renders in results.",
-    "titles": "Title and heading rewrites across priority templates are part of "
-              "the on-page optimization.",
+    # "Priority templates" is agency shorthand for "the page types that get the
+    # most traffic". A client hears a word they cannot picture and stops
+    # reading. Name the pages instead.
+    "titles": "We rewrite the titles and headings, starting with the pages that "
+              "bring in the most traffic, as part of the on-page optimization.",
     "images": "Image optimization and alt text are handled in the on-page and "
               "performance work.",
     "speed": "Performance work — server response, asset delivery and Core Web "
@@ -403,6 +409,55 @@ def service_action(theme_key: str, prefix: str) -> str:
 # The defects we actually see, written as the work. Several checkpoints map to
 # the SAME action on purpose — "Titles not unique" and "Duplicate title tags"
 # are one job, and the dedupe below then collapses them into one line.
+
+# ---------------------------------------------------------------------------
+# The 29 judgment-layer checkpoints. Their catalog names are diagnostic labels
+# ("First-hand experience demonstrated"), not work, so the generic fallback
+# produced a plan reading "Address first-hand experience demonstrated" twelve
+# times over. Every one of these is real content work with a verb attached.
+# ---------------------------------------------------------------------------
+_JUDGMENT_ACTIONS = {
+    "first-hand experience demonstrated":
+        "Add first-hand detail — your own cases, photos and specifics",
+    "real examples included": "Write up real client examples and outcomes",
+    "original insights included":
+        "Publish a point of view competitors are not offering",
+    "subject matter expertise":
+        "Deepen the content so it reads as written by a practitioner",
+    "expert-written content": "Put your specialists' knowledge into the copy",
+    "expert review process": "Show who reviewed each page, and when",
+    "author pages": "Publish author pages for the people behind the work",
+    "author credentials": "State each author's qualifications on the page",
+    "organization authority": "Build out the case for the firm's standing",
+    "industry mentions": "Earn and surface mentions in your industry",
+    "brand authority": "Strengthen how the brand is presented across the site",
+    "editorial policy": "Publish how content is written, reviewed and updated",
+    "business information":
+        "Put the full address, hours and legal name where they can be found",
+    "customer support information":
+        "Make support channels and response times obvious",
+    "testimonials": "Add attributed testimonials from real clients",
+    "reviews": "Surface reviews on site and keep them current",
+    "ai-friendly site architecture":
+        "Restructure so assistants can follow the site",
+    "ai-friendly content formatting":
+        "Reformat pages so assistants can extract answers cleanly",
+    "question-answer content": "Answer the questions clients actually ask",
+    "conversational content": "Write the way people ask, not the way we index",
+    "entity optimization": "Make clear who and what each page is about",
+    "knowledge graph optimization":
+        "Connect the brand to the entities Google already knows",
+    "semantic relationships": "Link related topics so the coverage reads whole",
+    "citation-worthy content": "Create material worth quoting",
+    "original research": "Publish data only you have",
+    "statistics & data usage": "Support claims with figures worth citing",
+    "expert quotes": "Quote named experts, including your own",
+    "author entity optimization": "Establish your authors as recognized names",
+    "organization entity optimization":
+        "Establish the firm as a recognized entity",
+    "brand entity optimization": "Make the brand legible to search and AI",
+}
+
 _ACTIONS = {
     # titles & meta
     "issues with duplicate title tags": "Rewrite duplicate page titles",
@@ -505,6 +560,8 @@ def roadmap_item(name: str) -> str:
     key = s.lower()
     if key in _ACTIONS:
         return _ACTIONS[key]
+    if key in _JUDGMENT_ACTIONS:
+        return _JUDGMENT_ACTIONS[key]
     for pat, tmpl in _ACTION_RULES:
         m = re.match(pat, s, flags=re.I)
         if m:
@@ -544,18 +601,43 @@ def _group_issues(findings: dict, catalog: dict, meta: dict, limit: int = 5) -> 
                                     "prefix": prefix})
         g["members"].append((cid, name, f))
 
+    # MERGE GROUPS THAT WOULD PRINT THE SAME TITLE.
+    #
+    # A group keyed on the theme "eeat" and a group that matched no theme and
+    # fell back to the section "EEAT" are different keys with identical titles,
+    # so the report printed "Trust and expertise signals are weak" as both
+    # finding 2 and finding 3, with different evidence under each. Two headline
+    # slots spent on one problem, and it reads as a bug because it is one.
+    def _title_for(key, g):
+        return (THEME_TITLE.get(key) or SECTION_PROBLEM_TITLE.get(g["prefix"])
+                or (g["members"][0][1] if g["members"] else key))
+
+    merged = {}
+    for key, g in groups.items():
+        t = _title_for(key, g)
+        if t in merged:
+            merged[t][1]["members"].extend(g["members"])
+        else:
+            merged[t] = (key, g)
+    groups = {k: g for k, g in merged.values()}
+
     out = []
     for key, g in groups.items():
         # Exemplar = worst member; ties broken by the order top_issues gave us,
         # which is already the scoring engine's own priority.
         g["members"].sort(key=lambda t: SEV_RANK.get(t[2].get("severity"), 5))
         cid, name, f = g["members"][0]
-        others = [n for _, n, _ in g["members"][1:]]
         short = (f.get("evidence") or "").strip().rstrip(".") + "."
         finding = short
-        if others:
-            finding += (f" It shows up in {len(g['members'])} separate checks, "
-                        f"including {_listy(others[:3])}.")
+        if len(g["members"]) > 1:
+            # No list of checkpoint names. They are template strings written for
+            # us, and several of them end in "included", so the sentence came
+            # out as "including Real examples included, ... and Original
+            # insights included." The count is the part that carries meaning —
+            # this is systemic, not a one-off. "Signals" rather than "places":
+            # we counted signals, not pages, and "places" would read as pages.
+            finding += (f" The same gap shows up across "
+                        f"{len(g['members'])} different signals.")
         action = (f.get("recommendation") or "").strip()
         if not action:
             action = next((x.get("recommendation", "").strip()
@@ -683,8 +765,12 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
     # actual subjects instead, drawn from the areas we really assessed, so the
     # sentence is both meaningful and specific to this run.
     checked = _plain_areas(assessed)
+    # "Crawled" is our word for our machinery. To a client it reads as a robot
+    # ran and printed this, which undercuts the one sentence where we say what
+    # we looked at. "Reviewed" is the same claim in their language — and it is
+    # accurate, because a person reads this before it goes out.
     parts.append(
-        f"We crawled {meta.get('pages_crawled') or 0} pages of "
+        f"We reviewed {meta.get('pages_crawled') or 0} pages of "
         f"{_host(meta.get('url'))}"
         + (f" and looked at {checked}." if checked else "."))
     if o.get("score") is not None:

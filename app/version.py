@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.19-16"
-BUILD_NOTES = ("The worker needs GOOGLE_CLIENT_ID/SECRET too, not just "
-               "GOOGLE_TOKENS — without them the rows blamed the client for "
-               "a variable we forgot to set. Now named as ours, and logged")
+BUILD = "2026.08.20-01"
+BUILD_NOTES = ("Roboto; severity pills; duplicate findings merged; repeated "
+               "evidence collapsed; plural agreement; footer text now reaches "
+               "the judgment layer; internal Action-needed panel")
 # ---------------------------------------------------------------------------
 
 

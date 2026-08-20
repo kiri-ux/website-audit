@@ -25,6 +25,13 @@ from reportlab.lib import colors
 from reportlab.lib.units import inch
 from reportlab.platypus import Flowable
 
+# Same family as the body copy. The charts are drawn straight onto the canvas,
+# so they do not inherit the paragraph styles and would otherwise stay in
+# Helvetica while everything around them changed — the kind of mismatch that
+# reads as "assembled from two documents".
+from .fonts import register as _register_fonts, BODY as F, BOLD as FB, ITALIC as FI
+_register_fonts()
+
 INK     = colors.HexColor("#0b0b0b")
 INK2    = colors.HexColor("#52514e")
 MUTED   = colors.HexColor("#898781")
@@ -112,10 +119,10 @@ class ScoreGauge(Flowable):
         # centered readout
         c.setFillColor(INK if self.score is not None else MUTED)
         num = str(self.score) if self.score is not None else "—"
-        c.setFont("Helvetica-Bold", s * 0.27)
+        c.setFont(FB, s * 0.27)
         c.drawCentredString(cx, cy + s * 0.005, num)
         if self.score is not None:
-            c.setFont("Helvetica", s * 0.08)
+            c.setFont(F, s * 0.08)
             c.setFillColor(MUTED)
             c.drawCentredString(cx, cy - s * 0.10, "/ 100")
 
@@ -132,13 +139,13 @@ class ScoreGauge(Flowable):
         lbl_dy = rate_dy + s * 0.085
         c.setFillColor(INK2)
         txt = self.rating or ("Not scored" if self.score is None else "")
-        txt, size = _fit(c, txt, "Helvetica-Bold", s * 0.095,
+        txt, size = _fit(c, txt, FB, s * 0.095,
                          _gap_w(r, thick, rate_dy))
-        c.setFont("Helvetica-Bold", size)
+        c.setFont(FB, size)
         c.drawCentredString(cx, cy - rate_dy, txt)
-        lbl, lsize = _fit(c, self.label, "Helvetica", s * 0.072,
+        lbl, lsize = _fit(c, self.label, F, s * 0.072,
                           _gap_w(r, thick, lbl_dy))
-        c.setFont("Helvetica", lsize)
+        c.setFont(F, lsize)
         c.setFillColor(MUTED)
         c.drawCentredString(cx, cy - lbl_dy, lbl)
         c.restoreState()
@@ -178,7 +185,7 @@ class SectionBars(Flowable):
 
             # Measure with the font we will ACTUALLY draw in — bold is wider,
             # and fitting against regular is how a label ends up under the bar.
-            font = "Helvetica-Bold" if i in worst else "Helvetica"
+            font = FB if i in worst else F
             c.setFillColor(INK if i in worst else INK2)
             txt, size = _fit(c, label, font, 8, self.label_w)
             c.setFont(font, size)
@@ -192,9 +199,9 @@ class SectionBars(Flowable):
                 c.rect(bar_x, y, bar_w, bar_h, stroke=1, fill=0)
                 c.restoreState()
                 c.setFillColor(MUTED)
-                c.setFont("Helvetica-Oblique", 7)
+                c.setFont(FI, 7)
                 c.drawString(bar_x + 4, y + bar_h * 0.28, "Not assessed")
-                c.setFont("Helvetica", 7.5)
+                c.setFont(F, 7.5)
                 c.drawRightString(self.width, y + bar_h * 0.25, "—")
                 continue
 
@@ -209,8 +216,8 @@ class SectionBars(Flowable):
             # long ones ran back over the bar.
             c.setFillColor(INK2)
             txt = f"{sc}  {rating or ''}".strip()
-            txt, size = _fit(c, txt, "Helvetica-Bold", 7.5, self.value_w - 4)
-            c.setFont("Helvetica-Bold", size)
+            txt, size = _fit(c, txt, FB, 7.5, self.value_w - 4)
+            c.setFont(FB, size)
             c.drawRightString(self.width - 2, y + bar_h * 0.25, txt)
         # baseline under the block
         c.setStrokeColor(LINE)
@@ -254,15 +261,15 @@ class SegmentBar(Flowable):
             # count inside the segment only when it comfortably fits
             if w > 22:
                 c.setFillColor(colors.white if col not in (TRACK, LINE) else INK2)
-                c.setFont("Helvetica-Bold", 8)
+                c.setFont(FB, 8)
                 c.drawCentredString(x + w / 2, y + self.bar_h * 0.32, str(n))
             x += w
 
         # legend — every segment gets its word, so color is never load-bearing
         lx, ly = 0.0, y - 15
-        c.setFont("Helvetica", 7.5)
+        c.setFont(F, 7.5)
         for label, n, col in self.segments:
-            sw = c.stringWidth(f"{label} {n}", "Helvetica", 7.5) + 16
+            sw = c.stringWidth(f"{label} {n}", F, 7.5) + 16
             if lx + sw > self.width:
                 lx, ly = 0.0, ly - 11
             c.setFillColor(col)
@@ -275,7 +282,7 @@ class SegmentBar(Flowable):
             lx += sw
         if self.note:
             c.setFillColor(MUTED)
-            c.setFont("Helvetica-Oblique", 7.5)
+            c.setFont(FI, 7.5)
             c.drawString(0, ly - 11, self.note)
 
 

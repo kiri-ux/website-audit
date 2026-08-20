@@ -91,16 +91,136 @@ def _synthetic_rows(catalog: dict, findings: dict, prefix: str) -> list:
             continue
         who = blocked_on(cid)
         if who == "manual":
-            out.append((cid, {"status": "Manual",
-                              "evidence": "Reviewed by hand during the "
-                                          "engagement — no automated check "
-                                          "stands in for a judgment call.",
+            # No evidence text. The pill already says Manual and the appendix
+            # intro says what Manual means; repeating the same sentence down
+            # twelve consecutive rows is wallpaper, and it made a section of
+            # ordinary unautomated checks look like a wall of problems.
+            out.append((cid, {"status": "Manual", "evidence": "",
                               "severity": "Low"}))
         else:
             out.append((cid, {"status": "Need Access",
                               "evidence": "Waiting on our data provider for "
                                           "this run.", "severity": "Low"}))
     return out
+
+
+# Words that end in "s" without being plural. Stripping the s off these turns
+# "1 address" into "1 addres", which is worse than the bug being fixed.
+_NOT_PLURAL = {"css", "js", "https", "rss", "status", "address", "class",
+               "canonicals", "less", "bypass", "analysis", "https"}
+
+# Third-person singular for the verbs that actually follow a count in our
+# evidence strings. Deliberately a closed list: a general -s rule would produce
+# "1 page hass".
+_VERB_S = {
+    "exceed": "exceeds", "share": "shares", "have": "has", "are": "is",
+    "send": "sends", "contain": "contains", "lead": "leads", "use": "uses",
+    "point": "points", "return": "returns", "miss": "misses", "load": "loads",
+    "take": "takes", "declare": "declares", "carry": "carries",
+    "redirect": "redirects", "block": "blocks", "fail": "fails",
+    "include": "includes", "expose": "exposes", "serve": "serves",
+    "reference": "references", "link": "links", "contain,": "contains,",
+}
+
+_COUNT_RE = re.compile(r"\b1 ([A-Za-z][A-Za-z-]*?)s\b(\s+)([A-Za-z]+)?")
+
+
+def _agree(text: str) -> str:
+    """
+    "1 pages exceed 200KB" -> "1 page exceeds 200KB".
+
+    Evidence strings are built with f-strings around a count, and a count of
+    exactly one falls out of the plural wording every check is written in. It
+    is a small thing that reads as carelessness, and it appears in a document
+    whose entire argument is that the numbers were checked.
+
+    Applied at render time rather than in forty check modules, because the
+    findings store holds the measurement and this is presentation.
+    """
+    def fix(m):
+        noun, gap, verb = m.group(1), m.group(2), m.group(3)
+        if f"{noun}s".lower() in _NOT_PLURAL or noun.lower() in _NOT_PLURAL:
+            return m.group(0)
+        out = f"1 {noun}{gap}"
+        if verb:
+            out += _VERB_S.get(verb.lower(), verb) if verb.lower() in _VERB_S \
+                else verb
+        return out
+    return _COUNT_RE.sub(fix, text or "")
+
+
+def _dedupe_evidence(rows: list) -> list:
+    """
+    Stop the appendix restating one observation twenty times.
+
+    Two sources of it. The crawler answers several checkpoints from the same
+    measurement, so ONP-01 "Issues with duplicate title tags" and ONP-23
+    "Unique title on every page" both print "83 pages share 25 duplicated title
+    tags" verbatim. And the judgment layer writes each row independently, so a
+    site with thin content gets fifteen paragraphs that all open "All examined
+    pages (homepage, practice areas, …) contain only generic marketing copy".
+
+    Both read as padding. Nothing is deleted — the later row points at the one
+    that carries the detail, which is shorter AND more useful, because it says
+    these are the same problem.
+
+    Near-duplicates keep whatever is actually different. A row whose text is
+    entirely contained in an earlier one has nothing left, so it gets the
+    cross-reference alone.
+    """
+    import difflib
+
+    def norm(s):
+        return " ".join((s or "").lower().split())
+
+    seen = []            # [(cid, normalized, original)]
+    out = []
+    for cid, f in rows:
+        ev = (f.get("evidence") or "").strip()
+        n = norm(ev)
+        if len(n) < 40:                      # short rows are not the problem
+            seen.append((cid, n, ev))
+            out.append((cid, f))
+            continue
+        best, ratio = None, 0.0
+        for pcid, pn, _pev in seen:
+            r = difflib.SequenceMatcher(None, pn, n).ratio()
+            if r > ratio:
+                best, ratio = pcid, r
+        if ratio >= 0.93:
+            f = {**f, "evidence": f"Same finding as {best}."}
+        elif ratio >= 0.72 and best:
+            prev = next(p for p in seen if p[0] == best)[2]
+            tail = _distinct_tail(prev, ev)
+            f = {**f, "evidence": (f"As {best}. {tail}" if tail
+                                   else f"Same finding as {best}.")}
+        seen.append((cid, n, ev))
+        out.append((cid, f))
+    return out
+
+
+def _distinct_tail(prev: str, cur: str) -> str:
+    """
+    The part of `cur` that is not shared opening boilerplate with `prev`.
+
+    Cuts at a sentence boundary rather than mid-word: a fragment starting
+    "…ages contain only generic" is worse than printing the whole thing.
+    """
+    import difflib
+    sm = difflib.SequenceMatcher(None, prev, cur)
+    match = sm.find_longest_match(0, len(prev), 0, len(cur))
+    # Only treat it as a shared PREAMBLE if the overlap starts near the top of
+    # the current text; a match in the middle is a coincidence, not boilerplate.
+    if match.size < 60 or match.b > 25:
+        return ""
+    rest = cur[match.b + match.size:].lstrip(" ,.;")
+    cut = max(rest.find(". "), 0)
+    if cut:
+        rest = rest[cut + 2:]
+    rest = rest.strip()
+    if len(rest) < 30:
+        return ""
+    return rest[0].upper() + rest[1:]
 
 
 def _us_date(stamp) -> str:
@@ -118,23 +238,25 @@ def _p(text):
 
 
 def _styles():
+    from .fonts import register, BODY, BOLD
+    register()
     ss = getSampleStyleSheet()
     def mk(name, **kw):
-        base = dict(fontName="Helvetica", fontSize=9.5, leading=13, textColor=INK)
+        base = dict(fontName=BODY, fontSize=9.5, leading=13, textColor=INK)
         base.update(kw)
         return ParagraphStyle(name, parent=ss["Normal"], **base)
     return {
-        "h1": mk("h1", fontName="Helvetica-Bold", fontSize=21, leading=25, spaceAfter=4),
-        "h2": mk("h2", fontName="Helvetica-Bold", fontSize=13, leading=17,
+        "h1": mk("h1", fontName=BOLD, fontSize=21, leading=25, spaceAfter=4),
+        "h2": mk("h2", fontName=BOLD, fontSize=13, leading=17,
                  spaceBefore=16, spaceAfter=7),
-        "h3": mk("h3", fontName="Helvetica-Bold", fontSize=10.5, leading=14,
+        "h3": mk("h3", fontName=BOLD, fontSize=10.5, leading=14,
                  spaceBefore=10, spaceAfter=4),
         "body": mk("body", spaceAfter=6),
         "small": mk("small", fontSize=8.5, leading=11.5, textColor=INK2),
         "muted": mk("muted", fontSize=8, leading=11, textColor=MUTED),
         "cell": mk("cell", fontSize=8.5, leading=11),
         "cellsm": mk("cellsm", fontSize=8, leading=10.5, textColor=INK2),
-        "hero": mk("hero", fontName="Helvetica-Bold", fontSize=44, leading=48),
+        "hero": mk("hero", fontName=BOLD, fontSize=44, leading=48),
         "bullet": mk("bullet", leftIndent=11, bulletIndent=2, spaceAfter=4),
     }
 
@@ -359,17 +481,28 @@ def _bubble(term, definition, icon="", S=None, width=6.55 * inch, indent=0.0):
     return wrap
 
 
-def _bubbles_for(text, S, seen, width=6.55 * inch, indent=0.0, limit=2):
+def _bubbles_for(text, S, seen, width=6.55 * inch, indent=0.0, limit=2,
+                 only=None):
     """
     Definition bubbles for jargon in `text` that has not been defined yet.
 
     `seen` is mutated. A term is explained ONCE, at its first appearance — the
     same word defined on four pages is the tell of a document assembled rather
     than written.
+
+    `only` restricts the candidates. The Canonicalization section printed a
+    definition of *indexing*, because "canonical" had already been defined
+    earlier in the document and the next unused term that happened to appear in
+    a row ("Canonicals point to indexable pages") won by default. A definition
+    that has nothing to do with the heading above it is worse than no
+    definition, so a section passes the terms its own subject licenses and
+    prints nothing when they are spent.
     """
     from .glossary import terms_used, entry
     out = []
     for key in terms_used(text, limit=99):
+        if only is not None and key not in only:
+            continue
         if key in seen or len(out) >= limit:
             continue
         seen.add(key)
@@ -725,19 +858,37 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     five = (summary or {}).get("five_things") or []
     if five:
         story.append(Spacer(1, 6))
+        # No subline. The heading says what this is, the numbering says it is
+        # ordered, and a sentence explaining both reads like filler written to
+        # occupy the space under a header.
         story.append(Paragraph("Top Findings", S["h2"]))
-        story.append(Paragraph(
-            f"In the order we'd fix them. Everything else is in the appendix "
-            f"— real, but not where your money goes furthest.", S["small"]))
-        story.append(Spacer(1, 10))
+        story.append(Spacer(1, 8))
         for i, t in enumerate(five, start=1):
             block = [Paragraph(f"{i}. {_p(t.get('title'))}", S["h3"])]
-            meta_line = " · ".join(x for x in (
-                _p(t.get("severity")), _p(t.get("area")),
+            # Severity as a pill, matching the appendix and the legend. As grey
+            # run-in text it was the same weight as "effort: content, ongoing",
+            # so the one word a reader scans for read as a caption.
+            rest = " · ".join(x for x in (
+                _p(t.get("area")),
                 (f"effort: {_p(t['effort'])}" if t.get("effort") else "")) if x)
-            block.append(Paragraph(f"<font color='#898781'>{meta_line}</font>",
-                                   S["muted"]))
-            block.append(Spacer(1, 3))
+            sev = _p(t.get("severity"))
+            if sev:
+                mrow = Table([[_pill(sev, SEV_PILL, S, 0.62 * inch),
+                               Paragraph(f"<font color='#898781'>{rest}</font>",
+                                         S["muted"])]],
+                             colWidths=[0.68 * inch, 5.9 * inch])
+                mrow.setStyle(TableStyle([
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (0, 0), 0),
+                    ("LEFTPADDING", (1, 0), (1, 0), 2),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("TOPPADDING", (0, 0), (-1, -1), 1),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1)]))
+                block.append(mrow)
+            elif rest:
+                block.append(Paragraph(f"<font color='#898781'>{rest}</font>",
+                                       S["muted"]))
+            block.append(Spacer(1, 4))
             block.append(Paragraph(f"<b>What we found.</b> {_p(t.get('finding'))}",
                                    S["body"]))
             if t.get("why"):
@@ -776,8 +927,9 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                                           kv[1].get("score") if kv[1].get("score")
                                           is not None else 0))
     story.append(Paragraph(
-        "Weakest first. The three worst are bolded. A hollow bar means we "
-        "couldn't assess that area — not that it scored badly.", S["small"]))
+        "Ordered by severity, with the areas to fix first at the top. A hollow "
+        "bar means we couldn't assess that area, not that it scored badly.",
+        S["small"]))
     story.append(Spacer(1, 8))
     story.append(KeepTogether(
         SectionBars([(SHORT_NAMES.get(k, SECTION_NAMES[k]), v.get("score"),
@@ -785,11 +937,20 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     story.append(Spacer(1, 16))
 
     story.append(Paragraph("Coverage by Area", S["h3"]))
+    # "Checked" and "Failing" are two different denominators sitting next to
+    # each other with no explanation: 4/12 is "we answered 4 of the 12 in this
+    # area", and the 2 beside it is "2 of those 4 came back a problem". Read
+    # quickly, "4/12 ... 2" looks like one ratio. Name both, and say so.
+    story.append(Paragraph(
+        "<b>Reviewed</b> is how many of that area's checks we could answer. "
+        "<b>Issues</b> counts how many of those came back a problem — it is "
+        "out of the number reviewed, not the total.", S["small"]))
+    story.append(Spacer(1, 6))
     rows = [[Paragraph("<b>Section</b>", S["cellsm"]),
              Paragraph("<b>Score</b>", S["cellsm"]),
              "", Paragraph("<b>Rating</b>", S["cellsm"]),
-             Paragraph("<b>Checked</b>", S["cellsm"]),
-             Paragraph("<b>Failing</b>", S["cellsm"])]]
+             Paragraph("<b>Reviewed</b>", S["cellsm"]),
+             Paragraph("<b>Issues</b>", S["cellsm"])]]
     for k, v in secs:
         sc = v.get("score")
         rows.append([
@@ -824,7 +985,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             rows.append([Paragraph(cid, S["cellsm"]),
                          Paragraph(_p(m.get("checkpoint")), S["cell"]),
                          _pill(f.get("severity"), SEV_PILL, S, 0.66 * inch),
-                         Paragraph(_p(f.get("evidence")), S["cell"])])
+                         Paragraph(_agree(_p(f.get("evidence"))), S["cell"])])
         t = Table(rows, colWidths=[0.62 * inch, 1.6 * inch, 0.78 * inch, 3.5 * inch],
                   repeatRows=1)
         t.setStyle(TableStyle([
@@ -925,9 +1086,10 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             ]))
             block = [head]
             if phase.get("rationale"):
-                # Centered: it is a caption for the phase, not body copy, and
-                # left-aligning it made it read as the first bullet.
-                mid = ParagraphStyle("phasecap", parent=S["small"], alignment=1,
+                # Left, aligned with everything else on the page. Centering it
+                # made it float between the header and the card, belonging to
+                # neither.
+                mid = ParagraphStyle("phasecap", parent=S["small"],
                                      textColor=INK2)
                 block.append(Paragraph(_p(phase["rationale"]), mid))
             block.append(Spacer(1, 5))
@@ -964,20 +1126,30 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     # ------------------------------------------------ detailed findings
     story.append(PageBreak())
     story.append(Paragraph("Appendix — Full Checkpoint Detail", S["h2"]))
+    n_na = sum(1 for f in findings.values() if f.get("status") == "N/A")
     story.append(Paragraph(
-        "The full record, by area. <b>Need Access</b> means the check is "
-        "waiting on a Search Console or Analytics grant. <b>Manual</b> means it "
-        "is a judgment call we make by hand rather than by crawler. <b>N/A</b> "
-        "means it does not apply to your site.", S["small"]))
+        "By area. <b>Need Access</b> means the check is waiting on access to "
+        "your Search Console or Analytics. <b>Manual</b> means it is a judgment "
+        "call, made by hand as part of the work."
+        + (f" {n_na} checks that don't apply to a site like yours are left out."
+           if n_na else ""), S["small"]))
 
     for k in ORDER:
+        # N/A rows are dropped. A page of "Meta Pixel · N/A · Not detected."
+        # tells a client nothing they can use — it is the template asking a
+        # question that does not apply to them, and the honest thing is to say
+        # how many were skipped rather than to print them all. The count is in
+        # the line above and in the coverage strip; the rows themselves stay in
+        # the findings API for us.
         rows_f = [(cid, f) for cid, f in findings.items()
-                  if (catalog.get(cid, {}) or {}).get("prefix") == k]
+                  if (catalog.get(cid, {}) or {}).get("prefix") == k
+                  and f.get("status") != "N/A"]
         rows_f += _synthetic_rows(catalog, findings, k)
         if not rows_f:
             continue
         rows_f.sort(key=lambda r: (STATUS_ORDER.index(r[1]["status"])
                                    if r[1]["status"] in STATUS_ORDER else 9, r[0]))
+        rows_f = _dedupe_evidence(rows_f)
         v = (scores.get("sections") or {}).get(k, {})
         # Section header carries its own meter, so a reader flipping straight to
         # a section does not have to go back to the snapshot to know how it did.
@@ -1006,7 +1178,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             data.append([Paragraph(cid, S["cellsm"]),
                          Paragraph(_p(m.get("checkpoint")), S["cell"]),
                          _pill(f["status"], STATUS_PILL, S, 0.86 * inch),
-                         Paragraph(_p(f.get("evidence")), S["cell"])])
+                         Paragraph(_agree(_p(f.get("evidence"))), S["cell"])])
         t = Table(data, colWidths=[0.62 * inch, 1.75 * inch, 0.95 * inch, 3.18 * inch],
                   repeatRows=1)
         st = [("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -1019,21 +1191,23 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         story.append(Spacer(1, 8))
         story.append(head)
         # Any jargon this section introduces that the reader has not met yet.
+        from .glossary import terms_used as _tu
+        section_terms = set(_tu(SECTION_NAMES[k], limit=99))
         for b in _bubbles_for(
                 SECTION_NAMES[k] + " " + " ".join(
                     (catalog.get(cid, {}) or {}).get("checkpoint", "")
                     for cid, _f in rows_f[:12]),
-                S, defined, width=6.55 * inch, limit=1):
+                S, defined, width=6.55 * inch, limit=1,
+                only=section_terms or None):
             story.append(b)
             story.append(Spacer(1, 5))
         story.append(t)
 
     # ------------------------------------------------ method & sign-off
     story.append(PageBreak())
+    # No subtitle. The heading is the explanation; a sentence under it saying
+    # the section explains things is filler.
     story.append(Paragraph("Methodology & Data Sources", S["h2"]))
-    story.append(Paragraph(
-        "How we got these numbers, so you can check them or repeat this next "
-        "quarter.", S["small"]))
     story.append(Spacer(1, 8))
 
     # Severity legend — lifted from the template's own scoring key, because a
@@ -1044,7 +1218,12 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             Paragraph("<b>Score</b>", S["cellsm"]),
             Paragraph("<b>Area rating</b>", S["cellsm"])]]
     for sev, definition, rng, rating in SEVERITY_LEGEND:
-        leg.append([Paragraph(_p(sev), S["cellsm"]),
+        # The pill, not a painted cell. A TEXTCOLOR command on a table cell
+        # does NOT override the textColor a Paragraph carries in its own style,
+        # so "Critical" kept painting itself dark grey on top of dark navy and
+        # came out unreadable. The pill decides its own contrast per level, and
+        # a legend that draws the same component it is explaining is the point.
+        leg.append([_pill(sev, SEV_PILL, S, 0.78 * inch),
                     Paragraph(_p(definition), S["cellsm"]),
                     Paragraph(_p(rng), S["cellsm"]),
                     Paragraph(_p(rating), S["cellsm"])])
@@ -1054,10 +1233,6 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
            ("TOPPADDING", (0, 0), (-1, -1), 5),
            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
            ("LEFTPADDING", (0, 0), (-1, -1), 3)]
-    for i, (sev, _d, _r, _rt) in enumerate(SEVERITY_LEGEND, start=1):
-        lst.append(("BACKGROUND", (0, i), (0, i), ORD.get(sev, TRACK)))
-        lst.append(("TEXTCOLOR", (0, i), (0, i),
-                    colors.white if sev in ("Critical", "High") else INK))
     lt.setStyle(TableStyle(lst))
     story.append(lt)
     story.append(Spacer(1, 14))
@@ -1065,10 +1240,10 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     m, need_client, ours, na = _coverage_counts(findings, catalog)
     method = [
         ("Collection",
-         "Browser capture — pages were opened in a real browser and the rendered "
-         "DOM was read, because the server-side crawl was blocked."
+         "Pages were opened in a real browser and the rendered page was read, "
+         "because the site would not serve them to a standard request."
          if meta.get("capture_method") else
-         f"Automated crawl of {_p(meta.get('pages_crawled'))} pages from "
+         f"{_p(meta.get('pages_crawled'))} pages reviewed from "
          f"{_p(meta.get('url'))}, following internal links and the XML sitemap."),
         ("Framework",
          f"{len(catalog)} checkpoints across {len(SECTION_NAMES)} areas, covering "

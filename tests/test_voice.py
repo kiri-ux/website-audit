@@ -113,7 +113,7 @@ def main():
     all_ids = [i for t in five for i in t["ids"]]
     check("no checkpoint is headlined twice", len(set(all_ids)) == len(all_ids))
     check("grouping is stated, not hidden",
-          all(("separate checks" in t["finding"]) or t["count"] == 1
+          all(("different signals" in t["finding"]) or t["count"] == 1
               for t in five),
           str([(t["title"][:26], t["count"]) for t in five]))
 

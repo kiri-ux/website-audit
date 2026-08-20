@@ -1,85 +1,103 @@
-# Changed files — build 2026.08.19-14
+# Changed files — build 2026.08.20-01
 
 **Cumulative since 2026.08.18-16.** Apply and you are current whatever you last
 uploaded.
 
-## Search Console + GA4: what was already there, and what wasn't
+## Two of these were wrong, not ugly
 
-Both collectors were fully built — 38 checkpoints, real API calls, a multi-login
-token index, and GA4 property discovery that matches on the data stream's URI
-rather than trusting a property's display name. What was missing was the one
-step that turns a Google login into the token they spend: `consent_url()` and
-`exchange_code()` existed in `engine/collectors/analytics.py` and **nothing
-called them**. No route, no way to mint a token without leaving the app.
+**The footer never reached the judgment layer.** EEAT-20 told a client "no
+physical address or business hours are present" about a site whose address is
+in the footer of every page. `_slice()` sent the model `text[:1400]` — and a
+footer is, by definition, the last thing on the page, so a head-only slice
+could never contain it. The checkpoints that most need the footer (address,
+hours, legal entity, support channels) were exactly the ones structurally
+guaranteed to miss it. Now sends head **and** tail with the cut marked.
 
-Added, gated behind `OAUTH_SETUP_TOKEN`:
+**"CrUX field assessment: UNKNOWN" was a failure.** UNKNOWN means Google has no
+real-visitor data, which happens when a site is below the traffic threshold —
+so a fast site failed PERF-10 for not being popular enough to measure. Now
+falls back to the lab score and says which one you are reading, in English.
 
-```
-GET /oauth/google/start?t=<token>&label=seo-main   → Google consent
-GET /oauth/google/callback                          → prints the merged GOOGLE_TOKENS
-```
+## Typeface
 
-With `OAUTH_SETUP_TOKEN` unset both routes return **404** — not 401, not a login
-page. The surface does not exist. A token minted there inherits every client
-property that login can see across Search Console and Analytics, which makes it
-the most valuable credential this service touches, so the resting state is
-"absent" rather than "present and checking".
+Roboto, via `fonts-roboto` in the image. `engine/fonts.py` registers all four
+faces or none — registering regular and bold without italic gives a document
+that changes typeface mid-sentence. Falls back to Helvetica silently at render
+time (a missing font must never take a report down) but says so in the log, and
+`tests/test_charts.py` fails if the image lost the package.
 
-Full walkthrough in **DEPLOY.md → "Minting a `GOOGLE_TOKENS` entry"**.
+## Repetition
 
-## The thing to know before you ask a client for access
-
-Access alone will **not** make these sections score:
-
-| Section | Filled by the API today | Gate | Result |
-|---|---|---|---|
-| Search Console | 5/22 (23%) | 50% | still Not Assessed |
-| Google Analytics 4 | 6/16 (38%) | 50% | still Not Assessed |
-
-Same shape as the E-E-A-T problem: the rows come back, the section stays
-suppressed. The remainder is reachable and just unwritten — GSC's
-`searchAppearance` dimension covers GSC-14..18, its links endpoint covers
-GSC-19..21, and the GA4 Admin API covers GA4-03/04/06/07/08. That is +8 for GSC
-(→59%) and +5 for GA4 (→69%), clearing both.
-
-I would rather write those **after** your first successful grant than before,
-so the response shapes get checked against a real payload instead of guessed
-at. Guessing at a vendor's JSON shape is what the DataForSEO rankings table is
-still waiting on.
-
-## Files
-
-| File | Why |
+| Was | Now |
 |---|---|
-| `app/api.py` | The two OAuth routes, the setup-token gate, and https-forcing on the redirect URI — Render terminates TLS in front of us, so the app sees `http://` and Google rejects a mismatched URI |
-| `render.yaml` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `OAUTH_SETUP_TOKEN` on the **API** service. `GOOGLE_TOKENS` stays on the worker |
-| `DEPLOY.md` | Step-by-step, including the Internal-vs-External consent screen trap: External expires refresh tokens after 7 days until the app is verified, which breaks collection a week later with no error |
-| `tests/test_routes.py` | The routes must not exist without the variable, must 404 (not 401) on a wrong token, and must force https |
+| ONP-01 and ONP-23 both printing "83 pages share 25 duplicated title tags" | second row reads "Same finding as ONP-01." |
+| 15 judgment rows all opening "All examined pages (homepage, practice areas, …) contain only generic…" | near-duplicates keep only what differs, prefixed "As EEAT-01." |
+| 12 consecutive Manual rows each carrying the same explanatory sentence | blank — the pill says Manual and the intro says what that means |
+| 29 Off-Page rows each saying "No backlink data provider is configured" | collapsed the same way |
+| Findings 2 and 3 both titled "Trust and expertise signals are weak" | groups that would print the same title are merged, freeing a headline slot |
+| "Meta Pixel · N/A · Not detected." and friends | N/A rows dropped from the appendix; the count is stated instead |
 
-## Carried from earlier in this batch
+## Copy
 
-- **Need Access split three ways** (`engine/access.py`): the client's ask drops
-  from 161 to 38. The other ~123 were our unset vendor keys and 58 checkpoints
-  with no automation, all printed as the client's homework.
-- **58 unautomated checkpoints** now named with a **Manual** pill instead of
-  being counted in the coverage chart and omitted from "the full record".
-- **Worker says what ran** — judgment layer and DataForSEO both log success or
-  the reason for silence.
-- **Favicon** — the SVG was invalid XML (`aria-label="… SEO & AI Search …"`),
-  so all three delivery routes served a file no browser would parse.
-- **Gauge rating** fitted to the arc's opening; "Needs Improvement" was drawn
-  struck through.
+- "We crawled 118 pages" → "We reviewed 118 pages". "Automated crawl of…" →
+  "118 pages reviewed from…". No mention of crawling anywhere client-facing.
+- "It shows up in 11 separate checks, including Real examples included, …" →
+  "The same gap shows up across 11 different signals." The trailing list was
+  raw checkpoint names, several of which end in "included". **Signals, not
+  locations** — we counted signals, and "locations" would read as pages.
+- Plan items for the 29 judgment checkpoints are verb-led work. "Address
+  first-hand experience demonstrated" → "Add first-hand detail — your own
+  cases, photos and specifics".
+- "Titles and headings are not doing their job" → "Page titles don't say what
+  each page is about" — names the job instead of asserting failure.
+- "priority templates" → "starting with the pages that bring in the most
+  traffic".
+- Top Findings and Methodology sublines removed. Scores by Area subline is
+  yours, keeping the hollow-bar note because an unassessed area must never
+  read as a zero.
+- "1 pages exceed 200KB" → "1 page exceeds 200KB", at render time rather than
+  in forty check modules.
+- Appendix: "a judgment call we make by hand rather than by crawler" → "a
+  judgment call, made by hand as part of the work".
+
+## Layout
+
+- Severity is a pill in the Top Findings meta line, matching the appendix.
+- Severity legend uses the same pill. It was painting the cell background and
+  setting TEXTCOLOR on the cell — which a Paragraph's own style overrides — so
+  "Critical" was dark grey on dark navy.
+- Phase captions back to left-aligned.
+- Coverage columns renamed **Reviewed** / **Issues**, with a line saying they
+  are different denominators. "4/12 … 2" read as one ratio.
+- Canonicalization was printing a definition of *indexing*, because "canonical"
+  had been defined earlier and the next unused term that appeared in any row
+  won by default. A section now only offers terms its own subject licenses, and
+  prints nothing when they are spent.
+
+## "88 checks are ours to finish" — where does that reach us?
+
+It didn't. That was a promise in a client deliverable with no worklist behind
+it. The internal report page now opens with **Action needed**, before anything
+else: what is blocked on our configuration (grouped by reason, not one row per
+checkpoint), what is waiting on a client grant, and what needs manual review
+listed by section. Internal only — it never appears in the client PDF.
+
+## Still empty, and why
+
+`DFS_LOGIN` / `DFS_PASSWORD` are not on the worker. That is Off-Page (0/29) and
+MOB-03..06 both reading "waiting on our data provider". Search Console and GA4
+correctly report that `reporting-zone` is not on Ooten's property — that one is
+a client grant, and the message is trustworthy on -16 or later.
 
 ## Verified before sending
 
-- Routes exercised over HTTP in all four states: variable unset, wrong token,
-  missing label, no client ID. 404 / 404 / 400 / 400.
-- `render.yaml` parses; 13 env vars on the API, 26 on the worker.
+- Rendered and looked at: cover, gauge, severity legend, methodology.
+- Roboto registers; `_agree`, `_dedupe_evidence` unit-checked including the
+  cases they must NOT touch (real plurals, "1 address", short rows).
 - 14 suites green; `import app.api, app.worker` on a clean merged tree.
 
-## What to check on this build
+## What to check
 
-- Header chip reads **2026.08.19-14**.
-- `/oauth/google/start` returns 404 before you set `OAUTH_SETUP_TOKEN`.
-- Worker still needs `ANTHROPIC_API_KEY`, `DFS_LOGIN`, `DFS_PASSWORD` — the
-  E-E-A-T, AI Search and Off-Page sections are still empty without them.
+- Header chip reads **2026.08.20-01**.
+- Put `DFS_LOGIN` / `DFS_PASSWORD` on the worker, then re-run.
+- Open the internal report page — Action needed is the first thing on it.

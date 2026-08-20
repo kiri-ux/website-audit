@@ -86,11 +86,29 @@ def perf10(a, c):
     except Exception as e:
         return _need_access(str(e), "Core Web Vitals assessment")
     le = data.get("loadingExperience", {})
-    overall = le.get("overall_category", "UNKNOWN")
-    passed = overall == "FAST"
+    overall = le.get("overall_category") or "UNKNOWN"
+
+    # CrUX is Google's REAL-USER data, and a site below its traffic threshold
+    # simply has none. Two things were wrong with printing "UNKNOWN": it is a
+    # raw API token in a client document, and it was treated as a failure —
+    # so a fast site with modest traffic failed the checkpoint for the crime of
+    # not being popular enough to measure. Fall back to the lab score, and say
+    # which one the reader is looking at.
+    if overall in ("FAST", "AVERAGE", "SLOW"):
+        passed = overall == "FAST"
+        word = {"FAST": "good", "AVERAGE": "needs improvement",
+                "SLOW": "poor"}[overall]
+        ev = (f"Lighthouse performance score {score}/100. Real-visitor data "
+              f"from Google rates this site {word}.")
+    else:
+        passed = score >= 90
+        ev = (f"Lighthouse performance score {score}/100, measured in a lab "
+              f"test. Google has no real-visitor speed data for this site yet — "
+              f"that needs more traffic than it currently gets, and its absence "
+              f"is not a fault.")
     return finding("Pass" if passed else "Fail",
                    {"lighthouse_performance": score, "crux_assessment": overall},
-                   f"Lighthouse performance score {score}/100; CrUX field assessment: {overall}.",
+                   ev,
                    [a.start_url], "Low" if passed else escalate(100 - score,
                                                                [(0, "Medium"), (50, "High")]),
                    "" if passed else "Address the failing Core Web Vitals metrics below.")

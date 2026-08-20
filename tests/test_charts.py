@@ -122,6 +122,42 @@ def main():
           sum(1 for t in rec.texts if t["t"] == "—") == 2)
     check("no row is labelled '0'", not any(t["t"].strip() == "0" for t in rec.texts))
 
+    print("\nTHE REPORT TYPEFACE")
+    # Falling back to Helvetica is deliberate and safe, but it is also silent,
+    # so a base image that quietly lost fonts-roboto would ship a worse-looking
+    # PDF with nothing to notice. Assert the image actually has it.
+    from engine.fonts import register, status, BODY, BOLD
+    fam = register()
+    check("Roboto is registered (fonts-roboto installed in the image)",
+          fam == "Roboto", fam)
+    check("bold resolves to the same family, not back to Helvetica",
+          BODY.startswith(fam) and BOLD.startswith(fam), f"{BODY}/{BOLD}")
+    check("status reports what is actually in use", status()["registered"] is True)
+
+    print("\nCOUNTS OF ONE READ AS SINGULAR")
+    from engine.pdf_report import _agree
+    check("noun and verb both agree",
+          _agree("1 pages exceed 200KB.") == "1 page exceeds 200KB.",
+          _agree("1 pages exceed 200KB."))
+    check("real plurals are untouched",
+          _agree("4 pages send no header.") == "4 pages send no header.")
+    check("a word that merely ends in s is not mangled",
+          "addres " not in _agree("1 address is present."),
+          _agree("1 address is present."))
+
+    print("\nREPEATED EVIDENCE IS COLLAPSED, NOT DELETED")
+    from engine.pdf_report import _dedupe_evidence
+    same = "83 pages share 25 duplicated title tags."
+    d = _dedupe_evidence([("ONP-01", {"status": "Fail", "evidence": same}),
+                          ("ONP-23", {"status": "Fail", "evidence": same})])
+    check("the first row keeps the detail", d[0][1]["evidence"] == same)
+    check("the second points at it rather than repeating it",
+          d[1][1]["evidence"] == "Same finding as ONP-01.", d[1][1]["evidence"])
+    short = [("A-1", {"status": "Pass", "evidence": "Not detected."}),
+             ("A-2", {"status": "Pass", "evidence": "Not detected."})]
+    check("short rows are left alone — cross-referencing them is longer",
+          _dedupe_evidence(short)[1][1]["evidence"] == "Not detected.")
+
     print("\nTHE RATING WORD NEVER CROSSES THE GAUGE ARC")
     # "Strong" fit at any height and "Needs Improvement" did not, so the long
     # ratings shipped struck through by the arc on both sides. Every band the

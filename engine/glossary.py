@@ -39,8 +39,8 @@ TERMS = {
     "cwv": (
         "Core Web Vitals", "⚡", "⚡",
         "Google's three speed and stability measurements: how fast the main "
-        "content appears, how quickly the page responds, and whether things "
-        "jump around while loading.",
+        "content appears (Largest Contentful Paint), how quickly the page "
+        "responds, and whether things jump around while loading.",
         (r"core web vital", r"\blcp\b", r"\bcls\b", r"\binp\b",
          r"largest contentful", r"cumulative layout")),
     "eeat": (

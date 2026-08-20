@@ -167,6 +167,66 @@ def _brand_head() -> str:
         return "<meta name='theme-color' content='#002D58'>"
 
 
+def _todo_panel(findings: dict, catalog: dict) -> list:
+    """
+    "Action needed" — what is unfinished on this run, and whose move it is.
+
+    Three buckets, in the order you can act on them: a variable WE forgot is
+    fixable in a minute, a client grant takes an email, and manual review takes
+    an afternoon. See engine/access.py for the bucketing rule.
+
+    Blocked-on-us rows are grouped by the REASON rather than listed one per
+    checkpoint, because 29 rows that all say "no backlink provider configured"
+    are one job, not twenty-nine.
+    """
+    from engine.access import buckets
+    from collections import Counter, defaultdict
+
+    b = buckets(findings, catalog)
+    if not (b["client"] or b["vendor"] or b["manual"]):
+        return []
+
+    def reasons(ids):
+        c = Counter()
+        for cid in ids:
+            ev = (findings.get(cid) or {}).get("evidence") or "Not run."
+            c[" ".join(str(ev).split())[:110]] += 1
+        return c.most_common(4)
+
+    rows = []
+    if b["vendor"]:
+        items = "".join(
+            f"<li><b>{n}</b> — {e(why)}</li>" for why, n in reasons(b["vendor"]))
+        rows.append(("Blocked on our configuration", len(b["vendor"]),
+                     "var(--critical)", f"<ul style='margin:6px 0 0 18px'>{items}</ul>"))
+    if b["client"]:
+        rows.append(("Waiting on a client grant", len(b["client"]),
+                     "var(--warning)",
+                     "<div style='margin-top:6px'>Search Console and Analytics. "
+                     "Ask the client to add the Vici login as a user on the "
+                     "property.</div>"))
+    if b["manual"]:
+        by_sec = defaultdict(list)
+        for cid in b["manual"]:
+            by_sec[(catalog.get(cid) or {}).get("prefix", "?")].append(cid)
+        items = "".join(
+            f"<li><b>{e(SECTION_NAMES.get(k, k))}</b> — {len(v)}: "
+            f"{e(', '.join(sorted(v)))}</li>"
+            for k, v in sorted(by_sec.items(), key=lambda kv: -len(kv[1])))
+        rows.append(("Needs manual review", len(b["manual"]), "var(--seq)",
+                     f"<ul style='margin:6px 0 0 18px'>{items}</ul>"))
+
+    out = ["<div class='note' style='border-left-color:var(--seq);margin:0 0 22px'>"
+           "<b>Action needed before this goes out.</b> "
+           "<span class='sm'>Internal only — none of this appears in the client "
+           "PDF.</span>"]
+    for title, n, color, body in rows:
+        out.append(f"<div style='margin-top:10px'>"
+                   f"<b style='color:{color}'>{e(title)} · {n}</b>{body}</div>")
+    out.append("</div>")
+    return out
+
+
 def render_html(meta, sc, findings, catalog, summary=None):
     st = Counter(f["status"] for f in findings.values())
     sev = Counter(f["severity"] for f in findings.values()
@@ -179,6 +239,15 @@ def render_html(meta, sc, findings, catalog, summary=None):
          _brand_head(),
          f"<title>SEO/GEO Audit — {e(meta['client'])}</title><style>{CSS}</style>",
          "</head><body class='viz-root'><div class='wrap'>"]
+
+    # WHAT THIS RUN STILL OWES, at the top, before anything else.
+    #
+    # The client PDF says "88 checks are ours to finish". Nothing told US what
+    # those were. A promise printed in a deliverable with no worklist behind it
+    # is how a report ships with a section quietly empty for the third run in a
+    # row. This panel is the worklist, and it is internal-only — the client PDF
+    # never carries it.
+    P.extend(_todo_panel(findings, catalog))
 
     # Only a shortfall in PAGES warrants a document-level banner. A link-sample
     # that ran short is noted on the two rows it affects instead — see TECH-07.

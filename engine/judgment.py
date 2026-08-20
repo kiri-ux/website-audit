@@ -56,12 +56,34 @@ def _pages_matching(art, pattern, limit=6):
     return [p for p in OK(art) if rx.search(p.url)][:limit]
 
 
+def _headtail(text: str, chars: int) -> str:
+    """
+    Head AND tail of the page, not the first N characters.
+
+    This was a straight `[:chars]` truncation, and it produced a false negative
+    that reached a client: "no physical address or business hours are present"
+    on a site whose address is in the footer of every page. The footer is the
+    LAST thing in the text, so a head-only slice can never contain it — and the
+    checkpoints that most need it (address, hours, legal entity, support
+    channels) are exactly the ones whose answer lives down there.
+
+    Two thirds from the top, one third from the bottom, with the cut marked so
+    the model knows material is missing rather than assuming it saw everything.
+    """
+    text = text or ""
+    if len(text) <= chars:
+        return text
+    head = int(chars * 0.66)
+    tail = chars - head
+    return f"{text[:head]}\n…[middle of page omitted]…\n{text[-tail:]}"
+
+
 def _slice(pages, chars=1400):
     out = []
     for p in pages:
         out.append(f"URL: {p.url}\nTITLE: {p.title or '(none)'}\n"
                    f"H1: {'; '.join(p.h1) or '(none)'}\n"
-                   f"TEXT: {(p.rendered_text or '')[:chars]}\n---")
+                   f"TEXT: {_headtail(p.rendered_text, chars)}\n---")
     return "\n".join(out) or "(no matching pages found in the crawl)"
 
 
