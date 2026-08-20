@@ -69,6 +69,20 @@ def run_audit_job(audit_id: str):
     # which is why this is opt-in per run rather than a default.
     art = None
     src = opts.get("reuse_artifact_from")
+    if not src and opts.get("reuse_crawl"):
+        src = _newest_artifact_for(a["target_url"])
+        if not src:
+            # Do NOT quietly crawl instead. Someone ticked this box because the
+            # site blocks crawlers, or because 150 requests to a client's server
+            # is not free. Doing the expensive, rude thing after being told not
+            # to is worse than stopping and saying why.
+            msg = ("Asked to reuse a previous crawl, but no stored crawl of "
+                   f"{a['target_url']} is available. Nothing was crawled. "
+                   "Untick 'Reuse the last crawl' to run a fresh one.")
+            print(f"[worker] {audit_id} {msg}", flush=True)
+            db.update_audit(audit_id, status="failed", progress=msg, error=msg,
+                            completed_at=time.time())
+            return
     if src:
         blob = get_artifact(src, "crawl_artifact.json")
         if blob:
@@ -95,6 +109,22 @@ def run_audit_job(audit_id: str):
            "skip_psi": bool(opts.get("skip_psi", cfg.skip_psi))}
     findings = engine_checks.run_all(art, ctx)
     return _after_crawl(a, opts, audit_id, art, findings, step)
+
+
+def _newest_artifact_for(target_url: str) -> str | None:
+    """
+    Newest audit of this exact URL whose crawl artifact we can still read.
+
+    Runs on the worker because the worker is what shares a filesystem with the
+    artifact store in a local-path deployment.
+    """
+    want = (target_url or "").rstrip("/").lower()
+    for row in db.list_audits():
+        if (row.get("target_url") or "").rstrip("/").lower() != want:
+            continue
+        if get_artifact(row["id"], "crawl_artifact.json"):
+            return row["id"]
+    return None
 
 
 def _crawl(a, opts, audit_id, db, step):

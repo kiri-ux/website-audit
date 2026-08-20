@@ -312,17 +312,6 @@ def home(x_api_key: str | None = Header(None)):
     return dashboard_html(db.list_audits(p.scope), p, Q.depth())
 
 
-def _newest_artifact_for(target_url: str, scope) -> str | None:
-    """Most recent audit of this URL whose crawl artifact is still on disk."""
-    want = (target_url or "").rstrip("/").lower()
-    for a in db.list_audits(scope):
-        if (a.get("target_url") or "").rstrip("/").lower() != want:
-            continue
-        if get_artifact(a["id"], "crawl_artifact.json"):
-            return a["id"]
-    return None
-
-
 @app.post("/audits")
 def submit_form(target_url: str = Form(...), client_name: str = Form(...),
                 vertical: str = Form(""), max_pages: int = Form(150),
@@ -354,10 +343,13 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
     # Reuse the newest crawl we still hold for this exact URL. The client's
     # server is not asked for another 150 pages just because our LLM key was
     # missing last time.
+    # Resolved by the WORKER, not here. The API and the worker are separate
+    # containers, and with a local ARTIFACT_STORE the API cannot see a single
+    # artifact the worker wrote — so looking it up on this side silently found
+    # nothing, dropped the option, and crawled the site anyway. Which is the
+    # exact thing the operator ticked the box to avoid.
     if reuse_crawl:
-        prev = _newest_artifact_for(target_url, p.scope)
-        if prev:
-            opts["reuse_artifact_from"] = prev
+        opts["reuse_crawl"] = True
     # Operator-chosen properties beat the automatic match. Stored on the audit
     # so a re-run keeps the choice rather than making someone find it again.
     if gsc_property.strip():

@@ -210,12 +210,21 @@ def main():
           not any(o.get(k) for k in ("skip_judgment", "skip_collectors",
                                      "skip_screenshots")), str(o))
     o = submit({"phases": "1", "run_judgment": "1", "reuse_crawl": "1"})
-    check("reuse points at the newest audit of that URL holding an artifact",
-          o.get("reuse_artifact_from") == src2, str(o.get("reuse_artifact_from")))
-    o = submit({"phases": "1", "reuse_crawl": "1",
-                "target_url": "https://never-audited.test/"})
-    check("reuse of a URL we have never crawled is simply not set",
-          o.get("reuse_artifact_from") is None, str(o.get("reuse_artifact_from")))
+    # Deliberately NOT resolved here. The API and the worker are separate
+    # containers, and with a local ARTIFACT_STORE the API cannot see a single
+    # artifact the worker wrote — so resolving on this side found nothing,
+    # dropped the option, and crawled the site anyway, which is precisely what
+    # ticking the box was meant to prevent.
+    check("the API records the intent and leaves resolution to the worker",
+          o.get("reuse_crawl") is True and "reuse_artifact_from" not in o,
+          str(o))
+
+    from app.worker import _newest_artifact_for
+    check("the worker resolves it to the newest run holding an artifact",
+          _newest_artifact_for("https://phase.test/") == src2,
+          str(_newest_artifact_for("https://phase.test/")))
+    check("a URL we have never crawled resolves to nothing",
+          _newest_artifact_for("https://never-audited.test/") is None)
     check("dashboard offers a re-run", b"/rerun" in body)
 
     print("\nRE-RUN MAKES A NEW AUDIT, IT DOES NOT OVERWRITE")

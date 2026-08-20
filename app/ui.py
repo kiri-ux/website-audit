@@ -297,29 +297,7 @@ def dashboard_html(audits, principal, queue_depth):
       <input type='hidden' name='phases' value='1'>
       <div><label>Target URL</label>
         <input name='target_url' id='turl'
-               placeholder='https://www.example.com/' required>
-        <div style='margin-top:6px;display:flex;gap:10px;align-items:center'>
-          <button type='button' class='btn' id='ckbtn'
-                  onclick='checkAccess()'>Check GA4 / Search Console access</button>
-          <span id='ckout' class='sm' style='color:var(--muted)'></span>
-        </div>
-        <div id='pickers' style='display:none;margin-top:10px;
-             display:none;grid-template-columns:1fr 1fr;gap:12px'>
-          <div>
-            <label>Search Console property</label>
-            <input id='gscfilter' placeholder='filter…'
-                   oninput='filterSel("gsc")'
-                   style='margin-bottom:4px;font-size:12.5px'>
-            <select name='gsc_property' id='gscsel' form='auditform'></select>
-          </div>
-          <div>
-            <label>GA4 property</label>
-            <input id='ga4filter' placeholder='filter…'
-                   oninput='filterSel("ga4")'
-                   style='margin-bottom:4px;font-size:12.5px'>
-            <select name='ga4_property_id' id='ga4sel' form='auditform'></select>
-          </div>
-        </div></div>
+               placeholder='https://www.example.com/' required></div>
       <div><label>Client name</label>
         <input name='client_name' placeholder='Grand Furniture' required></div>
       <div><label>Vertical</label><select name='vertical'>
@@ -329,6 +307,31 @@ def dashboard_html(audits, principal, queue_depth):
       <div><label>Max pages</label><input name='max_pages' type='number' value='150'></div>
       <div><button type='submit'>Run audit</button></div>
     </form>
+    <div style='margin-top:12px'>
+      <button type='button' class='btn ghost' id='ckbtn'
+              onclick='checkAccess()'>Check GA4 / Search Console access</button>
+      <!-- Own line, full width. Beside the button it inherited whatever narrow
+           column the button sat in, and a sentence like "No property matching
+           this site in 1 login(s)" came out one word per line. -->
+      <div id='ckout' class='sm'
+           style='color:var(--muted);margin-top:8px;line-height:1.6'></div>
+    </div>
+    <div id='pickers' style='display:none;margin-top:10px;
+         grid-template-columns:1fr 1fr;gap:12px'>
+      <div>
+        <label>Search Console property</label>
+        <input id='gscfilter' placeholder='filter…' oninput='filterSel("gsc")'
+               style='margin-bottom:4px;font-size:12.5px'>
+        <select name='gsc_property' id='gscsel' form='auditform'></select>
+      </div>
+      <div>
+        <label>GA4 property</label>
+        <input id='ga4filter' placeholder='filter…' oninput='filterSel("ga4")'
+               style='margin-bottom:4px;font-size:12.5px'>
+        <select name='ga4_property_id' id='ga4sel' form='auditform'></select>
+      </div>
+    </div>
+
     <div style='margin-top:14px;display:grid;
                 grid-template-columns:1fr 1fr;gap:10px'>
       <div><label>Primary markets</label>
@@ -490,13 +493,38 @@ def audit_html(a):
                  f"<p><a href='/'>← back to dashboard</a></p></div>")
         refresh = None
     elif cur == "needs_capture":
-        inner = (f"<div class='card'>"
-                 f"<b style='color:var(--serious)'>Server crawl blocked</b>"
-                 f"<p class='sub'>{e(a.get('crawl_note') or a.get('progress'))}</p>"
-                 f"<p class='sub'>Open the client site in Chrome, launch "
-                 f"<b>Vici Audit Capture</b>, and paste audit id "
-                 f"<code>{e(a['id'])}</code>. Nothing has been reported as a defect "
-                 f"— a blocked crawl is a handoff, not a result.</p></div>")
+        # One button, no copying. The extension's content script finds
+        # #vici-capture, reads the id and target off it, and wires the button
+        # straight to the worker — so the operator never moves an audit id
+        # between two tabs by hand. If the extension is not installed the
+        # button stays hidden and the manual instructions are what is left.
+        inner = (
+            f"<div class='card' id='vici-capture' "
+            f"data-audit-id='{e(a['id'])}' data-target='{e(a['target_url'])}'>"
+            f"<b style='color:var(--serious)'>Server crawl blocked</b>"
+            f"<p class='sub'>{e(a.get('crawl_note') or a.get('progress'))}</p>"
+            f"<p class='sub'>Nothing has been reported as a defect — a blocked "
+            f"crawl is a handoff, not a result. Open "
+            f"<a href='{e(a['target_url'])}' target='_blank' rel='noopener'>"
+            f"{e(a['target_url'])}</a> in a tab, then start the capture.</p>"
+            f"<p><button id='vici-capture-go' class='btn' type='button'>"
+            f"Start capture with the Chrome extension</button></p>"
+            f"<p class='sub' id='vici-capture-manual'>Extension not detected. "
+            f"Install <b>Vici Audit Capture</b>, then use audit id "
+            f"<code id='vici-audit-id'>{e(a['id'])}</code> "
+            f"<button class='del' type='button' onclick=\"navigator.clipboard"
+            f".writeText('{e(a['id'])}');this.textContent='copied'\">copy</button>"
+            f"</p></div>"
+            f"<script>"
+            f"(function(){{var el=document.getElementById('vici-capture');"
+            f"var go=document.getElementById('vici-capture-go');"
+            f"go.style.display='none';"
+            f"setTimeout(function(){{"
+            f"  if(el.dataset.extension==='present'){{"
+            f"    go.style.display='inline-block';"
+            f"    document.getElementById('vici-capture-manual')"
+            f"      .style.display='none';}}}},300);}})();"
+            f"</script>")
         refresh = None
     else:
         # Determinate where we can be, honest where we can't. Page counts only

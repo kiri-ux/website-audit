@@ -1,4 +1,65 @@
-# Changed files — build 2026.08.20-04
+# Changed files — build 2026.08.20-05
+
+## "I ticked reuse and it crawled anyway"
+
+It did, and that is on me. `reuse_crawl` was resolved on the **API**, which
+looked up the previous audit's artifact and passed its id to the worker. But
+the API and the worker are separate containers, and with a local
+`ARTIFACT_STORE` the API cannot read a single artifact the worker wrote — the
+gotcha already written down in this very file. So the lookup found nothing,
+quietly dropped the option, and crawled a site that blocks crawlers.
+
+Resolution moved to the worker, which is the process that can actually see the
+artifacts. And if reuse is requested and no stored crawl exists, the audit now
+**fails with that sentence** instead of crawling. Doing the slow, rude thing
+after being told not to is worse than stopping.
+
+## The extension
+
+**It stopped when you switched tabs.** Not tab throttling — the MV3 service
+worker was being evicted. A capture spends most of its time waiting for page
+loads and dwelling, which is exactly what Chrome reads as idle, so the worker
+died mid-run about 30 seconds in. Now a cheap API call every 20s holds it open
+for the length of a run, with a `chrome.alarms` backstop that survives eviction
+and wakes it back up. Switching tabs is fine; the capture drives its own
+background tab.
+
+**"150 pages" captured 2.** `ootenlawfirm.com/sitemap.xml` is a sitemap
+*index* — `<sitemapindex>` pointing at child sitemaps, not a list of pages. The
+regex matched its `<loc>` elements, found one, and sampled two URLs. Now
+follows one level of index (up to 25 children), and when a sitemap is still
+thin it reads the homepage's own internal links rather than giving up. The
+existing "will follow links from the homepage" message was aspirational — that
+code did not exist.
+
+**Fewer fields.** API URL is gone: it is one fixed deployment, and it was a box
+nobody ever changed and everybody had to fill. Partner API key is gone too.
+What is left is the audit id, pages and dwell.
+
+**One-click start.** The blocked-audit page now carries a **Start capture with
+the Chrome extension** button. The extension's content script finds it, reads
+the audit id and target off the element, and starts the run — nothing is copied
+between tabs. When the extension is not installed the button stays hidden and
+you get the audit id with a copy button instead, which is also new.
+
+## How does it know a capture finished?
+
+The extension tells it. When the walk ends it POSTs every captured page to
+`/api/audits/{id}/capture`; the API runs the checkpoints against that payload
+and marks the audit ready. Your log line — `DONE — 255 checkpoints evaluated` —
+is the server's reply. There is no polling and no timeout to wait out.
+
+## Layout
+
+The access-check button and the property dropdowns were living inside the
+Target URL grid cell, so they became part of the five-column row: labels
+stopped lining up with their inputs, and the result text wrapped one word per
+line in a 200px column. Both now sit on their own full-width rows below the
+form.
+
+---
+
+# Build 2026.08.20-04
 
 ## Pick the property yourself when the matcher misses
 

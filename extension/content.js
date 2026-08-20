@@ -152,3 +152,46 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
   })();
   return true;   // async response
 });
+
+
+// ---------------------------------------------------------------------------
+// TWO EXTRAS THE BACKGROUND WORKER ASKS FOR.
+//
+// VICI_LINKS  — internal links from the current page, used when a site's
+//               sitemap turns out to be an index we could not follow or is
+//               simply absent. Without it a thin sitemap meant a two-page
+//               audit.
+//
+// The audit page hook — when this script lands on a Vici audit page that is
+// waiting for a capture, it wires that page's button straight to the worker.
+// The operator was otherwise copying an audit id out of one tab and into a
+// popup in another, which is exactly the kind of step that gets done wrong at
+// 5pm.
+// ---------------------------------------------------------------------------
+chrome.runtime.onMessage.addListener((msg, _s, respond) => {
+  if (msg?.type === "VICI_LINKS") {
+    const links = [...document.querySelectorAll("a[href]")]
+      .map(a => a.href)
+      .filter(h => /^https?:/i.test(h))
+      .map(h => h.split("#")[0]);
+    respond({ links: [...new Set(links)] });
+    return true;
+  }
+});
+
+(function wireAuditPage() {
+  const el = document.getElementById("vici-capture");
+  if (!el) return;
+  el.dataset.extension = "present";        // page reveals the button only then
+  const btn = document.getElementById("vici-capture-go");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    btn.disabled = true;
+    btn.textContent = "Capture started — watch the extension popup";
+    chrome.runtime.sendMessage({
+      type: "VICI_START_FOR",
+      auditId: el.dataset.auditId,
+      url: el.dataset.target
+    });
+  });
+})();

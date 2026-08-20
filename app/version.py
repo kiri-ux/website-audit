@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-04"
-BUILD_NOTES = ("Searchable dropdowns of every GA4 and Search Console "
-               "property we can see — auto-selected on a match, and "
-               "browsable when there is not one")
+BUILD = "2026.08.20-05"
+BUILD_NOTES = ("Reuse-the-crawl actually works (the API could not see the "
+               "artifacts); extension follows sitemap indexes, survives tab "
+               "switches, and starts from the audit page in one click")
 # ---------------------------------------------------------------------------
 
 

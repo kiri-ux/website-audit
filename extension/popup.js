@@ -1,4 +1,7 @@
-const F = ["apiBase", "auditId", "token", "maxPages", "dwellMs"];
+// apiBase and token are gone from the UI. The API is one fixed deployment, and
+// partner mode is not in use — two fields that were never changed and always
+// had to be filled in.
+const F = ["auditId", "maxPages", "dwellMs"];
 const $ = id => document.getElementById(id);
 
 chrome.storage.local.get(null).then(s => F.forEach(k => { if (s[k] != null) $(k).value = s[k]; }));
@@ -23,9 +26,12 @@ $("go").addEventListener("click", async () => {
   if (state?.running) { chrome.runtime.sendMessage({ type: "VICI_STOP" }); return; }
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.url?.startsWith("http")) { $("status").textContent = "open the client site first"; return; }
+  if (!$("auditId").value.trim()) {
+    $("status").textContent = "paste an audit id, or start from the audit page";
+    return;
+  }
   await chrome.storage.local.set({
-    apiBase: $("apiBase").value.trim(), auditId: $("auditId").value.trim(),
-    token: $("token").value.trim(),
+    auditId: $("auditId").value.trim(),
     maxPages: parseInt($("maxPages").value, 10) || 30,
     dwellMs: parseInt($("dwellMs").value, 10) || 2500 });
   chrome.runtime.sendMessage({ type: "VICI_START", url: tab.url });

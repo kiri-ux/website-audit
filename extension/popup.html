@@ -28,21 +28,17 @@ button.stop{background:#d03b3b}
 <h1>Vici Audit Capture</h1>
 <div class="sub">Captures the real browser render from sites that block server crawlers.</div>
 
-<label>API URL</label>
-<input id="apiBase" placeholder="https://vici-audit-api-xxxx.onrender.com">
 <label>Audit ID</label>
 <input id="auditId" placeholder="paste from the dashboard">
 <div class="row">
   <div><label>Pages</label><input id="maxPages" type="number" value="30"></div>
   <div><label>Dwell (ms)</label><input id="dwellMs" type="number" value="2500"></div>
 </div>
-<label>API key (partner mode only)</label>
-<input id="token" placeholder="leave blank for internal mode">
-
 <button id="go">Start capture</button>
 <div class="bar"><i id="bar"></i></div>
 <div id="status" class="sub" style="margin:0">idle</div>
 <div id="log"></div>
-<div class="hint">Open the client site in a tab first. 30 pages at 2.5s ≈ 2 minutes;
-you can leave it running. 83% of checkpoints only need a template sample.</div>
+<div class="hint">Easier: open the audit page in the dashboard and press
+<b>Start capture</b> there — the audit id fills itself in. Otherwise open the
+client site in a tab and paste the id above. You can switch tabs while it runs.</div>
 <script src="popup.js"></script></body></html>

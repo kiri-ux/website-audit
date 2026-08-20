@@ -11,8 +11,14 @@
  * Chrome. ~3s/page with jitter reads as a fast human.
  */
 
+// The API is a fixed deployment, not a per-user setting. Asking for it on every
+// capture was a field nobody ever changed and everybody had to fill in. It is
+// still overridable in storage for a local run — there is just no reason to put
+// it in front of an operator.
+const API_BASE = "https://vici-audit-api.onrender.com";
+
 const DEFAULTS = {
-  apiBase: "",
+  apiBase: API_BASE,
   token: "",
   auditId: "",
   dwellMs: 2500,        // time on page after load before capture
@@ -24,6 +30,39 @@ const DEFAULTS = {
 let state = { running: false, done: 0, total: 0, log: [], pages: [], extras: {} };
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ---------------------------------------------------------------------------
+// KEEP THE SERVICE WORKER ALIVE FOR THE LENGTH OF A RUN.
+//
+// An MV3 service worker is evicted after ~30 seconds of no extension-API
+// activity. A capture spends most of its time waiting — for a page to load,
+// then dwelling on it — and those gaps are exactly what Chrome reads as idle.
+// So the run would stop partway through, and it looked like "it stops when I
+// switch tabs" because switching away is when you notice.
+//
+// Two belts. A cheap API call every 20s resets the idle timer directly, and an
+// alarm is the backstop for the case where the worker died anyway: alarms
+// survive eviction and wake it back up.
+// ---------------------------------------------------------------------------
+let keepAliveTimer = null;
+
+function keepAlive(on) {
+  if (on) {
+    if (keepAliveTimer) return;
+    keepAliveTimer = setInterval(() => {
+      chrome.runtime.getPlatformInfo().catch(() => {});
+    }, 20000);
+    chrome.alarms.create("vici-keepalive", { periodInMinutes: 0.5 });
+  } else {
+    if (keepAliveTimer) { clearInterval(keepAliveTimer); keepAliveTimer = null; }
+    chrome.alarms.clear("vici-keepalive").catch(() => {});
+  }
+}
+
+chrome.alarms.onAlarm.addListener(() => {
+  // Nothing to do — being called at all is the point. If the worker had been
+  // evicted mid-run this is what brings it back.
+});
 const jitter = cfg => cfg.dwellMs + Math.floor(Math.random() * cfg.jitterMs);
 
 function say(msg) {
@@ -52,6 +91,50 @@ async function fetchText(url) {
   }
 }
 
+const sameHost = (a, b) => {
+  try {
+    return new URL(a).hostname.replace(/^www\./, "")
+        === new URL(b).hostname.replace(/^www\./, "");
+  } catch { return false; }
+};
+
+/**
+ * Pull every <loc> out of a sitemap, following ONE level of sitemap index.
+ *
+ * /sitemap.xml is very often an index — <sitemapindex> pointing at
+ * post-sitemap.xml, page-sitemap.xml and so on — not a list of pages. The
+ * regex matched its <loc> elements happily and came back with "1 URL", so a
+ * 150-page capture captured two. Follow the children.
+ */
+async function sitemapUrls(origin, sm, cap) {
+  const locs = t => [...t.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map(m => m[1]);
+  let urls = locs(sm.body);
+  if (/<sitemapindex/i.test(sm.body)) {
+    const children = urls.filter(u => sameHost(u, origin)).slice(0, 25);
+    say(`sitemap index: ${children.length} child sitemaps`);
+    urls = [];
+    for (const child of children) {
+      const t = await fetchText(child);
+      if (t.status === 200) urls.push(...locs(t.body));
+      if (urls.length > cap * 20) break;   // plenty to sample from
+    }
+  }
+  return urls;
+}
+
+/** Internal links from the homepage — the fallback when the sitemap is thin. */
+async function homepageLinks(origin, tabId, cap) {
+  try {
+    await chrome.tabs.update(tabId, { url: origin + "/" });
+    await sleep(2500);
+    const res = await chrome.tabs.sendMessage(tabId, { type: "VICI_LINKS" });
+    const links = (res?.links || []).filter(u => sameHost(u, origin));
+    return [...new Set(links)].slice(0, cap);
+  } catch (e) {
+    return [];
+  }
+}
+
 async function discoverUrls(origin, limit) {
   const out = [origin.replace(/\/$/, "") + "/"];
   const sm = await fetchText(origin + "/sitemap.xml");
@@ -60,15 +143,11 @@ async function discoverUrls(origin, limit) {
   state.extras.llms = await fetchText(origin + "/llms.txt");
 
   if (sm.status === 200 && /<loc>/i.test(sm.body)) {
-    const locs = [...sm.body.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map(m => m[1]);
+    const locs = await sitemapUrls(origin, sm, limit);
     // Sample ACROSS the sitemap rather than taking the first N — the first N
     // are usually one template (all products, or all blog posts), which would
     // leave most page types unaudited.
-    const internal = locs.filter(u => {
-      try { return new URL(u).hostname.replace(/^www\./, "")
-                    === new URL(origin).hostname.replace(/^www\./, ""); }
-      catch { return false; }
-    });
+    const internal = locs.filter(u => sameHost(u, origin));
     const step = Math.max(1, Math.floor(internal.length / limit));
     for (let i = 0; i < internal.length && out.length < limit; i += step) {
       if (!out.includes(internal[i])) out.push(internal[i]);
@@ -107,15 +186,27 @@ async function run(startUrl) {
   if (!c.apiBase || !c.auditId) { say("ERROR: set API URL and audit ID first"); return; }
 
   state = { running: true, done: 0, total: 0, log: state.log, pages: [], extras: {} };
+  keepAlive(true);
   const origin = new URL(startUrl).origin;
   say(`starting capture of ${origin}`);
 
-  const urls = await discoverUrls(origin, c.maxPages);
+  let urls = await discoverUrls(origin, c.maxPages);
   // Seed additional URLs from the homepage's own links if the sitemap was thin.
   state.total = urls.length;
 
   const tab = await chrome.tabs.create({ url: "about:blank", active: false });
   try {
+    // A sitemap that yielded almost nothing is not a small site — it is usually
+    // an index we could not follow, or a CMS that never wrote one. Reading the
+    // homepage's own links costs one page load and is the difference between
+    // auditing two pages and auditing the site.
+    if (urls.length < Math.min(8, c.maxPages)) {
+      const extra = await homepageLinks(origin, tab.id, c.maxPages);
+      for (const u of extra) if (!urls.includes(u)) urls.push(u);
+      urls = urls.slice(0, c.maxPages);
+      state.total = urls.length;
+      say(`sitemap was thin — homepage links bring it to ${urls.length} pages`);
+    }
     for (const url of urls) {
       if (!state.running) { say("stopped by operator"); break; }
       const page = await capture(tab.id, url, c);
@@ -132,7 +223,10 @@ async function run(startUrl) {
     chrome.tabs.remove(tab.id).catch(() => {});
   }
 
-  if (!state.pages.length) { say("nothing captured — aborting upload"); state.running = false; return; }
+  if (!state.pages.length) {
+    say("nothing captured — aborting upload");
+    state.running = false; keepAlive(false); return;
+  }
 
   say(`uploading ${state.pages.length} pages…`);
   try {
@@ -156,12 +250,22 @@ async function run(startUrl) {
     say(`upload error: ${e}`);
   }
   state.running = false;
+  keepAlive(false);
   chrome.runtime.sendMessage({ type: "VICI_STATE", state }).catch(() => {});
 }
 
 chrome.runtime.onMessage.addListener((msg, _s, respond) => {
   if (msg?.type === "VICI_START") { run(msg.url); respond({ ok: true }); }
-  if (msg?.type === "VICI_STOP") { state.running = false; respond({ ok: true }); }
+  // Launched from the audit page's own button: the page already knows the
+  // audit id and the target, so nothing needs copying into the popup.
+  if (msg?.type === "VICI_START_FOR") {
+    chrome.storage.local.set({ auditId: msg.auditId, apiBase: API_BASE })
+      .then(() => run(msg.url));
+    respond({ ok: true });
+  }
+  if (msg?.type === "VICI_STOP") {
+    state.running = false; keepAlive(false); respond({ ok: true });
+  }
   if (msg?.type === "VICI_GET_STATE") respond({ state });
   return true;
 });
