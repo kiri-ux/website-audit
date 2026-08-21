@@ -1,4 +1,43 @@
-# Changed files — build 2026.08.20-14
+# Changed files — build 2026.08.20-15
+
+## GSC-20/21/22 — the plan, and why the last one was wrong
+
+I told you last message to keep these as an analyst read. That was the weaker
+answer, and "someone will open Search Console and read it off" is a plan that
+means it never happens on a single audit.
+
+All three are now measured, from data this tool **already pays for and already
+fetches** for the Off-Page section. No new subscription, one extra API call.
+
+| | Answered from |
+|---|---|
+| **GSC-20** External links | Total backlinks, already in the summary call |
+| **GSC-21** Top linking sites | `referring_domains`, ordered by link volume |
+| **GSC-22** Top linked pages | `domain_pages`, already fetched for OFF-19/20 |
+
+**The one extra call, and why it is not optional.** The toxicity check already
+queries `referring_domains`, but ordered by *spam score* — its 200 rows are the
+worst neighbours, not the biggest linkers. Sorting that sample by backlinks
+would confidently name a "top linking site" that is merely the most-linked of
+the 200 diciest ones. So GSC-21 makes its own call ordered by volume.
+
+**Every one of these rows says where its number came from**, because ours will
+not match Search Console. Google's Links report shows a sample; a backlink index
+does not, so our figures are generally larger. A client who opens Search Console,
+sees a different number and was not warned stops trusting the whole document.
+
+### And a bug this turned up
+
+**GSC-22 "Top linked pages" was being filled with the pages that got the most
+organic *traffic*.** A page can be the most linked on a site and receive no
+traffic at all. That is the same error as OFF-10 printing a nofollow percentage
+under "Lost backlinks" — a real number, confidently mislabelled, which is worse
+than an admitted gap. The traffic figure was genuinely useful, so it moved to
+GSC-01 where it describes what it actually is.
+
+---
+
+---
 
 ## The 502
 

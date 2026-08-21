@@ -530,9 +530,9 @@ def _internal_links_row(art) -> dict | None:
 # putting off — the endpoint does not exist. DataForSEO answers the same
 # question in the Off-Page section, which is why these read as a pointer rather
 # than a gap.
-_NO_API = ("Search Console does not expose this report through any API. The "
-           "same ground is covered by the backlink data in the Off-Page and "
-           "Authority section (OFF-01, OFF-02).")
+_NO_API = ("Search Console does not expose this report through any API. It is "
+           "answered from our backlink index instead, which needs the "
+           "DataForSEO credentials — they were not available for this run.")
 
 
 def collect_gsc(site_url: str, refresh_token: str | None = None,
@@ -594,13 +594,24 @@ def collect_gsc(site_url: str, refresh_token: str | None = None,
                            f"Average position {pos}.",
                            "Low" if pos <= 20 else "Medium")
 
+        # NOT GSC-22. This query returns the pages that received the most
+        # organic TRAFFIC, and GSC-22 is "Top linked pages" — a page can be the
+        # most linked on a site and get no traffic at all. Reporting one under
+        # the other's name is the same error as OFF-10 printing a nofollow
+        # percentage under "Lost backlinks": a real number, confidently
+        # mislabelled, which is worse than an admitted gap.
+        #
+        # GSC-22 is answered from the backlink index instead, in
+        # dataforseo._page_split. What this query is genuinely good for is
+        # confirming the connection reads real data, so that is what it does.
         pages = _api(f"{GSC_API}/sites/{prop}/searchAnalytics/query", tok,
                      {"startDate": str(start), "endDate": str(end),
                       "dimensions": ["page"], "rowLimit": 25})
-        top = [r["keys"][0] for r in pages.get("rows", [])][:10]
-        out["GSC-22"] = _f("Pass", {"top_pages": top, "via_login": label},
-                           f"{len(pages.get('rows', []))} pages received organic "
-                           f"traffic in the period (read via {label}).", "Low")
+        n_pages = len(pages.get("rows", []))
+        out["GSC-01"]["value"]["pages_with_traffic"] = n_pages
+        out["GSC-01"]["value"]["via_login"] = label
+        out["GSC-01"]["evidence"] += (f" {n_pages} pages received organic traffic "
+                                      f"in the period (read via {label}).")
     except Exception as e:
         return _need_access(GSC_IDS,
                             f"Search Console query failed: {type(e).__name__}: {e}",
@@ -630,9 +641,13 @@ def collect_gsc(site_url: str, refresh_token: str | None = None,
         if row:
             out[cid] = row
 
-    for cid in ("GSC-20", "GSC-21"):
+    # Three link reports Google publishes and exposes through no API. The
+    # backlink collector answers all three and overwrites these; this is what
+    # they say when DataForSEO is not configured for the run.
+    for cid in ("GSC-20", "GSC-21", "GSC-22"):
         out.setdefault(cid, _f("Need Access", {}, _NO_API, "Low",
-                               "Read the Off-Page and Authority section instead.",
+                               "Set the DataForSEO credentials — the backlink "
+                               "index answers all three of these.",
                                0.0, "gsc_no_api"))
 
     for cid in GSC_IDS:

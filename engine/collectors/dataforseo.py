@@ -252,6 +252,9 @@ def collect_backlinks(domain: str) -> dict:
     _history(domain, out)
     _page_split(domain, out, rd)
     _toxicity(domain, out, spam)
+    # Three Search Console rows that Google publishes and does not expose. They
+    # ride along here because this is where the data already is.
+    _link_reports(domain, out, bl)
 
     # OFF-21..29 are link PROSPECTING — competitor gap, guest posting, digital
     # PR, HARO, unlinked mentions. They are not measurements of the client's
@@ -486,6 +489,24 @@ def _page_split(domain: str, out: dict, rd) -> None:
     if not total:
         _unreadable(out, ["OFF-19", "OFF-20"], "domain_pages", items[0])
         return
+    # GSC-22 Top linked pages, from the same items. Search Console publishes
+    # this report and exposes no API for it, so it was sitting in the audit
+    # answered by the wrong metric entirely — "25 pages received organic
+    # traffic", which is top TRAFFICKED pages. A page can be the most linked on
+    # a site and receive no traffic at all.
+    ranked = sorted(
+        ((_str(i, "page_address", "url", "page", "address", "domain"),
+          _num(i, "backlinks", "referring_pages", "referring_domains"))
+         for i in items), key=lambda t: -t[1])
+    ranked = [(u, n) for u, n in ranked if u and n]
+    if ranked:
+        top = ranked[0]
+        out["GSC-22"] = _f(
+            "Info", {"top_linked_pages": ranked[:10]},
+            f"The most-linked page is {top[0]} with {top[1]:,} inbound links; "
+            f"{len(ranked)} pages on the site have links pointing at them. "
+            f"{_NOT_GSC}", "Low", "", 1.0, "dataforseo")
+
     d_pct = round(100 * deep / total, 1)
     out["OFF-19"] = _f("Info", {"homepage_backlinks": home},
                        f"{home:,} backlinks point at the homepage.",
@@ -547,6 +568,59 @@ def _toxicity(domain: str, out: dict, spam) -> None:
                        "Low" if pct < 10 else "Medium",
                        "" if pct < 10 else "Review the worst of these and "
                                            "consider a disavow file.")
+
+
+# Every row below answers a report Search Console PUBLISHES but exposes through
+# no API. We are answering it from a different index, and the numbers will not
+# match what someone sees if they open Search Console and compare — ours are
+# generally larger, because Google's Links report shows a sample and a backlink
+# index does not. A reader who spots the discrepancy unaided stops trusting the
+# whole document, so every one of these rows says where its number came from.
+_NOT_GSC = ("Measured from our backlink index rather than Search Console, which "
+            "publishes this report but offers no API for it; Search Console "
+            "shows a sample, so its own figure will be lower.")
+
+
+def _link_reports(domain: str, out: dict, bl) -> None:
+    """
+    GSC-20 External links and GSC-21 Top linking sites.
+
+    These were bucketed as "an analyst opens Search Console and reads it off",
+    which is the kind of plan that means it never happens — and it was never
+    necessary. Both questions are answered by data this collector already pays
+    for and already fetches for the Off-Page section.
+    """
+    if bl is not None:
+        out["GSC-20"] = _f("Info", {"external_links": bl},
+                           f"{bl:,} external links point at this site. {_NOT_GSC}",
+                           "Low", "", 1.0, "dataforseo")
+    # A second referring-domains call, ordered by link volume. The one the
+    # toxicity check makes is ordered by SPAM score, so its 200 rows are the
+    # worst neighbours rather than the biggest linkers — sorting that sample by
+    # backlinks would confidently name a "top linking site" that is merely the
+    # most linked of the 200 diciest ones.
+    try:
+        res = _result(dfs_post("/backlinks/referring_domains/live",
+                               [{"target": domain, "limit": 50,
+                                 "backlinks_status_type": "live",
+                                 "order_by": ["backlinks,desc"]}]))
+    except Exception as e:  # noqa: BLE001
+        print(f"[dataforseo] referring_domains (by volume) failed: "
+              f"{type(e).__name__}: {e}", flush=True)
+        return
+    items = (res[0].get("items") or []) if res else []
+    if not items:
+        return
+    sites = [(_str(i, "domain", "referring_domain", "target", "url"),
+              _num(i, "backlinks", "referring_pages")) for i in items]
+    sites = [(d, n) for d, n in sites if d and n]
+    if not sites:
+        _unreadable(out, ["GSC-21"], "referring_domains", items[0])
+        return
+    named = ", ".join(f"{d} ({n:,})" for d, n in sites[:5])
+    out["GSC-21"] = _f("Info", {"top_linking_sites": sites[:20]},
+                       f"The sites linking most often are {named}. {_NOT_GSC}",
+                       "Low", "", 1.0, "dataforseo")
 
 
 def _num(item: dict, *names, default=0) -> int:

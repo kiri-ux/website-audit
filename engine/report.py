@@ -294,9 +294,11 @@ def _todo_panel(findings: dict, catalog: dict) -> list:
             # server settings that need a look rather than a reading.
             "ONP": "Confirm compression and server-side delivery settings on "
                    "the priority templates.",
-            "GSC": "Open the Search Console links report — the external-links "
-                   "and top-linking-sites views have no API. The backlink data "
-                   "in Off-Page and Authority covers the same ground.",
+            # Was: "open the Search Console links report by hand". Those three
+            # rows are answered from the backlink index now, so nothing should
+            # land in this bucket — and if something does, it needs a human
+            # looking at it rather than a stale instruction.
+            "GSC": "Confirm in Search Console; no API covers this view.",
             "GEO": "Ask the assistants directly and record whether the brand is "
                    "cited. The AI visibility monitor does this on a schedule.",
             "TECH": "Open the failing resources and confirm whether they are "

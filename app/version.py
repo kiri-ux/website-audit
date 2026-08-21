@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-14"
-BUILD_NOTES = ("A slow database can no longer take the API down; judged rows "
-               "carry a lightbulb; Prepared by is per-audit; definitions land "
-               "at first mention")
+BUILD = "2026.08.20-15"
+BUILD_NOTES = ("The 502 is fixed at its cause; judged rows carry a lightbulb; "
+               "the three Search Console link reports are answered from the "
+               "backlink index instead of by hand")
 # ---------------------------------------------------------------------------
 
 

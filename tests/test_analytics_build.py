@@ -17,8 +17,11 @@ What this file guards:
   3. Absence is not automatically a defect. A law firm has no product rich results
      and no ecommerce revenue; those rows are Info and N/A, and are kept out of the
      score rather than counted as failures.
-  4. Two rows have no API at all (GSC-20/21) and one has no equivalent in GA4 at
-     all (GA4-14). They must not be dressed up as a missing client grant.
+  4. Three link reports have no API at all (GSC-20/21/22) and one row has no
+     equivalent in GA4 at all (GA4-14). They must not be dressed up as a missing
+     client grant — and the three link reports are answered from the backlink
+     index instead of being left for an analyst, which is tested at the bottom
+     of this file.
   5. Losing a token still degrades everything to Need Access, never to Fail.
 """
 from __future__ import annotations
@@ -155,8 +158,11 @@ def main():
 
     print("SEARCH CONSOLE — THE ROWS THE REPORTING API DOES NOT COVER")
     still = sorted(k for k, v in gsc.items() if v["status"] == "Need Access")
-    check("only the two rows with no API remain unanswered",
-          still == ["GSC-20", "GSC-21"], str(still))
+    # The three link reports. Google publishes them and exposes no API; the
+    # backlink collector fills them in a later stage of the same run, so from
+    # here they are correctly still blank.
+    check("only the three link reports remain for the backlink collector",
+          still == ["GSC-20", "GSC-21", "GSC-22"], str(still))
     for cid in ("GSC-05", "GSC-06", "GSC-07", "GSC-08", "GSC-09", "GSC-10",
                 "GSC-11", "GSC-12", "GSC-13", "GSC-14", "GSC-15", "GSC-19"):
         check(f"{cid} is answered", gsc[cid]["status"] != "Need Access",
@@ -200,8 +206,16 @@ def main():
           blocked_on("GSC-20", gsc["GSC-20"]) == "manual")
     check("GSC-21 is an analyst's job, not a missing grant",
           blocked_on("GSC-21", gsc["GSC-21"]) == "manual")
-    check("it points at the section that does answer it",
-          "OFF-01" in gsc["GSC-20"]["evidence"])
+    check("it names what would answer it",
+          "DataForSEO" in gsc["GSC-20"]["evidence"])
+    # The bug this replaced: GSC-22 "Top linked pages" was filled with the
+    # pages that got the most organic TRAFFIC. A real number under the wrong
+    # label is worse than an admitted gap.
+    check("top linked pages is not answered with top trafficked pages",
+          "received organic traffic" not in (gsc["GSC-22"]["evidence"] or ""))
+    check("the traffic figure is kept where it belongs",
+          "pages received organic traffic" in gsc["GSC-01"]["evidence"],
+          gsc["GSC-01"]["evidence"])
 
     print("\nGA4 — CONFIGURATION, NOT JUST TRAFFIC")
     still = sorted(k for k, v in ga4.items() if v["status"] == "Need Access")
@@ -249,6 +263,67 @@ def main():
         check(f"{name} degrades entirely to Need Access",
               {v["status"] for v in block.values()} == {"Need Access"},
               str({v["status"] for v in block.values()}))
+
+    print("\nTHE THREE LINK REPORTS ARE ANSWERED FROM THE BACKLINK INDEX")
+    # "An analyst opens Search Console and reads it off" is a plan that means it
+    # never happens. Every one of these questions is answered by data the
+    # backlink collector already pays for and already fetches.
+    import engine.collectors.dataforseo as D
+
+    def dfs(path, payload, timeout=None, retries=1):
+        if "domain_pages" in path:
+            items = [{"page_address": "https://example.com/", "backlinks": 400},
+                     {"page_address": "https://example.com/services",
+                      "backlinks": 120},
+                     {"page_address": "https://example.com/about", "backlinks": 9}]
+        elif "referring_domains" in path:
+            order = (payload[0].get("order_by") or [""])[0]
+            if order.startswith("backlinks,"):
+                items = [{"domain": "bigpaper.com", "backlinks": 220},
+                         {"domain": "citydirectory.org", "backlinks": 90}]
+            else:
+                items = [{"domain": "spammy.xyz", "backlinks_spam_score": 88},
+                         {"domain": "ok.com", "backlinks_spam_score": 4}]
+        else:
+            items = []
+        return {"tasks": [{"result": [{"items": items}]}]}
+
+    real = D.dfs_post
+    D.dfs_post = dfs
+    try:
+        out = {}
+        D._page_split("example.com", out, 131)
+        D._link_reports("example.com", out, 727)
+    finally:
+        D.dfs_post = real
+
+    for cid in ("GSC-20", "GSC-21", "GSC-22"):
+        check(f"{cid} is answered", out.get(cid, {}).get("status") == "Info",
+              str(out.get(cid, {}).get("status")))
+    check("external links carries the real total",
+          out["GSC-20"]["value"]["external_links"] == 727)
+    check("top linking sites are ordered by volume, biggest first",
+          out["GSC-21"]["value"]["top_linking_sites"][0] == ("bigpaper.com", 220),
+          str(out["GSC-21"]["value"]["top_linking_sites"][:2]))
+    # The toxicity check queries the same endpoint ordered by SPAM score. If
+    # GSC-21 reused that sample it would name the most-linked of the 200
+    # diciest domains and call it the top linking site.
+    check("and NOT from the spam-ordered sample the toxicity check uses",
+          "spammy.xyz" not in str(out["GSC-21"]["value"]))
+    check("top linked pages are ordered by links, not by traffic",
+          out["GSC-22"]["value"]["top_linked_pages"][0]
+          == ("https://example.com/", 400),
+          str(out["GSC-22"]["value"]["top_linked_pages"][:2]))
+
+    print("\nAND EVERY ONE OF THEM SAYS IT IS NOT SEARCH CONSOLE'S NUMBER")
+    # Ours are generally larger — Google's Links report shows a sample. Someone
+    # who opens Search Console, sees a different figure and was not warned stops
+    # trusting the whole document.
+    for cid in ("GSC-20", "GSC-21", "GSC-22"):
+        ev = out[cid]["evidence"]
+        check(f"{cid} names its source", "backlink index" in ev, ev[:70])
+        check(f"{cid} warns the two will not match",
+              "sample" in ev and "lower" in ev)
 
     print("\n" + "=" * 68)
     if FAILED:
