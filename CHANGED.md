@@ -1,4 +1,103 @@
-# Changed files — build 2026.08.20-19
+# Changed files — build 2026.08.20-20
+
+## "Is everything in Analyst work actually for a human?"
+
+**It was not, and that was a real bug.** Six checkpoints with working automated
+checks were printed on a person's to-do list: PERF-05, PERF-07, PERF-09,
+HTML-09, ONP-43 and ANA-03. The list told an analyst to open DevTools and read a
+waterfall for three rows automated the build before.
+
+The cause: a checkpoint that returned **no finding at all** fell through to
+`manual` by default. That default was right when the alternative was blaming the
+client, but it also swept up everything we had automated — and PageSpeed
+Insights timing out is exactly the condition that leaves a check with no
+finding. So a transient network failure turned automated rows into permanent
+homework.
+
+Any checkpoint with a registered check is now **ours**. If a check exists and
+came back empty, that is our failure this run and it belongs in "Ours to fix",
+not on someone's list. The work list drops from **30 to 23**, and every one of
+the 23 genuinely has no automation: subdomain TLS, pagination canonicals, meta
+refresh, country targeting, the AI visibility rows, seven TECH rows.
+
+The panel now says so out loud: *"Every one of these needs a person. Nothing
+with a working automated check appears here."*
+
+---
+
+## PageSpeed Insights, and the fourteen rows it took with it
+
+Your report carried this fourteen times, to a client:
+
+> Text compression unavailable — PageSpeed Insights API unreachable from the
+> audit host (TimeoutError: The read operation timed out).
+
+Two separate failures in one line.
+
+**PSI is genuinely unreachable from Render** often enough to matter — 429s on
+the shared egress pool, then read timeouts. There was already a DataForSEO
+Lighthouse fallback, but it only covered a fixed list of ten checkpoint IDs, so
+every check added since simply had no fallback at all.
+
+The fallback moved to where it belongs: **one accessor, two providers.** `_psi()`
+tries PageSpeed Insights first — only PSI carries CrUX field data, real visitors
+rather than a lab run — and drops to DataForSEO's hosted Lighthouse when it
+fails. Same schema, so all fourteen checks read it unchanged and none of them
+knows a fallback exists. Verified: with PSI dead and DataForSEO answering, all of
+PERF-05/07/09, MOB-03/05/06, HTML-09 and ONP-43 return real findings.
+
+PSI also gets a longer leash — 120s and one retry, since it fetches the page,
+runs Lighthouse on Google's hardware and *then* returns, which is a genuine
+30-60 seconds on a slow site.
+
+**And the client no longer reads our stack trace.** When no provider answers:
+*"could not be measured on this run — the speed-testing service did not respond.
+Nothing about the site caused this."* The exception stays in the finding's value,
+where the team sees it and the client does not.
+
+---
+
+## "Manual" and "Info" were not statuses
+
+You were right that they break the pattern. Every other value in that column
+states a **verdict** — Pass, Fail, Warning, N/A. "Manual" answered *how the
+check gets done*, and "Info" named *a category of finding*. Both answer a
+different question from the one the column asks, so a reader scanning for a
+result hits them and stops.
+
+| Was | Now | Means |
+|---|---|---|
+| Info | **Reference** | A number with no pass or fail attached. 727 backlinks is neither good nor bad. |
+| Manual | **In review** | No verdict yet — an analyst reaches it during the engagement. |
+
+The stored values are unchanged. `Info` is load-bearing in the scoring code,
+which excludes it from the denominator, and renaming it there would be a rename
+in service of a caption.
+
+First choice for Info was "Measured" — dropped, because the coverage strip two
+pages earlier already labels a segment **Measured**, meaning every check we
+managed to answer. One word on two different counts is worse than the jargon it
+replaced.
+
+The appendix intro now defines all three.
+
+---
+
+## The other errors on the panel
+
+**`domain_pages` shape** — added a last-resort reader that takes the first
+integer whose *key mentions* backlinks or referring, after every named candidate
+misses. Bounded guessing beats a zero, because a zero here is indistinguishable
+from a real answer.
+
+**Enhanced Measurement (HTTPError)** — "HTTPError" is the least useful string a
+log can carry: 403 and 404 mean completely different things, one is a permission
+you can ask for. It now reads the status code and Google's own message from the
+response body, and when it is a 403 it says the actionable thing: *this method
+needs Editor on the property; a Viewer grant reads the traffic but not the
+stream settings.*
+
+---
 
 ## "Why is Reviewed by hand here?" — the panel contradicted itself
 

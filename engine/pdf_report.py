@@ -343,6 +343,34 @@ STATUS_PILL = {
     "N/A":             (colors.HexColor("#f6f5f2"), colors.HexColor("#898781")),
 }
 
+# WHAT THE STATUS COLUMN IS FOR.
+#
+# Every other value in it states a VERDICT: Pass, Fail, Warning, N/A. Two did
+# not. "Manual" answered how the check gets done, and "Info" named a category
+# of finding — both answer a different question from the one the column asks,
+# and a reader scanning down for a result hits them and has to stop.
+#
+# The internal values do not change: `Info` is load-bearing in the scoring
+# code, which excludes it from the denominator, and renaming it there would be
+# a rename in service of a caption. Only the printed word changes.
+#
+#   Info   -> Reference   a number we took, with no pass/fail threshold behind
+#                         it. 727 backlinks is neither good nor bad.
+#   Manual -> In review   no verdict yet, because a person reaches it during
+#                         the engagement.
+#
+# NOT "Measured" for Info, which was the first choice: the coverage strip two
+# pages earlier already labels a segment "Measured", meaning every check we
+# managed to answer. The same word for two different counts is worse than the
+# jargon it replaced.
+STATUS_LABEL = {"Info": "Reference", "Manual": "In review"}
+for _raw, _shown in STATUS_LABEL.items():
+    STATUS_PILL[_shown] = STATUS_PILL[_raw]
+
+
+def _status_word(status: str) -> str:
+    return STATUS_LABEL.get(status, status)
+
 
 def _pill(label, palette, S, width=0.82 * inch):
     """A rounded, filled label. Color plus text, never color alone."""
@@ -1258,9 +1286,11 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     story.append(Paragraph("Appendix — Full Checkpoint Detail", S["h2"]))
     n_na = sum(1 for f in findings.values() if f.get("status") == "N/A")
     story.append(Paragraph(
-        "By area. <b>Need Access</b> means the check is waiting on access to "
-        "your Search Console or Analytics. <b>Manual</b> means it is a judgment "
-        "call, made by hand as part of the work."
+        "By area. <b>Reference</b> is a number with no pass or fail attached to "
+        "it — a backlink count is neither good nor bad on its own. "
+        "<b>In review</b> means an analyst reaches that check during the "
+        "engagement, so it has no verdict yet. <b>Need Access</b> means the "
+        "check is waiting on access to your Search Console or Analytics."
         + (f" {n_na} checks that don't apply to a site like yours are left out."
            if n_na else ""), S["small"]))
 
@@ -1325,7 +1355,8 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
             data.append([ident,
                          Paragraph(_p(m.get("checkpoint")), S["cell"]),
-                         _pill(f["status"], STATUS_PILL, S, 0.86 * inch),
+                         _pill(_status_word(f["status"]), STATUS_PILL, S,
+                               0.86 * inch),
                          Paragraph(_agree(_p(f.get("evidence"))), S["cell"])])
         t = Table(data, colWidths=[0.72 * inch, 1.68 * inch, 0.95 * inch, 3.15 * inch],
                   repeatRows=1)

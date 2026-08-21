@@ -163,6 +163,27 @@ def access_token(refresh_token: str) -> str | None:
         return None
 
 
+def _describe(exc) -> str:
+    """
+    An HTTP error with its status and Google's own reason attached.
+
+    `HTTPError` on its own is the least useful string a log can carry: 403 and
+    404 mean completely different things here — one is a permission we can ask
+    for, the other is a URL we got wrong — and the panel printed neither.
+    Google puts the actual reason in the response body, so read it.
+    """
+    import urllib.error
+    if isinstance(exc, urllib.error.HTTPError):
+        detail = ""
+        try:
+            body = json.loads(exc.read() or b"{}")
+            detail = ((body.get("error") or {}).get("message") or "")[:180]
+        except Exception:  # noqa: BLE001
+            pass
+        return f"HTTP {exc.code}" + (f": {detail}" if detail else "")
+    return f"{type(exc).__name__}: {exc}"
+
+
 def _api(url, token, payload=None, timeout=60):
     req = urllib.request.Request(
         url, data=json.dumps(payload).encode() if payload else None,
@@ -959,9 +980,10 @@ def _enhanced_row(pid: str, tok: str) -> dict:
             # the same token, filled correctly two rows below. A failure that
             # cannot be told apart from "not built yet" is the failure mode
             # this whole collector exists to avoid.
-            print(f"[ga4] enhancedMeasurementSettings for stream {sid} failed: "
-                  f"{type(exc).__name__}: {exc}", flush=True)
-            errs.append(f"{type(exc).__name__}")
+            why = _describe(exc)
+            print(f"[ga4] enhancedMeasurementSettings for stream {sid} "
+                  f"failed: {why}", flush=True)
+            errs.append(why)
             continue
         _seen("enhancedMeasurementSettings", em)
         for key, label in _ENHANCED:
@@ -971,15 +993,25 @@ def _enhanced_row(pid: str, tok: str) -> dict:
         # different fact from empty because the property answered with nothing,
         # and only the first one is ours to chase.
         if errs:
+            joined = ", ".join(sorted(set(errs)))
+            # 403 is the one worth naming: this specific Admin API method is
+            # not covered by a read-only grant on some properties, and no
+            # amount of retrying changes that. Saying "Editor" turns a dead end
+            # into a one-line ask.
+            forbidden = any(e.startswith("HTTP 403") for e in errs)
+            rec = ("This method needs Editor on the property; a Viewer grant "
+                   "can read the traffic but not the stream settings. Ask for "
+                   "Editor, or read Enhanced Measurement from the GA4 "
+                   "interface." if forbidden else
+                   "Confirm the Vici login can see the data stream, not only "
+                   "the property.")
             return {"GA4-03": _f(
-                "Need Access", {},
-                f"Enhanced Measurement could not be read for "
-                f"{len(errs)} data stream(s) ({', '.join(sorted(set(errs)))}). "
-                f"The rest of the GA4 data on this report was read successfully, "
-                f"so this is a permission on the data stream rather than a "
-                f"missing grant.", "Low",
-                "Confirm the Vici login has Viewer on the property itself, not "
-                "only on the account.", 0.0, "ga4_admin_only")}
+                "Need Access", {"errors": sorted(set(errs))},
+                f"Enhanced Measurement could not be read for {len(errs)} data "
+                f"stream(s) ({joined}). Everything else in GA4 on this report "
+                f"was read successfully with the same login, so this is a "
+                f"permission on that one setting rather than a missing grant.",
+                "Low", rec, 0.0, "ga4_admin_only")}
         return {}
     on, off = sorted(set(on)), sorted(set(off) - set(on))
     return {"GA4-03": _f("Pass" if not off else "Warning",

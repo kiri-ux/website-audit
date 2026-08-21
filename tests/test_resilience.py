@@ -152,6 +152,30 @@ def main():
               _lamp("EEAT-01", status) == "" and not _judged("EEAT-01", status))
     check("an answered row is marked", _lamp("EEAT-01", "Warning") != "")
 
+    print("\nEVERY STATUS STATES A VERDICT, NOT A METHOD")
+    # The column's other values are Pass, Fail, Warning, N/A — results. "Manual"
+    # answered how the check gets done and "Info" named a category of finding,
+    # so a reader scanning for a result hit them and had to stop.
+    from engine.pdf_report import _status_word, STATUS_PILL
+    from engine.report import status_word
+    check("Manual reads as a state of the check",
+          _status_word("Manual") == "In review")
+    check("Info reads as what the row is for",
+          _status_word("Info") == "Reference")
+    check("the two renderers print the same words",
+          all(_status_word(x) == status_word(x)
+              for x in ("Info", "Manual", "Pass", "Fail", "N/A")))
+    check("a real verdict is left alone",
+          [_status_word(x) for x in ("Pass", "Fail", "Warning", "N/A")]
+          == ["Pass", "Fail", "Warning", "N/A"])
+    check("the renamed pills still have colors",
+          all(w in STATUS_PILL for w in ("Reference", "In review")))
+    # The coverage strip already labels a segment "Measured" — every check we
+    # managed to answer. Using it again for Info would put one word on two
+    # different counts two pages apart.
+    check("no status collides with the coverage strip's own label",
+          "Measured" not in {_status_word(x) for x in ("Info", "Manual")})
+
     print("\nTHE MARK IS A TEAM SIGNAL, NOT CLIENT-FACING FURNITURE")
     # The lamp exists so whoever reviews the draft knows which rows to reread.
     # The client was never asked to act on it, so a paragraph in their document

@@ -138,6 +138,16 @@ code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
  border-radius:8px;padding:14px 18px;font-size:13.5px;color:var(--ink2);margin:14px 0}
 """
 
+# See pdf_report.STATUS_LABEL: the status column states a verdict, and two of
+# its values answered a different question. Display only — the stored values are
+# unchanged, because `Info` is load-bearing in the scoring code.
+STATUS_LABEL = {"Info": "Reference", "Manual": "In review"}
+
+
+def status_word(status: str) -> str:
+    return STATUS_LABEL.get(status, status)
+
+
 STATUS_COLOR = {"Pass": "var(--good)", "Warning": "var(--warning)",
                 "Fail": "var(--critical)", "Not Implemented": "var(--serious)",
                 "Need Access": "var(--muted)", "N/A": "var(--muted)",
@@ -337,8 +347,11 @@ def _todo_panel(findings: dict, catalog: dict) -> list:
             # land in this bucket — and if something does, it needs a human
             # looking at it rather than a stale instruction.
             "GSC": "Confirm in Search Console; no API covers this view.",
-            "GEO": "Ask the assistants directly and record whether the brand is "
-                   "cited. The AI visibility monitor does this on a schedule.",
+            # Not hand work exactly — the monitor does the asking. But it is a
+            # separate scheduled run, so from this audit's point of view
+            # somebody still has to set it going.
+            "GEO": "Start an AI visibility monitor run for this client; it asks "
+                   "each assistant and records whether the brand is cited.",
             "TECH": "Open the failing resources and confirm whether they are "
                     "genuinely broken or merely slow; confirm sitemap "
                     "submission in Search Console.",
@@ -368,11 +381,12 @@ def _todo_panel(findings: dict, catalog: dict) -> list:
             f"<b style='color:var(--seq)'>Analyst work list &middot; "
             f"{len(b['manual'])}</b>"
             f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
-            f"<b>Not a gap and not a bug</b> — these are the checkpoints no "
-            f"tool can answer, so a person does them as part of the "
-            f"engagement. They are already excluded from the score, so leaving "
-            f"them until the work starts costs nothing. The task for each one "
-            f"is below."
+            f"<b>Every one of these needs a person.</b> Nothing with a working "
+            f"automated check appears here — if a check exists and came back "
+            f"empty, that is our failure and it is in the list above, not "
+            f"yours. These are the checkpoints no tool answers at all. They are "
+            f"already excluded from the score, so leaving them until the work "
+            f"starts costs nothing. The task for each one is below."
             f"</div>"
             f"<details class='hist'><summary>Show the {len(b['manual'])} "
             f"checkpoints</summary>"
@@ -616,7 +630,7 @@ def render_html(meta, sc, findings, catalog, summary=None):
             P.append(f"<tr><td><code>{cid}</code></td>"
                      f"<td>{e(m['checkpoint'])}{_lamp(cid, f['status'])}</td>"
                      f"<td><span class='chip'><b style='background:{col}'></b>"
-                     f"{e(f['status'])}</span></td>"
+                     f"{e(status_word(f['status']))}</span></td>"
                      f"<td><div class='ev'>{e(f['evidence'])}</div>"
                      + (f"<div class='rec'>→ {e(f['recommendation'])}</div>"
                         if f['recommendation'] else "") + "</td></tr>")

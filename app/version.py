@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-19"
-BUILD_NOTES = ("The lamp sits against the ID where it can be seen; the "
-               "internal panel no longer contradicts itself; rounded tiles; "
-               "a way back from the report page")
+BUILD = "2026.08.20-20"
+BUILD_NOTES = ("The analyst list holds only work for an analyst; Lighthouse "
+               "falls back to DataForSEO so a PSI timeout no longer empties "
+               "fourteen rows; every status states a verdict")
 # ---------------------------------------------------------------------------
 
 

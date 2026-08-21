@@ -53,6 +53,25 @@ def _vendor_ids() -> set:
         ids |= set(LIGHTHOUSE_IDS)
     except Exception:  # noqa: BLE001
         pass
+    # EVERY CHECKPOINT WITH A REGISTERED CHECK.
+    #
+    # This is the one that made the analyst work list dishonest. A checkpoint
+    # that returned no finding fell through to `manual` by default — and
+    # "default to manual" was the right call when the alternative was blaming
+    # the client, but it also swept up rows we have fully automated. PERF-05,
+    # PERF-07, PERF-09, HTML-09, ONP-43 and ANA-03 all have working checks and
+    # were still printed on a person's to-do list, because PageSpeed Insights
+    # timed out and the check never got to answer.
+    #
+    # Asking someone to open DevTools and read a waterfall we automated last
+    # build is worse than useless: they do the work twice, or they learn to
+    # ignore the list. If a check exists, an empty row is OUR failure this run,
+    # not a human's job.
+    try:
+        from engine.checks import REGISTRY
+        ids |= set(REGISTRY)
+    except Exception:  # noqa: BLE001
+        pass
     return ids
 
 

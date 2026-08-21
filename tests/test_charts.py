@@ -236,12 +236,14 @@ def main():
     check("backlinks are ours to buy", blocked_on("OFF-01") == "vendor")
     check("a judgment-layer row is ours to configure",
           blocked_on("EEAT-01") == "vendor")
-    # ONP-43 is compression: a response header, not a judgment, so the LLM
-    # layer deliberately does not own it and no collector answers it either.
-    # (ONP-34 used to stand here and now belongs to the judgment layer — a
-    # checkpoint moving from `manual` to `vendor` is what progress looks like.)
+    # SEC-06 is subdomain HSTS: no crawler check, no collector, no judgment
+    # spec — it genuinely needs a person with an external TLS scanner.
+    #
+    # ONP-34 stood here, then ONP-43, and both moved out as they were
+    # automated. A checkpoint leaving this bucket is what progress looks like;
+    # the test just has to follow it to whatever is still genuinely by hand.
     check("an unautomated checkpoint is ours to do by hand",
-          blocked_on("ONP-43") == "manual")
+          blocked_on("SEC-06") == "manual")
     # THE ONE THAT SHIPPED WRONG. A granted, working Search Console connection
     # still left 27 rows the API does not expose, and bucketing by prefix
     # called every one of them a missing client grant — telling us to email a
@@ -256,11 +258,34 @@ def main():
     check("our own missing credentials are never billed to the client",
           blocked_on("GSC-01", {"source": "gsc_misconfigured"}) == "vendor")
     mixed_cat = {"GSC-01": {"prefix": "GSC"}, "OFF-01": {"prefix": "OFF"},
-                 "ONP-43": {"prefix": "ONP"}, "TECH-01": {"prefix": "TECH"}}
+                 "SEC-06": {"prefix": "SEC"}, "TECH-01": {"prefix": "TECH"}}
     c = _acounts({"TECH-01": {"status": "Pass"}}, mixed_cat)
     check("buckets split three ways over the whole catalog",
           (c["client"], c["vendor"], c["manual"], c["measured"]) == (1, 1, 1, 1),
           str(c))
+
+    print("\nTHE ANALYST WORK LIST CONTAINS ONLY WORK FOR AN ANALYST")
+    # The list is only worth reading if everything on it needs a person. A
+    # checkpoint with a WORKING automated check used to land here whenever the
+    # check came back empty — so PageSpeed Insights timing out put "open
+    # DevTools and read the waterfall" in front of a human for three rows we
+    # had automated the build before. They do the work twice, or they learn to
+    # ignore the list.
+    from engine.checks import REGISTRY as _REG
+    import csv as _csv
+    _cat = {r["id"]: r for r in _csv.DictReader(open("seed/checkpoints.csv"))}
+    strays = sorted(c for c in _cat
+                    if blocked_on(c) == "manual" and c in _REG)
+    check("no checkpoint with an automated check is on the human list",
+          not strays, str(strays[:8]))
+    # And the inverse: a row we automated must be ours even with no finding,
+    # because an empty row from a check that exists is our failure this run.
+    for cid in ("PERF-05", "PERF-07", "PERF-09", "HTML-09", "ONP-43", "ANA-03"):
+        check(f"{cid} is ours, not a person's", blocked_on(cid) == "vendor",
+              blocked_on(cid))
+    # The genuinely unautomated ones must NOT be swept up by the same rule.
+    for cid in ("SEC-06", "CANON-03", "URL-05", "INTL-08"):
+        check(f"{cid} really is a person's job", blocked_on(cid) == "manual")
 
     print("\nCOVERAGE IS REPORTED AS 'OF WHAT APPLIES', NOT 'OF THE TEMPLATE'")
     # "Analytics & Tracking — Reviewed 4/12" next to a rating of Strong reads as

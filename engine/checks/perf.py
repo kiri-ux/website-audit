@@ -10,7 +10,11 @@ Split by data source:
 """
 from __future__ import annotations
 import json
+import os
 import re
+import time
+import urllib.error
+import urllib.parse
 import urllib.request
 from . import check, finding, escalate
 
@@ -18,33 +22,97 @@ OK = lambda a: [p for p in a.pages.values() if not p.error and 200 <= p.status_c
 PSI = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
 
 
-def psi_fetch(url: str, strategy: str = "mobile", timeout: int = 60, key: str | None = None):
+# PageSpeed Insights fetches the page itself, runs Lighthouse on Google's
+# hardware and then returns — so the round trip is a genuine 30-60 seconds on a
+# slow site, and 60 was not enough headroom. A timeout here does not fail one
+# row: it fails EVERY row that reads Lighthouse, which is now fourteen of them,
+# and a single retry recovers most of it for one wasted minute.
+PSI_TIMEOUT = int(os.getenv("PSI_TIMEOUT", "120"))
+PSI_ATTEMPTS = int(os.getenv("PSI_ATTEMPTS", "2"))
+
+
+def psi_fetch(url: str, strategy: str = "mobile", timeout: int | None = None,
+              key: str | None = None, attempts: int | None = None):
     q = f"{PSI}?url={urllib.parse.quote(url, safe='')}&strategy={strategy}"
     for cat in ("performance", "seo", "accessibility", "best-practices"):
         q += f"&category={cat}"
     if key:
         q += f"&key={key}"
-    try:
-        with urllib.request.urlopen(q, timeout=timeout) as r:
-            return json.loads(r.read().decode()), None
-    except Exception as e:
-        return None, f"{type(e).__name__}: {e}"
+    last = None
+    for i in range(max(1, attempts if attempts is not None else PSI_ATTEMPTS)):
+        try:
+            with urllib.request.urlopen(
+                    q, timeout=timeout or PSI_TIMEOUT) as r:
+                return json.loads(r.read().decode()), None
+        except Exception as e:  # noqa: BLE001
+            last = f"{type(e).__name__}: {e}"
+            print(f"[psi] attempt {i + 1} failed for {url}: {last}", flush=True)
+            # A 4xx is an answer about the request — a bad URL, a bad key, a
+            # quota refusal — and repeating it just spends the quota again.
+            if isinstance(e, urllib.error.HTTPError) and e.code < 500:
+                break
+            time.sleep(2 + 3 * i)
+    return None, last
 
 
 def _psi(a, c):
-    """Cached PSI result for the start URL."""
+    """
+    A Lighthouse report for the start URL, from whichever provider answers.
+
+    ONE accessor, TWO providers, and that is the whole point. PageSpeed Insights
+    is unreachable from Render often enough — 429s on the shared egress pool,
+    then read timeouts — that a single failure took down every row reading it:
+    fourteen checks in a client's report, each one printing our own
+    "TimeoutError: The read operation timed out".
+
+    DataForSEO hosts Lighthouse and answers the same schema, so the fallback
+    belongs here rather than in fourteen separate checks. PSI is still tried
+    first, because only PSI carries CrUX field data — real visitors rather than
+    a lab run — and that is what PERF-11/12/13 prefer to be judged on.
+    """
     if "_psi" not in c:
         if c.get("skip_psi"):
-            c["_psi"], c["_psi_err"] = None, "PSI collection disabled"
+            c["_psi"], c["_psi_err"] = None, "Lab performance collection was "\
+                                             "switched off for this run"
         else:
             c["_psi"], c["_psi_err"] = psi_fetch(a.start_url, key=c.get("psi_key"))
+            c["_psi_source"] = "PageSpeed Insights"
+    if c.get("_psi") is None and not c.get("_psi_fallback_tried"):
+        c["_psi_fallback_tried"] = True
+        try:
+            from engine.collectors.dataforseo import lighthouse_report
+            lh, err = lighthouse_report(a.start_url)
+        except Exception as e:  # noqa: BLE001
+            lh, err = None, f"{type(e).__name__}: {e}"
+        if lh:
+            print(f"[perf] PageSpeed Insights unavailable ({c.get('_psi_err')}); "
+                  f"using the DataForSEO Lighthouse run instead", flush=True)
+            # Wrapped in PSI's envelope so every existing check reads it
+            # unchanged. No CrUX block, which the field-data checks already
+            # handle as "not enough traffic" rather than as a failure.
+            c["_psi"] = {"lighthouseResult": lh}
+            c["_psi_err"] = None
+            c["_psi_source"] = "Lighthouse via DataForSEO"
+        else:
+            print(f"[perf] no Lighthouse from either provider — PSI: "
+                  f"{c.get('_psi_err')}; DataForSEO: {err}", flush=True)
     return c["_psi"], c.get("_psi_err")
 
 
 def _need_access(err, label):
-    return finding("Need Access", {"error": err},
-                   f"{label} unavailable — PageSpeed Insights API unreachable from the "
-                   f"audit host ({err}).", [], "Medium", confidence=0.0)
+    """
+    What the CLIENT reads when no provider answered.
+
+    Not the exception. "PageSpeed Insights API unreachable from the audit host
+    (TimeoutError: The read operation timed out)" is a line from our logs, and
+    it went out in a paid document fourteen times in one report. The technical
+    detail stays in `value`, where the team can see it and the client cannot.
+    """
+    return finding("Need Access", {"error": err, "internal": True},
+                   f"{label} could not be measured on this run — the speed-testing "
+                   f"service did not respond. Nothing about the site caused this, "
+                   f"and it is re-run rather than left.",
+                   [], "Medium", confidence=0.0)
 
 
 def _metric(cid, label, audit_key, good, poor, unit="ms"):

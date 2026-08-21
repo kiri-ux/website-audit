@@ -552,8 +552,10 @@ def _page_split(domain: str, out: dict, rd) -> None:
         return
     home, deep = 0, 0
     for i in items:
-        url = _str(i, "page_address", "url", "page", "address", "domain")
-        n = _num(i, "backlinks", "referring_pages", "referring_domains")
+        url = _str(i, "page_address", "url", "page", "address", "domain",
+                   "page_from", "target")
+        n = (_num(i, "backlinks", "referring_pages", "referring_domains")
+             or _any_num(i, "backlink", "referring"))
         path = url.split("//")[-1].split("/", 1)
         if len(path) == 1 or path[1] in ("", "/"):
             home += n
@@ -569,8 +571,10 @@ def _page_split(domain: str, out: dict, rd) -> None:
     # traffic", which is top TRAFFICKED pages. A page can be the most linked on
     # a site and receive no traffic at all.
     ranked = sorted(
-        ((_str(i, "page_address", "url", "page", "address", "domain"),
-          _num(i, "backlinks", "referring_pages", "referring_domains"))
+        ((_str(i, "page_address", "url", "page", "address", "domain",
+               "page_from", "target"),
+          _num(i, "backlinks", "referring_pages", "referring_domains")
+          or _any_num(i, "backlink", "referring"))
          for i in items), key=lambda t: -t[1])
     ranked = [(u, n) for u, n in ranked if u and n]
     if ranked:
@@ -697,6 +701,22 @@ def _link_reports(domain: str, out: dict, bl) -> None:
                        "Low", "", 1.0, "dataforseo")
 
 
+def _any_num(item: dict, *contains) -> int:
+    """
+    Last resort: the first integer whose KEY contains one of these words.
+
+    Used only after every named candidate has missed. It is a guess, but a
+    bounded one — it will not invent a number from an unrelated field, because
+    the key still has to mention what we are counting. The alternative is a
+    zero, and a zero here is indistinguishable from a real answer.
+    """
+    for k, v in (item or {}).items():
+        kl = str(k).lower()
+        if any(c in kl for c in contains) and isinstance(v, (int, float)) and v:
+            return int(v)
+    return 0
+
+
 def _num(item: dict, *names, default=0) -> int:
     """
     First key that is actually present, as an integer.
@@ -755,6 +775,40 @@ def _months_ago(n: int) -> str:
 # ============================================================== LIGHTHOUSE
 LIGHTHOUSE_IDS = ["PERF-10", "PERF-11", "PERF-12", "PERF-13", "PERF-14", "PERF-19",
                   "MOB-03", "MOB-04", "MOB-05", "MOB-06"]
+
+
+def lighthouse_report(url: str):
+    """
+    The raw Lighthouse report, for anything that wants to read audits directly.
+
+    `collect_lighthouse` turns this into ten findings. Everything ELSE that
+    reads Lighthouse — compression, minification, tap targets, font size,
+    accessibility, resource weight — goes through PageSpeed Insights, which is
+    unreachable from Render often enough that fourteen rows arrived in a client
+    report carrying our own timeout message.
+
+    Returning the report itself lets perf.py fall back to this provider through
+    a single accessor, so every check that reads Lighthouse gets the fallback
+    without knowing the fallback exists.
+    """
+    if not configured():
+        return None, "DataForSEO credentials not configured"
+    try:
+        res = _result(dfs_post("/on_page/lighthouse/live/json",
+                               [{"url": url, "for_mobile": True,
+                                 "categories": ["performance", "accessibility",
+                                                "best-practices", "seo"]}],
+                               timeout=180))
+    except Exception as e:  # noqa: BLE001
+        return None, f"{type(e).__name__}: {e}"
+    if not res:
+        return None, "Lighthouse returned no result"
+    r0 = res[0] if isinstance(res[0], dict) else {}
+    lh = (r0.get("lighthouse_result")
+          or (r0.get("items") or [{}])[0]
+          or {})
+    return (lh if lh.get("audits") else None,
+            None if lh.get("audits") else "Lighthouse result carried no audits")
 
 
 def collect_lighthouse(url: str) -> dict:
