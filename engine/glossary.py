@@ -42,6 +42,12 @@ TERMS = {
         "are — a product, a price, a review, a store. It is what produces the "
         "star ratings and prices you see in results.",
         (r"\bschema\b", r"structured data", r"json-?ld", r"rich result")),
+    "srcset": (
+        "Responsive images (srcset)", "\U0001F5BC", "\u25A4",
+        "A list of the same image at several sizes, so a phone downloads a "
+        "small one and a desktop downloads a large one. Without it every "
+        "visitor downloads the full-size file, however small their screen.",
+        (r"\bsrcset\b", r"responsive image")),
     "cwv": (
         "Core Web Vitals", "⚡", "⚡",
         "Google's three speed and stability measurements: how fast the main "

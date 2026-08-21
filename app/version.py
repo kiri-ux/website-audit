@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-15"
-BUILD_NOTES = ("The 502 is fixed at its cause; judged rows carry a lightbulb; "
-               "the three Search Console link reports are answered from the "
-               "backlink index instead of by hand")
+BUILD = "2026.08.20-16"
+BUILD_NOTES = ("Coverage reads as a share of what applies; no blank cells "
+               "under What we found; one finding is not printed twice; "
+               "PERF-05/07/09 are measured, not manual")
 # ---------------------------------------------------------------------------
 
 

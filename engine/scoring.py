@@ -62,6 +62,39 @@ def load_catalog(path="checkpoints.csv"):
     return cat
 
 
+def _coverage(rows, catalog_total: int) -> dict:
+    """
+    What the READER should be told about coverage, as opposed to what the
+    scoring maths needs.
+
+    Two different numbers were being printed as one. `checked` counts rows that
+    could be SCORED, and the denominator counted every row the template has —
+    so International SEO showed "2/8" next to a rating of Excellent, and
+    Analytics showed "4/12". Both read as "we managed a third of the audit",
+    which is not what happened and is a bad thing for a client to conclude.
+
+    Two corrections, and they pull in opposite directions:
+
+      * N/A comes OUT of the denominator. A US-only law firm has six
+        international checkpoints that do not apply to it. They are not gaps in
+        our work and counting them as such invents a shortfall.
+
+      * Info goes INTO the numerator. An Info row is a measurement we took and
+        reported — a backlink count, a referring-domain total — it simply has
+        no pass/fail threshold behind it. Excluding it from "reviewed" hid
+        thirteen answered Off-Page rows and reported 10 of 29 for a section we
+        had largely measured.
+
+    What is left in the denominator and out of the numerator is the honest
+    remainder: checks that apply to this site and that we could not answer.
+    """
+    na = sum(1 for r in rows if r[1]["status"] == "N/A")
+    answered = sum(1 for r in rows if r[1]["status"] not in ("Need Access", "N/A"))
+    return {"reviewed": answered, "applies": max(answered, catalog_total - na),
+            "not_applicable": na}
+
+
+
 def score(findings: dict, catalog: dict, vertical: str | None = None):
     sections = defaultdict(list)
     for cid, f in findings.items():
@@ -83,10 +116,12 @@ def score(findings: dict, catalog: dict, vertical: str | None = None):
     for sec, rows in sections.items():
         applicable = [(c, f) for c, f, m in rows if f["status"] not in EXCLUDED]
         if not applicable:
-            per_section[sec] = {"score": None, "rating": "Not Assessed",
-                                "checked": 0, "total": catalog_totals[sec] or len(rows),
-                                "returned": len(rows),
-                                "failing": 0, "need_access": len(rows)}
+            per_section[sec] = {
+                "score": None, "rating": "Not Assessed",
+                "checked": 0, "total": catalog_totals[sec] or len(rows),
+                "returned": len(rows), "failing": 0, "need_access": len(rows),
+                **_coverage([(c, f) for c, f, _m in rows],
+                            catalog_totals[sec] or len(rows))}
             continue
         pen = 0.0
         fails = []
@@ -111,13 +146,16 @@ def score(findings: dict, catalog: dict, vertical: str | None = None):
         assessable = [r for r in rows
                       if r[1]["status"] not in ("N/A", "Info")]
         if len(applicable) / max(1, len(assessable)) < MIN_SECTION_COVERAGE:
-            per_section[sec] = {"score": None, "rating": "Not Assessed",
-                                "checked": len(applicable),
-                                "total": catalog_totals[sec] or len(rows),
-                                "returned": len(rows), "failing": len(fails),
-                                "need_access": sum(1 for _, f, _ in rows
-                                                   if f["status"] == "Need Access"),
-                                "insufficient_coverage": True}
+            per_section[sec] = {
+                "score": None, "rating": "Not Assessed",
+                "checked": len(applicable),
+                "total": catalog_totals[sec] or len(rows),
+                "returned": len(rows), "failing": len(fails),
+                "need_access": sum(1 for _, f, _ in rows
+                                   if f["status"] == "Need Access"),
+                "insufficient_coverage": True,
+                **_coverage([(c, f) for c, f, _m in rows],
+                            catalog_totals[sec] or len(rows))}
             continue
 
         per_section[sec] = {
@@ -126,6 +164,8 @@ def score(findings: dict, catalog: dict, vertical: str | None = None):
             "failing": len(fails),
             "need_access": sum(1 for _, f, _ in rows if f["status"] == "Need Access"),
             "failing_ids": fails,
+            **_coverage([(c, f) for c, f, _m in rows],
+                        catalog_totals[sec] or len(rows)),
         }
 
     scored = [v["score"] for v in per_section.values() if v["score"] is not None]

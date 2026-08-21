@@ -1,4 +1,89 @@
-# Changed files — build 2026.08.20-15
+# Changed files — build 2026.08.20-16
+
+## "It looks like we didn't finish the audit"
+
+You were reading it correctly, and the numbers were wrong.
+
+**Reviewed 4/12** was two different numbers printed as one ratio. The numerator
+excluded `Info` rows — measurements we *did* take and report, like a backlink
+count, that simply have no pass/fail threshold. The denominator counted every
+row the template has, including checks that do not apply to this client at all.
+
+So International SEO showed **2/8 · Excellent** for a US-only law firm whose
+other six international checkpoints are not gaps in our work, they are questions
+about markets it does not sell in. And Off-Page showed **10/29** for a section we
+had largely measured — thirteen answered rows were invisible.
+
+Two corrections pulling in opposite directions:
+
+- **N/A leaves the denominator.** A check that does not apply is not a shortfall.
+- **Info joins the numerator.** We measured it and printed it; that is reviewed.
+
+What is left is the honest remainder: checks that apply to this site and that we
+could not answer. Off-Page goes from 10/29 to roughly 23/29, and the caption now
+says what the pair means.
+
+---
+
+## Blank cells under "What we found"
+
+Every **Manual** row had an empty cell. The old reasoning was that the pill
+already says Manual and repeating one sentence down twelve rows is wallpaper.
+That was wrong: an empty cell in a column headed *What we found* does not read as
+"handled by hand", it reads as **nobody did this** — which is the opposite of
+true and the worst thing a paid deliverable can imply about itself.
+
+Each Manual row now carries a short, per-section note — four to eight words,
+specific enough to be information, brief enough that a column of them scans as a
+status rather than as prose. "Confirmed with an external TLS scanner."
+"Confirmed firing in GA4 DebugView on a real session."
+
+The dedupe skips them deliberately. Three Manual rows in a row *should* read the
+same; collapsing them to "Same finding as PERF-05" would say something false —
+they are three separate checks that happen to be handled the same way.
+
+### And three of them should never have been manual
+
+**PERF-05** (uncompressed JS/CSS), **PERF-07** (unminified), **PERF-09** (script
+and stylesheet weight) were telling an analyst to go and read a DevTools
+waterfall. The Lighthouse run we **already make** for PERF-10/11/19 answers all
+three outright — `uses-text-compression`, `unminified-javascript`,
+`unminified-css`, `resource-summary`. No new call; those audits were already in
+the response and we were ignoring them.
+
+---
+
+## One finding, printed twice
+
+Two separate bugs, same symptom.
+
+**In Top Findings** — ONP-23 "Unique title on every page" and ONP-01 "Issues with
+duplicate title tags" both printed *"83 pages share 25 duplicated title tags"* in
+consecutive rows. The dedupe that fixes exactly this was written months ago and
+wired only to the appendix, so it never ran on the page-3 table a client actually
+reads.
+
+**In the five headline findings** — items 2 and 3 were *"On-page fundamentals are
+inconsistent"* and *"Page titles don't say what each page is about"*, with the
+same evidence, the same rationale and the same remedy under both. There was
+already a merge pass for groups that would print the same *title*; there was none
+for two different titles resting on the same *observation*. Two of the client's
+five headline slots spent on one measurement.
+
+---
+
+## Copy and definitions
+
+| Was | Now |
+|---|---|
+| "…and its absence is not a fault." | "Google collects real-visitor speed data only for sites above a traffic threshold, and this site is below it." |
+| `srcset` used with no explanation | **Responsive images (srcset)** added to the glossary |
+
+Lazy loading turned out to be defined already — worth knowing that the definition
+only appears when the term is *first* used, so it can be several pages from where
+you noticed the gap.
+
+---
 
 ## GSC-20/21/22 — the plan, and why the last one was wrong
 

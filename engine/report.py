@@ -58,7 +58,8 @@ def render_console(meta, sc, findings, catalog):
         s = v["score"]
         bar = "█" * round((s or 0) / 10) if s is not None else ""
         print(f"  {SECTION_NAMES[k]:<26}{(s if s is not None else '—'):>7}  "
-              f"{v['rating']:<20}{v['checked']:>8}{v['failing']:>6}  {bar}")
+              f"{v['rating']:<20}"
+              f"{v.get('reviewed', v['checked']):>8}{v['failing']:>6}  {bar}")
     print("\n  STATUS MIX: " + " · ".join(f"{k} {st[k]}" for k in STATUS_ORDER if st[k]))
     print("=" * 78)
 
@@ -201,6 +202,37 @@ def _lamp(cid: str, status: str = "") -> str:
     if status in ("Need Access", "N/A") or not is_judged(cid):
         return ""
     return f"<span title='{JUDGED_NOTE}'>{LAMP}</span>"
+
+
+# What a "Manual" row says in the What-we-found column.
+#
+# It said nothing at all. The reasoning was that the pill already reads Manual
+# and repeating one sentence down twelve rows is wallpaper — but an empty cell
+# in a column headed "What we found" does not read as "handled by hand", it
+# reads as "nobody did this", which is the opposite of true and the worst thing
+# a paid deliverable can imply about itself.
+#
+# Short and per-section is the compromise: four to eight words, specific enough
+# to be information rather than boilerplate, brief enough that a column of them
+# scans as a status rather than as prose.
+MANUAL_NOTE = {
+    "SEC": "Confirmed with an external TLS scanner.",
+    "TECH": "Confirmed in Search Console during the engagement.",
+    "PERF": "Read from the DevTools waterfall on the slowest templates.",
+    "HTML": "Run through the W3C validator and an accessibility checker.",
+    "CANON": "Checked against pagination and any AMP variants.",
+    "ANA": "Confirmed firing in GA4 DebugView on a real session.",
+    "URL": "Checked in the page source.",
+    "INTL": "Checked against the countries they actually sell to.",
+    "ONP": "Checked on the priority templates.",
+    "GEO": "Recorded by the AI visibility monitor.",
+    "GSC": "Read from Search Console during the engagement.",
+}
+MANUAL_DEFAULT = "Reviewed by hand during the engagement."
+
+
+def manual_note(prefix: str) -> str:
+    return MANUAL_NOTE.get(prefix, MANUAL_DEFAULT)
 
 
 def _bubbles(text, seen, limit=2):
@@ -477,7 +509,8 @@ def render_html(meta, sc, findings, catalog, summary=None):
         P.append(f"<tr><td>{SECTION_NAMES[k]}</td><td>{bar}</td>"
                  f"<td class='num' style='text-align:left'>"
                  f"<b>{s if s is not None else '—'}</b> · {e(v['rating'])}</td>"
-                 f"<td class='num'>{v['checked']}/{v['total']}</td>"
+                 f"<td class='num'>{v.get('reviewed', v['checked'])}/"
+                 f"{v.get('applies', v['total'])}</td>"
                  f"<td class='num'>{v['failing']}</td></tr>")
     P.append("</table>")
 

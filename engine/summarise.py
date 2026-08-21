@@ -621,6 +621,39 @@ def _group_issues(findings: dict, catalog: dict, meta: dict, limit: int = 5) -> 
             merged[t] = (key, g)
     groups = {k: g for k, g in merged.values()}
 
+    # AND MERGE GROUPS THAT WOULD PRINT THE SAME SENTENCE.
+    #
+    # The pass above catches identical titles. It does not catch two DIFFERENT
+    # titles resting on the same observation, which is what shipped: findings 2
+    # and 3 read "On-page fundamentals are inconsistent" and "Page titles don't
+    # say what each page is about", and underneath both, word for word, "83
+    # pages share 25 duplicated title tags." Two of the client's five headline
+    # slots spent on one measurement, with the same rationale and the same
+    # remedy printed twice.
+    #
+    # If the exemplar evidence is the same, it is the same problem however the
+    # theme matcher keyed it. The earlier group wins the title because the
+    # ordering it arrived in is the scoring engine's own priority.
+    def _norm_ev(members):
+        if not members:
+            return ""
+        ev = (members[0][2].get("evidence") or "").strip().lower()
+        return " ".join(ev.split())
+
+    by_ev, kept = {}, {}
+    for key, g in groups.items():
+        g["members"].sort(key=lambda t: SEV_RANK.get(t[2].get("severity"), 5))
+        ev = _norm_ev(g["members"])
+        # Short evidence is not distinctive enough to merge on — "Not detected."
+        # is shared by a dozen unrelated checkpoints.
+        if len(ev) >= 40 and ev in by_ev:
+            kept[by_ev[ev]]["members"].extend(g["members"])
+            continue
+        if len(ev) >= 40:
+            by_ev[ev] = key
+        kept[key] = g
+    groups = kept
+
     out = []
     for key, g in groups.items():
         # Exemplar = worst member; ties broken by the order top_issues gave us,

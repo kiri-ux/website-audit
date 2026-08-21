@@ -262,6 +262,29 @@ def main():
           (c["client"], c["vendor"], c["manual"], c["measured"]) == (1, 1, 1, 1),
           str(c))
 
+    print("\nCOVERAGE IS REPORTED AS 'OF WHAT APPLIES', NOT 'OF THE TEMPLATE'")
+    # "Analytics & Tracking — Reviewed 4/12" next to a rating of Strong reads as
+    # "they managed a third of the audit". It was two different numbers printed
+    # as one ratio: a numerator that excluded Info rows we HAD measured, over a
+    # denominator that counted template rows which do not apply to this site.
+    from engine.scoring import _coverage
+    rows = [("A", {"status": "Pass"}), ("B", {"status": "Fail"}),
+            ("C", {"status": "Info"}),            # measured, no threshold
+            ("D", {"status": "N/A"}),             # does not apply here
+            ("E", {"status": "Need Access"})]     # applies, could not answer
+    cov = _coverage(rows, catalog_total=8)
+    check("an Info row counts as reviewed — we measured and reported it",
+          cov["reviewed"] == 3, str(cov))
+    check("an N/A row leaves the denominator, not the numerator",
+          cov["applies"] == 7 and cov["not_applicable"] == 1, str(cov))
+    check("a Need Access row stays in the denominator — it applies and we missed it",
+          cov["applies"] - cov["reviewed"] == 4, str(cov))
+    # A section of nothing but inapplicable rows must not read as 0/8.
+    allna = _coverage([("A", {"status": "N/A"})] * 8, catalog_total=8)
+    check("a section that does not apply at all never reports a zero denominator",
+          allna["applies"] >= allna["reviewed"] and allna["applies"] == 0,
+          str(allna))
+
     print("\nSEVERITY COUNTS OPEN ISSUES ONLY")
     sev = _severity_counts({
         "A": {"status": "Fail", "severity": "Critical"},

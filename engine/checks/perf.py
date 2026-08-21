@@ -102,10 +102,10 @@ def perf10(a, c):
               f"from Google rates this site {word}.")
     else:
         passed = score >= 90
-        ev = (f"Lighthouse performance score {score}/100, measured in a lab "
-              f"test. Google has no real-visitor speed data for this site yet — "
-              f"that needs more traffic than it currently gets, and its absence "
-              f"is not a fault.")
+        ev = (f"Lighthouse performance score {score}/100, from a lab test. "
+              f"Google collects real-visitor speed data only for sites above a "
+              f"traffic threshold, and this site is below it, so the lab score "
+              f"is what we have.")
     return finding("Pass" if passed else "Fail",
                    {"lighthouse_performance": score, "crux_assessment": overall},
                    ev,
@@ -146,6 +146,101 @@ def perf19(a, c):
                    if fails else "Image optimisation audits pass.", [a.start_url],
                    "Medium" if fails else "Low",
                    "Serve next-gen formats (WebP/AVIF) and correctly sized images." if fails else "")
+
+
+# ---------------- asset delivery, from the same Lighthouse run ----------
+#
+# PERF-05, 07 and 09 were sitting in the report as "Manual — read the DevTools
+# waterfall", which is a strange thing to ask of an analyst when the Lighthouse
+# run we ALREADY make for PERF-10/11/19 answers all three outright. Nothing new
+# is fetched here; this reads audits already in the response.
+
+
+def _byte_kb(aud) -> int:
+    """`overallSavingsBytes` is where Lighthouse puts the wasted weight."""
+    d = (aud or {}).get("details") or {}
+    for k in ("overallSavingsBytes", "wastedBytes"):
+        v = d.get(k) if isinstance(d, dict) else None
+        if isinstance(v, (int, float)) and v:
+            return int(v / 1024)
+    return 0
+
+
+@check("PERF-05")
+def perf05(a, c):
+    data, err = _psi(a, c)
+    if not data:
+        return _need_access(err, "Text compression")
+    aud = (data["lighthouseResult"]["audits"] or {}).get("uses-text-compression")
+    if not aud:
+        return finding("N/A", {}, "Lighthouse did not report on text "
+                                  "compression for this page.", [], "Low",
+                       confidence=0.5)
+    ok = aud.get("score") in (1, None)
+    kb = _byte_kb(aud)
+    return finding("Pass" if ok else "Fail", {"wasted_kb": kb},
+                   "Text assets are served compressed." if ok else
+                   f"JavaScript and CSS are served uncompressed — "
+                   f"{kb:,} KB of transfer wasted on the homepage alone.",
+                   [a.start_url], "Low" if ok else "Medium",
+                   "" if ok else "Turn on gzip or brotli compression at the "
+                                 "server or CDN. It is a configuration change, "
+                                 "not a code change.")
+
+
+@check("PERF-07")
+def perf07(a, c):
+    data, err = _psi(a, c)
+    if not data:
+        return _need_access(err, "Minification")
+    auds = data["lighthouseResult"]["audits"] or {}
+    bad, kb = [], 0
+    for key, label in (("unminified-javascript", "JavaScript"),
+                       ("unminified-css", "CSS")):
+        aud = auds.get(key)
+        if aud and aud.get("score") not in (1, None):
+            bad.append(label)
+            kb += _byte_kb(aud)
+    if not any(k in auds for k in ("unminified-javascript", "unminified-css")):
+        return finding("N/A", {}, "Lighthouse did not report on minification "
+                                  "for this page.", [], "Low", confidence=0.5)
+    return finding("Pass" if not bad else "Fail",
+                   {"unminified": bad, "wasted_kb": kb},
+                   "JavaScript and CSS are minified." if not bad else
+                   f"{' and '.join(bad)} {'is' if len(bad) == 1 else 'are'} "
+                   f"not minified — {kb:,} KB of avoidable weight.",
+                   [a.start_url], "Low" if not bad else "Medium",
+                   "" if not bad else "Enable minification in the build or at "
+                                      "the CDN.")
+
+
+@check("PERF-09")
+def perf09(a, c):
+    data, err = _psi(a, c)
+    if not data:
+        return _need_access(err, "Script and stylesheet weight")
+    items = (((data["lighthouseResult"]["audits"] or {})
+              .get("resource-summary") or {}).get("details") or {}).get("items") or []
+    by = {str(i.get("resourceType", "")).lower(): i for i in items}
+    js = int((by.get("script") or {}).get("transferSize") or 0)
+    css = int((by.get("stylesheet") or {}).get("transferSize") or 0)
+    if not (js or css):
+        return finding("N/A", {}, "Lighthouse did not report a resource "
+                                  "breakdown for this page.", [], "Low",
+                       confidence=0.5)
+    kb = round((js + css) / 1024)
+    # 500 KB of script and stylesheet is already heavy for a content site; it is
+    # roughly where Lighthouse's own scoring starts penalising main-thread work.
+    ok = kb <= 500
+    return finding("Pass" if ok else "Fail",
+                   {"js_kb": round(js / 1024), "css_kb": round(css / 1024),
+                    "total_kb": kb},
+                   f"JavaScript and CSS total {kb:,} KB on the homepage "
+                   f"({round(js / 1024):,} KB of script, "
+                   f"{round(css / 1024):,} KB of styles).",
+                   [a.start_url], "Low" if ok else "Medium",
+                   "" if ok else "Split the bundles, drop unused libraries and "
+                                 "defer what is not needed for first paint.")
 
 
 # ---------------- crawler-derived (SEMRUSH-SPIKE rows) ----------------

@@ -458,9 +458,9 @@ def _cwv_row(known: dict | None) -> dict | None:
                   "section.")
     if val:
         return _f("N/A", {"lighthouse_performance": val.get("lighthouse_performance")},
-                  "Google has no real-visitor speed data for this site yet, so the "
-                  "Core Web Vitals report is empty. That needs more traffic than the "
-                  "site currently gets and is not a fault.", "Low", "", 0.6)
+                  "The Core Web Vitals report is empty because Google collects "
+                  "real-visitor speed data only for sites above a traffic "
+                  "threshold, and this site is below it.", "Low", "", 0.6)
     return None
 
 

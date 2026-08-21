@@ -105,11 +105,11 @@ def _synthetic_rows(catalog: dict, findings: dict, prefix: str) -> list:
             continue
         who = blocked_on(cid, None)
         if who == "manual":
-            # No evidence text. The pill already says Manual and the appendix
-            # intro says what Manual means; repeating the same sentence down
-            # twelve consecutive rows is wallpaper, and it made a section of
-            # ordinary unautomated checks look like a wall of problems.
-            out.append((cid, {"status": "Manual", "evidence": "",
+            # A short, per-section note rather than nothing. An empty cell under
+            # "What we found" reads as work not done; see report.MANUAL_NOTE.
+            from .report import manual_note
+            out.append((cid, {"status": "Manual",
+                              "evidence": manual_note(prefix),
                               "severity": "Low"}))
         else:
             out.append((cid, {"status": "Need Access",
@@ -192,6 +192,14 @@ def _dedupe_evidence(rows: list) -> list:
     for cid, f in rows:
         ev = (f.get("evidence") or "").strip()
         n = norm(ev)
+        # Manual rows carry a deliberate per-section note, and several in a row
+        # SHOULD read the same — that repetition is the status, not padding.
+        # Collapsing them to "Same finding as PERF-05." would say something
+        # false: they are not one finding, they are three separate checks that
+        # happen to be handled the same way.
+        if f.get("status") == "Manual":
+            out.append((cid, f))
+            continue
         if len(n) < 40:                      # short rows are not the problem
             seen.append((cid, n, ev))
             out.append((cid, f))
@@ -988,9 +996,10 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     # area", and the 2 beside it is "2 of those 4 came back a problem". Read
     # quickly, "4/12 ... 2" looks like one ratio. Name both, and say so.
     story.append(Paragraph(
-        "<b>Reviewed</b> is how many of that area's checks we could answer. "
-        "<b>Issues</b> counts how many of those came back a problem — it is "
-        "out of the number reviewed, not the total.", S["small"]))
+        "<b>Reviewed</b> is how many of that area's checks we answered, out of "
+        "the checks that apply to a site like yours — checks that don't apply "
+        "are left out of both numbers rather than counted against us. "
+        "<b>Issues</b> counts how many came back a problem.", S["small"]))
     story.append(Spacer(1, 6))
     rows = [[Paragraph("<b>Section</b>", S["cellsm"]),
              Paragraph("<b>Score</b>", S["cellsm"]),
@@ -1004,7 +1013,8 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             Paragraph("—" if sc is None else f"<b>{sc}</b>", S["cell"]),
             MiniMeter(sc) if sc is not None else "",
             Paragraph(_p(v.get("rating")), S["cell"]),
-            Paragraph(f"{v.get('checked')}/{v.get('total')}", S["cellsm"]),
+            Paragraph(f"{v.get('reviewed', v.get('checked'))}/"
+                      f"{v.get('applies', v.get('total'))}", S["cellsm"]),
             Paragraph(str(v.get("failing", 0)), S["cellsm"]),
         ])
     t = Table(rows, colWidths=[2.2 * inch, 0.45 * inch, 1.25 * inch,
@@ -1020,6 +1030,12 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     # ------------------------------------------------ priority issues
     from .scoring import top_issues
     issues = top_issues(findings, catalog, 14)
+    # The dedupe was wired only to the appendix, so this table — which is on
+    # page 3, where a client is still reading — printed "83 pages share 25
+    # duplicated title tags" twice in a row, under ONP-23 and again under
+    # ONP-01. One measurement answers both checkpoints; saying so once and
+    # cross-referencing is shorter and more useful than saying it twice.
+    issues = _dedupe_evidence(issues)
     if issues:
         story.append(Paragraph("Priority Issues", S["h2"]))
         rows = [[Paragraph("<b>ID</b>", S["cellsm"]),
