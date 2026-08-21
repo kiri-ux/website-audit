@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-16"
-BUILD_NOTES = ("Coverage reads as a share of what applies; no blank cells "
-               "under What we found; one finding is not printed twice; "
-               "PERF-05/07/09 are measured, not manual")
+BUILD = "2026.08.20-17"
+BUILD_NOTES = ("The footer reaches the judgment layer, so the address is "
+               "found; nine more checkpoints measured instead of manual; "
+               "At a glance in the PDF")
 # ---------------------------------------------------------------------------
 
 

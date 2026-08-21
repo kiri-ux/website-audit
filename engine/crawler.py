@@ -69,6 +69,7 @@ class Page:
     word_count: int = 0
     text_html_ratio: float = 0.0
     rendered_text: str = ""
+    footer_text: str = ""      # site-wide footer — where NAP lives
 
     # assets & relationships
     images: list = field(default_factory=list)        # {src, alt, loading, width, height}
@@ -379,6 +380,27 @@ class Crawler:
         # text
         for bad in soup(["script", "style", "noscript"]):
             bad.decompose()
+
+        # THE FOOTER, CAPTURED SEPARATELY.
+        #
+        # The name, address, phone and hours live in the footer on almost every
+        # small-business site, and it is the last thing in the DOM. Body text is
+        # capped and then sliced head-and-tail before it reaches the judgment
+        # layer, so on a long page the footer is exactly what falls out of the
+        # middle — which is how a report told a client twice that no physical
+        # address was visible on a site that prints one on every page.
+        #
+        # Pulling it out here means it can be attached to every judgment prompt
+        # in full, whatever happens to the body slice. It is short, it is the
+        # same on every page, and it is where the answer usually is.
+        foot = (soup.find("footer")
+                or soup.find(attrs={"role": "contentinfo"})
+                or soup.find(id=lambda v: v and "footer" in v.lower())
+                or soup.find(class_=lambda v: v and "footer" in " ".join(
+                    v if isinstance(v, list) else [v]).lower()))
+        if foot is not None:
+            pg.footer_text = foot.get_text(" ", strip=True)[:1200]
+
         text = soup.get_text(" ", strip=True)
         pg.rendered_text = (rendered or text)[:20000]
         pg.word_count = len(text.split())

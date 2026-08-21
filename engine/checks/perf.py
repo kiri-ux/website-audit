@@ -243,6 +243,166 @@ def perf09(a, c):
                                  "defer what is not needed for first paint.")
 
 
+# ---------------- mobile + accessibility, same Lighthouse run -----------
+#
+# MOB-03..06 and HTML-09 were reporting "Waiting on our data provider for this
+# run" — which is not true and reads to a client as an unfinished audit. The
+# Lighthouse run this module ALREADY makes is a MOBILE run, and it carries every
+# one of these audits. Nothing new is fetched.
+#
+# One honest note on MOB-03: Google retired the standalone Mobile-Friendly Test
+# API. What replaced it is exactly these Lighthouse audits, so that is what the
+# row says it is.
+
+
+def _aud(data, key):
+    return ((data.get("lighthouseResult") or {}).get("audits") or {}).get(key)
+
+
+def _failed(data, key):
+    """True only if the audit ran AND failed. A missing audit is not a failure."""
+    a = _aud(data, key)
+    return bool(a) and a.get("score") not in (1, None)
+
+
+@check("MOB-03")
+def mob03(a, c):
+    data, err = _psi(a, c)
+    if not data:
+        return _need_access(err, "Mobile friendliness")
+    keys = {"viewport": "no mobile viewport is declared",
+            "content-width": "content is wider than the screen",
+            "font-size": "text is too small to read without zooming",
+            "tap-targets": "tap targets are too small or too close together"}
+    present = [k for k in keys if _aud(data, k)]
+    if not present:
+        return finding("N/A", {}, "Lighthouse returned no mobile audits for "
+                                  "this page.", [], "Low", confidence=0.5)
+    bad = [keys[k] for k in present if _failed(data, k)]
+    return finding("Pass" if not bad else "Fail",
+                   {"checked": present, "failing": bad},
+                   "The homepage passes Google's mobile checks — viewport, "
+                   "content width, text size and tap targets."
+                   if not bad else
+                   f"The homepage fails {len(bad)} of Google's mobile checks: "
+                   f"{'; '.join(bad)}.",
+                   [a.start_url], "Low" if not bad else "High",
+                   "" if bad == [] else "Fix these before anything else on "
+                                        "mobile — most of this site's visitors "
+                                        "arrive on a phone.")
+
+
+@check("MOB-04")
+def mob04(a, c):
+    data, err = _psi(a, c)
+    if not data:
+        return _need_access(err, "Responsive design")
+    if not (_aud(data, "viewport") or _aud(data, "content-width")):
+        return finding("N/A", {}, "Lighthouse returned no viewport audit for "
+                                  "this page.", [], "Low", confidence=0.5)
+    vp = _failed(data, "viewport")
+    cw = _failed(data, "content-width")
+    bits = []
+    if vp:
+        bits.append("no viewport meta tag is set")
+    if cw:
+        bits.append("the page is wider than the viewport")
+    return finding("Pass" if not bits else "Fail",
+                   {"viewport_ok": not vp, "content_width_ok": not cw},
+                   "The page declares a mobile viewport and fits the screen."
+                   if not bits else
+                   f"The layout does not adapt to a phone — {' and '.join(bits)}.",
+                   [a.start_url], "Low" if not bits else "High",
+                   "" if not bits else "Add a responsive viewport meta tag and "
+                                       "make the layout fluid.")
+
+
+@check("MOB-05")
+def mob05(a, c):
+    data, err = _psi(a, c)
+    if not data:
+        return _need_access(err, "Touch elements")
+    aud = _aud(data, "tap-targets")
+    if not aud:
+        return finding("N/A", {}, "Lighthouse did not report on tap targets "
+                                  "for this page.", [], "Low", confidence=0.5)
+    ok = aud.get("score") in (1, None)
+    n = len((((aud.get("details") or {}).get("items")) or []))
+    return finding("Pass" if ok else "Fail", {"undersized_targets": n},
+                   "Buttons and links are large enough and far enough apart to "
+                   "tap accurately." if ok else
+                   f"{n} button(s) or link(s) are too small or too close "
+                   f"together to tap reliably on a phone.",
+                   [a.start_url], "Low" if ok else "Medium",
+                   "" if ok else "Give tap targets at least 48x48px and 8px of "
+                                 "space around them.")
+
+
+@check("MOB-06")
+def mob06(a, c):
+    data, err = _psi(a, c)
+    if not data:
+        return _need_access(err, "Font readability")
+    aud = _aud(data, "font-size")
+    if not aud:
+        return finding("N/A", {}, "Lighthouse did not report on font sizes for "
+                                  "this page.", [], "Low", confidence=0.5)
+    ok = aud.get("score") in (1, None)
+    return finding("Pass" if ok else "Fail",
+                   {"legible": ok, "detail": aud.get("displayValue")},
+                   "Body text is large enough to read on a phone without "
+                   "zooming." if ok else
+                   f"Some text is too small to read on a phone without zooming "
+                   f"({aud.get('displayValue') or 'below 12px'}).",
+                   [a.start_url], "Low" if ok else "Medium",
+                   "" if ok else "Set a base font size of at least 16px on "
+                                 "body copy.")
+
+
+@check("HTML-09")
+def html09(a, c):
+    data, err = _psi(a, c)
+    if not data:
+        return _need_access(err, "Accessibility basics")
+    cats = (data.get("lighthouseResult") or {}).get("categories") or {}
+    acc = (cats.get("accessibility") or {}).get("score")
+    if acc is None:
+        return finding("N/A", {}, "Lighthouse returned no accessibility score "
+                                  "for this page.", [], "Low", confidence=0.5)
+    sc = round(acc * 100)
+    named = [k for k in ("color-contrast", "image-alt", "link-name",
+                         "button-name", "label", "html-has-lang")
+             if _failed(data, k)]
+    return finding("Pass" if sc >= 90 else "Fail", {"score": sc, "failing": named},
+                   f"Accessibility scores {sc}/100 on the homepage"
+                   + (f"; the failing basics are {', '.join(named)}." if named
+                      else " with no failing basics."),
+                   [a.start_url], "Low" if sc >= 90 else "Medium",
+                   "" if sc >= 90 else "Fix the failing items above — most are "
+                                       "contrast, alt text and unlabelled "
+                                       "controls, and all are quick.")
+
+
+@check("ONP-43")
+def onp43(a, c):
+    """Same audit as PERF-05; the template asks the question in both sections."""
+    data, err = _psi(a, c)
+    if not data:
+        return _need_access(err, "Compression")
+    aud = _aud(data, "uses-text-compression")
+    if not aud:
+        return finding("N/A", {}, "Lighthouse did not report on compression "
+                                  "for this page.", [], "Low", confidence=0.5)
+    ok = aud.get("score") in (1, None)
+    kb = _byte_kb(aud)
+    return finding("Pass" if ok else "Fail", {"wasted_kb": kb},
+                   "Text assets are served compressed." if ok else
+                   f"Compression is off — {kb:,} KB of avoidable transfer on "
+                   f"the homepage alone.",
+                   [a.start_url], "Low" if ok else "Medium",
+                   "" if ok else "Turn on gzip or brotli at the server or CDN.")
+
+
 # ---------------- crawler-derived (SEMRUSH-SPIKE rows) ----------------
 @check("PERF-01")
 def perf01(a, c):

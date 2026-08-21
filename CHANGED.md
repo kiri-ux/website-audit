@@ -1,4 +1,98 @@
-# Changed files — build 2026.08.20-16
+# Changed files — build 2026.08.20-17
+
+## "No address" when it's in the footer
+
+Third time this has reached a client, and the previous two fixes were both aimed
+at the wrong place. Adding JSON-LD helped where the address was in the schema. It
+did nothing where the address is simply printed in the footer.
+
+**The footer is the last thing in the DOM.** Body text is capped at 20,000
+characters and then sliced head-and-tail before it reaches the judgment layer —
+so on a long page, the footer is *precisely* what falls out of the middle. The
+address was never in the material the model saw. No amount of prompt tuning fixes
+a string that does not contain the thing.
+
+The crawler now captures the footer into its own field — `<footer>`,
+`role="contentinfo"`, or an id/class containing "footer" — and every judgment
+prompt carries it **in full, never sliced**, with a rule saying anything in it is
+present site-wide and must be treated as visible to visitors.
+
+A second rule went in alongside it, because the same row exposed it: evidence
+must be written as a finding about the site, addressed to its owner. *"…no
+physical address is visible in the provided material from any contact page URL"*
+describes how the sausage was made, appears nowhere else in the document, and so
+stands out as machine output on an otherwise human page.
+
+**This needs a fresh crawl to take effect.** The footer field does not exist in
+artifacts captured by earlier builds, so reusing a stored crawl keeps the old
+behaviour for that run.
+
+---
+
+## Nine checkpoints that were never manual
+
+Every one of these was printing "Manual" or "Waiting on our data provider" while
+the answer sat unread in a Lighthouse response we already fetch for
+PERF-10/11/19. No new API calls, no new credentials.
+
+| | Answered from |
+|---|---|
+| **MOB-03** Mobile Friendly Test | viewport, content-width, font-size, tap-targets |
+| **MOB-04** Responsive design | viewport + content-width |
+| **MOB-05** Touch elements | tap-targets |
+| **MOB-06** Font readability | font-size |
+| **HTML-09** Accessibility basics | the Lighthouse accessibility category, naming the failing basics |
+| **ONP-43** Proper compression | uses-text-compression |
+| **PERF-05 / 07 / 09** | compression, minification, resource-summary |
+
+Plus **HTML-04** (Flash, Java applets, Silverlight) from the crawl — it is a
+substring search over HTML we already hold, which is a strange thing to ask a
+person to do by hand.
+
+One honest note on MOB-03: Google retired the standalone Mobile-Friendly Test
+API. What replaced it is exactly these Lighthouse audits, so that is what the row
+now says it is.
+
+---
+
+## At a glance, in the PDF
+
+The tile strip from the operator dashboard, under the score ring: **Passing ·
+Failing · Worth a look · Need your access · Pages reviewed**. Five whole numbers
+with no ratios to decode — it answers "how did we do" before the reader has to
+interpret a bar.
+
+Hairlines between tiles rather than five separate cards; at 6.5 inches, five
+bordered boxes spend more ink on chrome than on numbers.
+
+---
+
+## Copy
+
+**"44 checks are ours to finish… reviewed by hand rather than by crawler"** had
+two faults: it said *crawler*, and it left you unsure whether any of it was
+yours. Nothing on that line is. It now reads "checks we finish ourselves, with
+nothing needed from you", and says plainly that they never count against the
+result.
+
+**Nofollow** added to the glossary — "0 of 875 outbound external links use
+rel=nofollow" is unreadable without it. "Pages crawled" on the dashboard tiles is
+now "Pages reviewed".
+
+---
+
+## The OFF-13/16/17/19/20 "Need Access" rows
+
+Already fixed in ‑14; they need a rerun to clear. The anchors endpoint has no
+`dofollow` field — it reports a total and a *nofollow* count, and followed is the
+difference. Reading a key that does not exist summed to zero, and an implausible
+zero is reported as unreadable rather than printed as a measurement, which is why
+you saw Need Access rather than a confident "0.0% followed".
+
+**OFF-18 Image backlinks** is the one genuinely missing endpoint. Say the word
+and it is a small addition.
+
+---
 
 ## "It looks like we didn't finish the audit"
 

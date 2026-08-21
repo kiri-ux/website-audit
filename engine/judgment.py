@@ -47,6 +47,16 @@ RULES = (
     '"Not Implemented" with a low confidence and say what was missing.\n'
     "- Cite specific URLs in evidence.\n"
     "- Do not soften or dramatise. No marketing language.\n"
+    # The evidence is printed verbatim in a document the client reads. Phrases
+    # like "in the provided material" or "the excerpt supplied" describe how the
+    # sausage was made and appear nowhere else in the report, so they stand out
+    # as machine output on an otherwise human page.
+    "- Write evidence as a finding about the SITE, addressed to its owner. "
+    "Never refer to \"the provided material\", \"the excerpt\", \"the sample\" "
+    "or what you were given — say what is or is not on the page.\n"
+    "- The FOOTER block appears on every page of the site. Anything in it — an "
+    "address, a phone number, opening hours, a license number — is present "
+    "site-wide and must be treated as visible to visitors.\n"
 )
 
 
@@ -95,6 +105,12 @@ def _slice(pages, chars=1400, schema=False):
         block = (f"URL: {p.url}\nTITLE: {p.title or '(none)'}\n"
                  f"H1: {'; '.join(p.h1) or '(none)'}\n"
                  f"TEXT: {_headtail(p.rendered_text, chars)}")
+        # The footer, always, in full and never sliced. It is the last thing in
+        # the DOM, so a head-and-tail cut of a long page drops it — and it is
+        # where the address, phone and opening hours actually are.
+        foot = (getattr(p, "footer_text", "") or "").strip()
+        if foot:
+            block += f"\nFOOTER (appears on every page): {foot[:900]}"
         if schema and getattr(p, "schema_raw", None):
             import json as _j
             raw = _j.dumps(p.schema_raw)[:1800]

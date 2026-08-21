@@ -912,6 +912,29 @@ def html03(a, c):
                    bad[:20], "Low")
 
 
+@check("HTML-04")
+def html04(a, c):
+    """
+    Flash, Java applets, Silverlight — plugin content no browser still runs.
+
+    Was sitting in the report as a manual check. It is a substring search over
+    HTML we already hold, which is a strange thing to ask a person to do.
+    """
+    rx = re.compile(r"<applet\b|<embed\b[^>]*(?:swf|x-shockwave|silverlight)|"
+                    r"type=[\"']application/x-shockwave|\.swf\b|"
+                    r"type=[\"']application/x-java", re.I)
+    bad = [p.url for p in OK(a) if rx.search(p.rendered_text or "")]
+    return finding("Fail" if bad else "Pass", {"count": len(bad)},
+                   f"{len(bad)} pages embed plugin content (Flash, Java or "
+                   f"Silverlight) that no current browser will run."
+                   if bad else
+                   "No Flash, Java or Silverlight content is embedded anywhere "
+                   "on the site.",
+                   bad[:20], "Medium" if bad else "Low",
+                   "Replace it with HTML5 video or native markup — visitors "
+                   "currently see an empty space." if bad else "")
+
+
 # ===================== INTERNATIONAL =====================
 @check("INTL-04")  # [SEMRUSH-SPIKE]
 def intl04(a, c):

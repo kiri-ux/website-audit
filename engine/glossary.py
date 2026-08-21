@@ -42,6 +42,13 @@ TERMS = {
         "are — a product, a price, a review, a store. It is what produces the "
         "star ratings and prices you see in results.",
         (r"\bschema\b", r"structured data", r"json-?ld", r"rich result")),
+    "nofollow": (
+        "Nofollow", "\U0001F6AB", "\u2298",
+        "A tag on a link telling search engines not to pass ranking credit "
+        "through it. Used on paid, sponsored and user-posted links. A followed "
+        "link passes credit; a nofollowed one still sends visitors but not "
+        "authority.",
+        (r"nofollow", r"rel=.?nofollow")),
     "srcset": (
         "Responsive images (srcset)", "\U0001F5BC", "\u25A4",
         "A list of the same image at several sizes, so a phone downloads a "

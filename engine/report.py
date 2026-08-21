@@ -477,7 +477,7 @@ def render_html(meta, sc, findings, catalog, summary=None):
                  (st["Fail"], "Failing"),
                  (st["Not Implemented"], "Not implemented"),
                  (st["Need Access"], "Need access"),
-                 (meta["pages_crawled"], "Pages crawled")):
+                 (meta["pages_crawled"], "Pages reviewed")):
         P.append(f"<div class='tile'><div class='v'>{v}</div><div class='l'>{l}</div></div>")
     P.append("</div>")
 

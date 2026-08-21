@@ -837,6 +837,47 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         ("TOPPADDING", (0, 0), (-1, -1), 12), ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
     ]))
     story.append(hero)
+    story.append(Spacer(1, 12))
+
+    # ---- at a glance ----------------------------------------------------
+    # The tile strip from the operator dashboard, which reads faster than any
+    # of the charts under it: five whole numbers, no ratios to decode, the
+    # shape of the whole audit in one line. It answers "how did we do" before
+    # the reader has to interpret a bar.
+    from collections import Counter as _C
+    _st = _C(f.get("status") for f in findings.values())
+    tiles = [(_st.get("Pass", 0), "Passing"),
+             (_st.get("Fail", 0) + _st.get("Not Implemented", 0), "Failing"),
+             (_st.get("Warning", 0), "Worth a look"),
+             (cov[1], "Need your access"),
+             (meta.get("pages_crawled") or 0, "Pages reviewed")]
+    # A style of its own. Setting the size with an inline <font> tag leaves the
+    # PARAGRAPH's leading at the 11pt the cell style carries, so 19pt digits
+    # overflowed their row and the labels printed on top of the numbers.
+    big = ParagraphStyle("glance", parent=S["cell"], fontSize=19, leading=21)
+    trow, lrow = [], []
+    for v, l in tiles:
+        trow.append(Paragraph(f"<b>{v}</b>", big))
+        lrow.append(Paragraph(f"<font size=7.5 color='#52514e'>{l}</font>",
+                              S["cell"]))
+    w = 6.55 / len(tiles) * inch
+    glance = Table([trow, lrow], colWidths=[w] * len(tiles),
+                   rowHeights=[0.34 * inch, 0.20 * inch])
+    glance.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BACKGROUND", (0, 0), (-1, -1), SURFACE),
+        ("BOX", (0, 0), (-1, -1), 0.5, LINE),
+        # Hairlines between tiles rather than five separate boxes: at this width
+        # five bordered cards spend more ink on chrome than on numbers.
+        ("LINEAFTER", (0, 0), (-2, -1), 0.5, LINE),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, 0), 9),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 0),
+        ("TOPPADDING", (0, 1), (-1, 1), 1),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), 9),
+    ]))
+    story.append(glance)
     story.append(Spacer(1, 14))
 
     # ---- severity distribution + coverage, side by side -----------------
@@ -1348,11 +1389,15 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
          f"thing on this list that needs anything from your side."
          if need_client else
          "Nothing — every check that depends on your accounts was answered."),
+        # Two faults in the old wording. It said "crawler", which does not
+        # belong in a client document, and it left the reader unsure whether
+        # any of it was theirs to do. Nothing on this line is.
         ("What we complete during the engagement",
-         f"{ours} checks are ours to finish: off-page authority and rankings "
-         f"come from our data providers, and a further set is reviewed by hand "
-         f"rather than by crawler. They are also left out of the scoring until "
-         f"they are answered."),
+         f"{ours} checks we finish ourselves, with nothing needed from you: "
+         f"off-page authority and keyword rankings come from our data "
+         f"providers, and the rest are judgment calls an analyst makes by hand. "
+         f"They are left out of the scoring until they are answered, so they "
+         f"never count against your result."),
         ("Not applicable", f"{na} checks don't apply to a site built like "
                            f"yours, so they're left out."),
         ("Scoring", "Each area scores out of 100 from the checks we could run, "
