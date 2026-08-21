@@ -15,6 +15,7 @@ because it overwrites findings for the audit rather than appending.
 """
 from __future__ import annotations
 import json
+import os
 import time
 import uuid
 
@@ -87,7 +88,23 @@ class RedisQueue:
 
     def __init__(self, url: str):
         import redis
-        self.r = redis.from_url(url, decode_responses=True)
+        # Socket timeouts, for the same reason the Postgres connect timeout
+        # exists: a redis-py client built without them will wait FOREVER on a
+        # host that accepts the connection and then goes quiet. The health
+        # check reads queue depth, so an unbounded wait there stalls a request
+        # thread, and enough stalled threads stop the health check answering at
+        # all — which is how a Redis hiccup became a 502 on the report page.
+        #
+        # `lease()` is the deliberate exception: it uses a 2-second blocking pop
+        # and must be allowed to sit on that call, so it gets a socket timeout
+        # comfortably longer than its own block, not a shorter one.
+        self.r = redis.from_url(
+            url, decode_responses=True,
+            socket_connect_timeout=float(os.getenv("REDIS_CONNECT_TIMEOUT", "5")),
+            socket_timeout=float(os.getenv("REDIS_TIMEOUT", "10")),
+            socket_keepalive=True,
+            health_check_interval=30,
+            retry_on_timeout=True)
 
     def enqueue(self, audit_id: str, job_type: str = "audit") -> str:
         jid = uuid.uuid4().hex[:16]

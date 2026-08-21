@@ -7,9 +7,17 @@ bundler. The finished report itself is rendered by engine/report.py.
 """
 from __future__ import annotations
 import html as _h
+import os
+import time as _time
 
 from .config import cfg
 from . import version
+
+# How long a run may go without a progress update before the page stops
+# pretending it is still working. Generous on purpose: the judgment layer can sit
+# quiet for a while between steps, and calling a live run dead is a worse error
+# than taking a few extra minutes to notice a dead one.
+STALE_AFTER_S = int(os.getenv("STALE_AFTER_S", "600"))
 
 CSS = """
 /*
@@ -380,6 +388,7 @@ def dashboard_html(audits, principal, queue_depth):
             "max_pages": o.get("max_pages") or 150,
             "primary_markets": o.get("primary_markets") or "",
             "primary_conversion": o.get("primary_conversion") or "",
+            "partner": o.get("partner") or "",
             "gsc_property": o.get("gsc_property") or "",
             "ga4_property_id": o.get("ga4_property_id") or "",
             "render_js": bool(o.get("render_js")),
@@ -392,6 +401,7 @@ def dashboard_html(audits, principal, queue_depth):
                  ("Max pages", st["max_pages"]),
                  ("Primary markets", st["primary_markets"] or "—"),
                  ("Primary conversion", st["primary_conversion"] or "—"),
+                 ("Prepared by", st["partner"] or "—"),
                  ("Search Console property", st["gsc_property"] or "auto"),
                  ("GA4 property", st["ga4_property_id"] or "auto"),
                  ("Render JavaScript", "yes" if st["render_js"] else "no"),
@@ -546,6 +556,14 @@ def dashboard_html(audits, principal, queue_depth):
         <input name='primary_conversion' form='auditform'
                placeholder='Book an appointment'></div>
     </div>
+
+    <div style='margin-top:14px'>
+      <label>Prepared by</label>
+      <input name='partner' form='auditform'
+             placeholder='Vici Media'>
+      <div style='font-size:12px;color:var(--muted);margin-top:4px'>
+        Name on the report cover. Leave blank to use the default.</div>
+    </div>
     <div style='margin-top:12px;display:flex;gap:20px;font-size:12.5px;color:var(--ink2)'>
       <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
         <input type='checkbox' name='browser_ua' value='1' form='auditform'
@@ -680,7 +698,7 @@ def dashboard_html(audits, principal, queue_depth):
       var st = JSON.parse(btn.dataset.prefill);
       var f = document.getElementById('auditform');
       ['target_url', 'client_name', 'vertical', 'max_pages',
-       'primary_markets', 'primary_conversion'].forEach(function (k) {{
+       'primary_markets', 'primary_conversion', 'partner'].forEach(function (k) {{
         var el = f.querySelector('[name=' + k + ']')
               || document.querySelector('[name=' + k + ']');
         if (el && st[k] !== undefined && st[k] !== '') el.value = st[k];
@@ -811,12 +829,42 @@ def audit_html(a):
                     f"<span>{pct}%</span></div>")
         else:
             rail = "<div class='rail-p indet'><i></i></div>"
-        inner = (rail + f"<div class='marks'>{marks}</div>"
-                 f"<div class='card' style='margin-top:16px'>"
-                 f"<span class='spin'></span> <b>{e(a.get('progress') or cur)}</b>"
-                 f"<p class='sub'>This page refreshes automatically. A full crawl of "
-                 f"150 pages typically takes 2–5 minutes.</p></div>")
-        refresh = 4
+        # Is anything still working on this?
+        #
+        # The worker stamps heartbeat_at on every step. If that stopped moving
+        # several minutes ago, the run is not slow — its container is gone, and
+        # the honest thing is to say so and offer the rerun rather than spin a
+        # spinner at someone indefinitely. Runs from before this build have no
+        # heartbeat at all, so a missing value means "unknown", never "dead".
+        hb = a.get("heartbeat_at")
+        stale = bool(hb) and (_time.time() - float(hb)) > STALE_AFTER_S
+        if stale:
+            mins = int((_time.time() - float(hb)) // 60)
+            inner = (rail + f"<div class='marks'>{marks}</div>"
+                     f"<div class='card' style='margin-top:16px'>"
+                     f"<b>This run has stopped responding.</b>"
+                     f"<p class='sub'>The last progress update was {mins} minutes "
+                     f"ago, at &ldquo;{e(a.get('progress') or cur)}&rdquo;. That "
+                     f"usually means the worker was restarted mid-run — a deploy, "
+                     f"or the instance being recycled — rather than anything wrong "
+                     f"with the site. Rerunning picks up the stored pages, so it "
+                     f"will not go back out to the client's server.</p>"
+                     f"<form method='post' action='/audits/{e(a['id'])}/rerun' "
+                     f"style='margin-top:12px'>"
+                     f"<input type='hidden' name='reuse_crawl' value='1'>"
+                     f"<button class='btn' type='submit'>Rerun from the stored "
+                     f"pages</button></form></div>")
+            refresh = None
+        else:
+            inner = (rail + f"<div class='marks'>{marks}</div>"
+                     f"<div class='card' style='margin-top:16px'>"
+                     f"<span class='spin'></span> <b>{e(a.get('progress') or cur)}</b>"
+                     f"<p class='sub'>This page refreshes automatically. A full crawl "
+                     f"of 150 pages typically takes 2–5 minutes.</p></div>")
+            # Six seconds, not four. Every refresh is a full page render and a
+            # fresh database connection, and the phase this page is most often
+            # watching is now the longest one in the run.
+            refresh = 6
 
     body = (f"<div class='sub'><code>{e(a['target_url'])}</code> · "
             f"audit <code>{e(a['id'])}</code></div>{inner}")

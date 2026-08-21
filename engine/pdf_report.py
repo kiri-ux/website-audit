@@ -31,7 +31,7 @@ from reportlab.platypus import (BaseDocTemplate, Frame, PageBreak, PageTemplate,
                                 Paragraph, Spacer, Table, TableStyle, KeepTogether)
 
 from .charts import (ScoreGauge, SectionBars, SegmentBar, MiniMeter,
-                     DefBadge, severity_segments, coverage_segments)
+                     DefBadge, Lamp, severity_segments, coverage_segments)
 
 # ---- palette (matches the HTML report) -------------------------------------
 INK        = colors.HexColor("#0b0b0b")
@@ -73,6 +73,20 @@ SHORT_NAMES = {
 ORDER = list(SECTION_NAMES)
 STATUS_ORDER = ["Fail", "Not Implemented", "Warning", "Pass", "Info",
                 "Need Access", "Manual", "N/A"]
+
+
+def _judged(cid: str, status: str = "") -> bool:
+    """
+    Does this row carry a reading rather than a measurement?
+
+    Shares its definition with the HTML report so the two documents cannot drift
+    into marking different rows — which would be worse than marking none, since
+    the whole point of the lamp is telling a reviewer where to look.
+    """
+    from .report import is_judged
+    if status in ("Need Access", "N/A", "Manual"):
+        return False
+    return is_judged(cid)
 
 
 def _synthetic_rows(catalog: dict, findings: dict, prefix: str) -> list:
@@ -770,7 +784,10 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     if ctx.get("phone"):
         facts.append(("Phone in markup", ctx["phone"]))
     if ctx.get("entity_types"):
-        facts.append(("Schema entities", ", ".join(ctx["entity_types"][:5])))
+        from .context import describe_entities
+        words = describe_entities(ctx["entity_types"])
+        if words:
+            facts.append(("Structured data found", words))
     if facts:
         story.append(Paragraph("Current Site Snapshot", S["h3"]))
         story.append(Spacer(1, 3))
@@ -798,8 +815,8 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             + f"<br/><br/><font size=15 color='#0b0b0b'><b>{open_issues}</b></font>"
               f"<font size=8.5 color='#52514e'> open issues, of which </font>"
               f"<font size=15 color='#0b0b0b'><b>{urgent}</b></font>"
-              f"<font size=8.5 color='#52514e'> are Critical or High and worth "
-              f"handling this month.</font>"
+              f"<font size=8.5 color='#52514e'> are Critical or High and should "
+              f"be resolved within 30 days.</font>"
               f"<br/><font size=8.5 color='#52514e'>We measured <b>{cov[0]}</b> "
               f"of <b>{sum(cov)}</b> checks directly.</font>",
             S["small"])]],
@@ -842,33 +859,46 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         if summary.get("headline"):
             story.append(_banner("", summary["headline"], SEQ, S))
             story.append(Spacer(1, 8))
-        # DEFINE HERE, because this is where the words first appear.
+        # DEFINE AT FIRST MENTION, BLOCK BY BLOCK.
+        #
         # "Canonicalization", "E-E-A-T", "Core Web Vitals" all get named in
-        # these two paragraphs, several pages before the findings that used to
-        # carry their definitions. A term explained after the reader has
-        # already met it twice is not help, it is an index.
-        strength_text = []
+        # these paragraphs, several pages before the findings that used to carry
+        # their definitions. A term explained after the reader has already met
+        # it twice is not help, it is an index.
+        #
+        # Per block rather than pooled, which is the fix for two faults at once.
+        # Pooling the text of both paragraphs put the canonical definition
+        # underneath the E-E-A-T paragraph, and it pulled in a definition of
+        # structured data because the word appeared in the OVERVIEW — so the
+        # reader got a definition for a term that is not in either paragraph
+        # above it. Each block now defines only what it introduced, and does it
+        # directly underneath itself.
+        def _define(text, limit=3):
+            for b in _bubbles_for(text, S, defined, width=6.55 * inch,
+                                  limit=limit):
+                story.append(b)
+                story.append(Spacer(1, 5))
+
+        if summary.get("overview"):
+            _define(str(summary["overview"]), limit=2)
         for key, title in (("working", "Current Strengths"),
                            ("opportunity", "Biggest Opportunity")):
             items = summary.get(key)
             if not items:
                 continue
             story.append(Paragraph(title, S["h3"]))
+            block = []
             if isinstance(items, str):
                 story.append(Paragraph(_p(items), S["body"]))
-                strength_text.append(items)
+                block.append(items)
             else:
                 # Short lists read better as prose than as bullets; a bulleted
                 # list of two items looks like a form that was filled in.
                 for it in items:
                     story.append(Paragraph(_p(it), S["body"]))
-                    strength_text.append(str(it))
-        if strength_text:
-            for b in _bubbles_for(" ".join(strength_text) + " "
-                                  + str(summary.get("overview") or ""),
-                                  S, defined, width=6.55 * inch, limit=4):
-                story.append(b)
-                story.append(Spacer(1, 5))
+                    block.append(str(it))
+            if block:
+                _define(" ".join(block))
 
     # ------------------------------------------------ the five things
     five = (summary or {}).get("five_things") or []
@@ -1149,6 +1179,23 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         "call, made by hand as part of the work."
         + (f" {n_na} checks that don't apply to a site like yours are left out."
            if n_na else ""), S["small"]))
+    # The lamp's legend. Placed at the head of the full record because that is
+    # where the marks appear, and an unexplained symbol in a client deliverable
+    # is worse than no symbol at all.
+    if any(_judged(cid, f.get("status")) for cid, f in findings.items()):
+        legend = Table([[Lamp(size=8.5), Paragraph(
+            "<b>Judged by review rather than measured.</b> These checkpoints are "
+            "qualitative — whether a page answers the question it ranks for, "
+            "whether its call to action is clear — so they carry a judgment "
+            "where the rest of this report carries a measurement.",
+            S["small"])]], colWidths=[0.22 * inch, 6.28 * inch])
+        legend.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (0, 0), 2),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+        story.append(Spacer(1, 6))
+        story.append(legend)
 
     for k in ORDER:
         # N/A rows are dropped. A page of "Meta Pixel · N/A · Not detected."
@@ -1191,8 +1238,19 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             # The remediation stays out of the client PDF — it is the work we
             # are selling. It is still on the internal HTML report and in the
             # findings API for the team doing the fixing.
-            data.append([Paragraph(cid, S["cellsm"]),
-                         Paragraph(_p(m.get("checkpoint")), S["cell"]),
+            name = Paragraph(_p(m.get("checkpoint")), S["cell"])
+            if _judged(cid, f.get("status")):
+                # A judged row gets the lamp beside its name. Nested in a table
+                # rather than inlined, because the mark is vector art and a
+                # Paragraph can only hold text.
+                name = Table([[name, Lamp()]], colWidths=[1.55 * inch, 0.16 * inch])
+                name.setStyle(TableStyle([
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("TOPPADDING", (1, 0), (1, 0), 2),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+            data.append([Paragraph(cid, S["cellsm"]), name,
                          _pill(f["status"], STATUS_PILL, S, 0.86 * inch),
                          Paragraph(_agree(_p(f.get("evidence"))), S["cell"])])
         t = Table(data, colWidths=[0.62 * inch, 1.75 * inch, 0.95 * inch, 3.18 * inch],

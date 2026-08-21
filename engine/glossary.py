@@ -30,6 +30,12 @@ TERMS = {
         "official one. Without it, several URLs showing the same content "
         "compete against each other instead of adding up.",
         (r"canonical", r"canonicaliz", r"canonicaliz")),
+    "signal": (
+        "Ranking signal", "\U0001F4E1", "\u25CE",
+        "Anything Google measures about a page and feeds into where it ranks — "
+        "the words on it, how fast it loads, whether it is secure, who links to "
+        "it. No single one decides a position; they accumulate.",
+        (r"ranking signal", r"\bsignals?\b")),
     "schema": (
         "Structured data (schema)", "🧩", "◆",
         "Hidden labels in your page code that tell search engines what things "
@@ -137,15 +143,24 @@ def terms_used(*texts, limit: int = 6) -> list:
     reference material; four definitions for the four bits of jargon on the
     page in front of them is help.
 
-    Returned in TERMS order (roughly most to least common) and capped, so the
-    block stays a sidebar rather than becoming a chapter.
+    Returned in ORDER OF FIRST APPEARANCE and capped, so the block stays a
+    sidebar rather than becoming a chapter.
+
+    Appearance order, not TERMS order. The summary named canonicalization in its
+    first sentence and E-E-A-T in its second, and the definitions came back in
+    the opposite order — so the reader met "canonical tag" explained underneath
+    a paragraph about E-E-A-T, two paragraphs after the word they needed it for.
+    A definition placed after its term has already gone by is an index entry
+    pretending to be help.
     """
     blob = " ".join(str(t or "") for t in texts).lower()
     hits = []
     for key, pats in _PATTERNS.items():
-        if any(p.search(blob) for p in pats):
-            hits.append(key)
-    return hits[:limit]
+        at = min((m.start() for p in pats
+                  for m in [p.search(blob)] if m), default=None)
+        if at is not None:
+            hits.append((at, key))
+    return [k for _, k in sorted(hits)][:limit]
 
 
 def entry(key: str, medium: str = "html") -> dict:

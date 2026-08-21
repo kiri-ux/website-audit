@@ -1,3 +1,168 @@
+# Changed files — build 2026.08.20-14
+
+## The 502
+
+Your run reached the judgment layer and the report page returned 502. The API's
+own code was fine. What was not fine is that three things had no ceiling on how
+long they could wait:
+
+- `psycopg2.connect()` with no `connect_timeout` waits **forever** when Postgres
+  cannot accept another connection.
+- A query with no `statement_timeout` waits forever behind a lock.
+- `redis.from_url()` with no socket timeout waits forever on a host that accepts
+  the connection and then goes quiet.
+
+Uvicorn serves these routes from a bounded thread pool. A handful of permanently
+stuck requests takes every thread — and once that happens `/healthz` cannot be
+answered either, so Render concludes the service is dead and starts serving 502s
+to the browser. **A database having a bad minute became a total outage.**
+
+The judgment layer is where it surfaced because that is the window of heaviest
+database write pressure, and it just grew 50%. The status page was also
+refreshing every 4 seconds, each refresh opening a brand-new connection.
+
+Four fixes:
+
+| | |
+|---|---|
+| `/healthz` no longer touches Redis or Postgres | Queue depth is best-effort and degrades to `null`. A liveness check that fails when a dependency is slow is not a liveness check; it is a way of converting someone else's bad minute into your own outage |
+| Postgres gets `connect_timeout` and `statement_timeout` | A request that cannot get a connection now fails fast with a real error instead of hanging a thread forever |
+| Redis gets socket timeouts | Sized to outlast the 2-second blocking pop the worker legitimately sits on |
+| The status page refreshes every 6s, not 4s | Every refresh is a full render and a fresh connection |
+
+None of this makes the database faster. It puts a ceiling on the damage.
+
+### And the run that died is no longer a spinner
+
+The worker now stamps a heartbeat on every step. If that stops moving for ten
+minutes the status page says **"This run has stopped responding"**, tells you
+how long ago and at which phase, and offers a rerun **from the stored pages** so
+it does not go back out to the client's server. Runs from before this build have
+no heartbeat, and unknown is treated as alive — calling a live run dead is the
+worse error of the two.
+
+---
+
+## Lightbulbs on the judged rows
+
+Every row the judgment layer produced now carries a small gold lightbulb, in
+both the HTML report and the PDF, with a legend at the head of the full record.
+
+**On the wording.** You asked for the mark without calling the rows AI-generated,
+which left the question of what the legend should say. It reads:
+
+> **Judged by review rather than measured.** These checkpoints are qualitative —
+> whether a page answers the question it ranks for, whether its call to action is
+> clear — so they carry a judgment where the rest of this report carries a
+> measurement.
+
+That is true, it does not name the mechanism, and it is useful to both readers.
+Your team sees exactly which rows to check hardest. A client sees something worth
+knowing: this row is an assessment, not a hard number. An unexplained symbol in a
+client deliverable would have been worse than no symbol.
+
+Two details. A **Need Access** or **N/A** row gets no lamp — it was never judged,
+so there is nothing to reread. And the lamp is drawn as vectors, not the emoji:
+U+1F4A1 is missing from Roboto *and* from DejaVu, and reportlab renders a missing
+glyph as a solid black box.
+
+---
+
+## Report copy
+
+| Was | Now |
+|---|---|
+| "Schema entities — WebSite, Organization, WebPage, BreadcrumbList, ImageObject" | "Structured data found — site identity, business details, page markup, breadcrumb trail, images" |
+| "worth handling this month" | "should be resolved within 30 days" |
+| "The same gap shows up across 8 different **signals**" | "…across 8 separate **checks**" |
+| "This is table stakes rather than optimization." | Cut |
+| — | **Ranking signal** added to the glossary |
+
+Schema.org type names are developer vocabulary. Brendan's template never printed
+raw type names — it asked whether the right markup was present, in words. A
+business owner cannot act on "ImageObject" and will not ask; they will decide the
+page is not for them.
+
+"Signals" was a third word for a thing the report already calls a **check** on
+the cover and a **checkpoint** in the appendix. One word now.
+
+### Definitions land at first mention
+
+Two faults, one cause. Glossary terms came back in glossary order rather than in
+the order they appear, so **canonical tag** was explained underneath the E-E-A-T
+paragraph — two paragraphs after the word it was needed for. And the definitions
+for both summary blocks were pooled with the overview text, which is why
+**structured data** appeared with a definition for a term that is in none of the
+paragraphs above it.
+
+Terms now come back in order of first appearance, and each block defines only
+what it introduced, directly underneath itself.
+
+---
+
+## Prepared by, per audit
+
+A **Prepared by** field on the audit form, saved with the audit and prefilled
+from a previous run for the same client. It overrides `FIRM_NAME` on the cover;
+blank falls back to the configured firm, so nothing changes for audits where
+nobody fills it in. White-labelled work goes out under the partner's name and
+that varies between two audits run in the same hour — an environment variable
+was the wrong home for it.
+
+---
+
+## From the Ooten run
+
+**Search Console filled.** GSC-05 through 19 all carried measurements — 24 of 24
+sampled pages indexed, 111 of 111 served over HTTPS, breadcrumbs appearing in
+search, 121.9 average internal links per page. Only GSC-20/21 remain, which is
+correct: no API exists for them.
+
+**Two GA4 rows fell through, both my bugs.**
+
+- **GA4-03 Enhanced Measurement** swallowed its exception with no logging, so a
+  failed call was indistinguishable from "not built yet" — on a run where the
+  Admin API demonstrably worked, because GA4-06 read key events from the same API
+  with the same token two rows below. It now logs, and reports which of the two
+  it is.
+- **GA4-16 Revenue** — GA4 returns **no rows** rather than a row of zeros when a
+  property has never recorded revenue. That is an answer, not a failure to read.
+  It also now falls back to requesting `totalRevenue` alone, because one unknown
+  metric name fails the whole request.
+
+**The DataForSEO shapes.** `_num()` now tries every plausible key name instead of
+one guess. The specific bug: the anchors endpoint has **no `dofollow` field** —
+it reports a total and a *nofollow* count, and the followed figure is the
+difference. Reading a key that does not exist summed to zero, which is what
+produced "0.0% of backlinks are followed" on a live profile. If a shape still
+misses, the row stays Need Access and the field names appear in the row's
+recommendation on the internal report.
+
+---
+
+## Files
+
+| File | Change |
+|---|---|
+| `app/db.py` | Connect and statement timeouts; `heartbeat_at` migration |
+| `app/queue.py` | Redis socket timeouts |
+| `app/api.py` | `/healthz` independent of dependencies; `partner` field; rerun accepts `reuse_crawl` |
+| `app/ui.py` | Stalled-run panel; 6s refresh; Prepared by field |
+| `app/worker.py` | Heartbeat on every step |
+| `engine/report.py` | Lamp, legend, `is_judged` |
+| `engine/pdf_report.py` | Lamp in the table, legend, per-block definitions, plain-English structured data |
+| `engine/charts.py` | `Lamp` flowable |
+| `engine/glossary.py` | Appearance-order terms; **Ranking signal** |
+| `engine/summarise.py` | "separate checks"; 30 days; the HTTPS line |
+| `engine/context.py` | `describe_entities()` |
+| `engine/collectors/analytics.py` | GA4-03 logging, GA4-16 empty-result handling |
+| `engine/collectors/dataforseo.py` | `_num()` / `_str()` tolerant field reads |
+| `tests/test_resilience.py` | **New.** 40 checks |
+
+All 17 suites green.
+
+---
+
 # Changed files — build 2026.08.20-13
 
 ## Two builds you asked for, both about the same thing: stop deferring

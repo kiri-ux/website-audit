@@ -295,3 +295,81 @@ def extract(art) -> BusinessContext:
                 ctx.brand = cand
                 ctx.evidence["brand"] = f"{home.url} (page title)"
     return ctx
+
+
+# --------------------------------------------------------------- plain English
+# Schema.org type names are developer vocabulary. "BreadcrumbList, ImageObject,
+# WebPage" printed in a client deliverable is the report showing its working
+# rather than telling the reader anything — a business owner cannot act on it
+# and will not ask, they will just decide this page is not for them.
+#
+# Brendan's template never printed raw type names; it asked whether the right
+# markup was present, in words. So do we.
+ENTITY_WORDS = {
+    "organization": "business details",
+    "localbusiness": "local business listing",
+    "website": "site identity",
+    "webpage": "page markup",
+    "webpageelement": "page markup",
+    "breadcrumblist": "breadcrumb trail",
+    "imageobject": "images",
+    "logo": "logo",
+    "sitenavigationelement": "navigation",
+    "article": "articles",
+    "blogposting": "blog posts",
+    "newsarticle": "articles",
+    "faqpage": "FAQ answers",
+    "question": "FAQ answers",
+    "howto": "how-to steps",
+    "product": "products",
+    "offer": "pricing",
+    "aggregaterating": "star ratings",
+    "review": "reviews",
+    "service": "services",
+    "person": "people",
+    "videoobject": "video",
+    "event": "events",
+    "recipe": "recipes",
+    "jobposting": "job listings",
+    "postaladdress": "address",
+    "openinghoursspecification": "opening hours",
+    "contactpoint": "contact details",
+    "searchaction": "site search",
+    "attorney": "legal services",
+    "legalservice": "legal services",
+    "medicalbusiness": "medical practice",
+    "physician": "medical practice",
+    "dentist": "dental practice",
+    "restaurant": "restaurant listing",
+    "hotel": "hotel listing",
+    "realestateagent": "property listings",
+    "professionalservice": "professional services",
+    "homeandconstructionbusiness": "trade services",
+    "collectionpage": "category pages",
+    "itemlist": "listings",
+    "speakablespecification": "voice-assistant text",
+}
+
+
+def describe_entities(types, limit: int = 6) -> str:
+    """
+    Turn schema @type names into something a client can read.
+
+    Deduplicated after translation, because several type names collapse to the
+    same idea — Organization and LocalBusiness both mean "we told Google who
+    this business is", and printing both looks like two findings when it is one.
+    An unrecognized type is title-cased rather than dropped: an unknown word is
+    better than a silently shorter list.
+    """
+    out = []
+    for t in types or []:
+        w = ENTITY_WORDS.get(str(t).strip().lower())
+        if not w:
+            # CamelCase to spaced words: "MedicalClinic" -> "Medical clinic".
+            w = re.sub(r"(?<!^)(?=[A-Z])", " ", str(t).strip()).strip().lower()
+            w = w[:1].upper() + w[1:] if w else ""
+        if w and w not in out:
+            out.append(w)
+        if len(out) >= limit:
+            break
+    return ", ".join(out)

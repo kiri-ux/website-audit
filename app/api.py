@@ -76,7 +76,25 @@ def healthz():
     # mistyped. Both look identical from a browser, which is a bad place to
     # leave someone mid-setup. It reports whether the door is open, never the
     # key — the routes still refuse anything but an exact token match.
-    return {"ok": True, "mode": cfg.mode, "queue_depth": Q.depth(),
+    #
+    # THIS ROUTE MUST NOT DEPEND ON A DATABASE OR ON REDIS.
+    #
+    # It used to call Q.depth(), which is a blocking Redis round trip. Render
+    # polls this endpoint continuously and pulls the instance out of service
+    # when it stops answering — so a slow queue or a busy Postgres did not
+    # degrade the API, it DELETED it, and the browser got a 502 from a service
+    # whose own code was working perfectly. A liveness check that depends on a
+    # dependency is not a liveness check; it is a way of converting every
+    # dependency's bad minute into your own outage.
+    #
+    # Queue depth is still useful, so it is still reported — but as a
+    # best-effort number that degrades to null, and never as a reason to fail.
+    depth = None
+    try:
+        depth = Q.depth()
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "mode": cfg.mode, "queue_depth": depth,
             "oauth_setup": bool(os.getenv("OAUTH_SETUP_TOKEN")),
             "google_client": bool(os.getenv("GOOGLE_CLIENT_ID")),
             **version.info()}
@@ -347,6 +365,7 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
                 render_js: str = Form(""), browser_ua: str = Form(""),
                 skip_psi: str = Form(""), primary_markets: str = Form(""),
                 primary_conversion: str = Form(""),
+                partner: str = Form(""),
                 run_judgment: str = Form(""),
                 run_collectors: str = Form(""),
                 run_screenshots: str = Form(""),
@@ -386,7 +405,8 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
     if ga4_property_id.strip():
         opts["ga4_property_id"] = ga4_property_id.strip()
     for k, v in (("primary_markets", primary_markets),
-                 ("primary_conversion", primary_conversion)):
+                 ("primary_conversion", primary_conversion),
+                 ("partner", partner)):
         if v.strip():
             opts[k] = v.strip()
     if browser_ua:
@@ -402,7 +422,8 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
 
 
 @app.post("/audits/{audit_id}/rerun")
-def rerun_audit(audit_id: str, x_api_key: str | None = Header(None)):
+def rerun_audit(audit_id: str, reuse_crawl: str = Form(""),
+                x_api_key: str | None = Header(None)):
     """
     Run the same site again, as a NEW audit.
 
@@ -421,6 +442,11 @@ def rerun_audit(audit_id: str, x_api_key: str | None = Header(None)):
         opts = opts if isinstance(opts, dict) else {}
     except Exception:
         opts = {}
+    # Offered by the stalled-run panel. A run that died after the crawl already
+    # has its pages stored, and going back out to the client's server to fetch
+    # them again is both slow and rude.
+    if reuse_crawl:
+        opts["reuse_crawl"] = True
     new_id = db.create_audit(tenancy.owner_for_new_audit(p), a["client_name"],
                              a["target_url"], a.get("vertical"),
                              a.get("business_model"), opts)
@@ -625,8 +651,16 @@ def _report_meta(a: dict) -> dict:
             "truncated": a.get("crawl_truncated"),
             "capture_method": a.get("capture_method"),
             "extras": _extras(a),
+            # A per-audit partner name overrides the firm from the
+            # environment. White-labelled work goes out under the partner's
+            # name, and that varies per client — an env var is the wrong place
+            # for something that changes between two audits run in the same
+            # hour. Blank falls back to the configured firm, so nothing changes
+            # for audits nobody fills it in for.
             "analyst": {"name": cfg.analyst_name, "title": cfg.analyst_title,
-                        "email": cfg.analyst_email, "firm": cfg.firm_name},
+                        "email": cfg.analyst_email,
+                        "firm": (_o.get("partner") or "").strip() or cfg.firm_name},
+            "partner": (_o.get("partner") or "").strip(),
             "build": version.label()}
 
 

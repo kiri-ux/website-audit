@@ -931,18 +931,40 @@ def _enhanced_row(pid: str, tok: str) -> dict:
         return {"GA4-03": _f("N/A", {}, "This property has no web data stream, so "
                                         "Enhanced Measurement does not apply.",
                              "Low", "", 0.8, "ga4")}
-    on, off = [], []
+    on, off, errs = [], [], []
     for s in web:
         sid = (s.get("name") or "").split("/")[-1]
         try:
             em = _api(f"{GA4_ADMIN}/properties/{pid}/dataStreams/{sid}"
                       f"/enhancedMeasurementSettings", tok)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            # This swallowed its exception silently and the row came back
+            # saying "requires the admin API" on a run where the admin API was
+            # demonstrably working — key events, read from the same API with
+            # the same token, filled correctly two rows below. A failure that
+            # cannot be told apart from "not built yet" is the failure mode
+            # this whole collector exists to avoid.
+            print(f"[ga4] enhancedMeasurementSettings for stream {sid} failed: "
+                  f"{type(exc).__name__}: {exc}", flush=True)
+            errs.append(f"{type(exc).__name__}")
             continue
         _seen("enhancedMeasurementSettings", em)
         for key, label in _ENHANCED:
             (on if em.get(key) else off).append(label)
     if not on and not off:
+        # Say which of the two it is. Empty because the call failed is a
+        # different fact from empty because the property answered with nothing,
+        # and only the first one is ours to chase.
+        if errs:
+            return {"GA4-03": _f(
+                "Need Access", {},
+                f"Enhanced Measurement could not be read for "
+                f"{len(errs)} data stream(s) ({', '.join(sorted(set(errs)))}). "
+                f"The rest of the GA4 data on this report was read successfully, "
+                f"so this is a permission on the data stream rather than a "
+                f"missing grant.", "Low",
+                "Confirm the Vici login has Viewer on the property itself, not "
+                "only on the account.", 0.0, "ga4_admin_only")}
         return {}
     on, off = sorted(set(on)), sorted(set(off) - set(on))
     return {"GA4-03": _f("Pass" if not off else "Warning",
@@ -1206,10 +1228,23 @@ def collect_ga4(property_id: str | None, refresh_token: str | None,
 
     # ---- GA4-16 revenue ----------------------------------------------------
     try:
-        rev = _report(property_id, tok, [], ["totalRevenue", "transactions"], 1, days)
-        if rev:
-            amount = float(rev[0][1][0] or 0)
-            txns = int(float(rev[0][1][1] or 0))
+        # Two metrics, then one. `transactions` is not accepted by every
+        # property and an unknown metric name fails the WHOLE request, taking
+        # the revenue figure with it — which is how this row came back blank on
+        # a site that simply has no ecommerce.
+        try:
+            rev = _report(property_id, tok, [],
+                          ["totalRevenue", "transactions"], 1, days)
+        except Exception:  # noqa: BLE001
+            rev = _report(property_id, tok, [], ["totalRevenue"], 1, days)
+        # GA4 returns NO ROWS rather than a row of zeros when a property has
+        # never recorded revenue. That is an answer — "nothing sold here" — not
+        # a failure to read, and treating it as one left the row reported as
+        # unbuilt on every non-ecommerce client we have.
+        amount = float(rev[0][1][0] or 0) if rev else 0.0
+        txns = (int(float(rev[0][1][1] or 0))
+                if rev and len(rev[0][1]) > 1 else 0)
+        if True:
             out["GA4-16"] = _f(
                 "Pass" if amount else "N/A",
                 {"total_revenue": round(amount, 2), "transactions": txns},

@@ -56,8 +56,8 @@ VERTICAL_NOTE = {
 # run and not invented by a model.
 # ---------------------------------------------------------------------------
 WHY_IT_MATTERS = {
-    "SEC": "Browsers mark insecure pages, and Google has used HTTPS as a ranking "
-           "signal for a decade. This is table stakes rather than optimization.",
+    "SEC": "Browsers mark insecure pages with a warning, and Google has used "
+           "HTTPS as a ranking signal for a decade.",
     "TECH": "Crawl and indexing problems cap everything downstream: content you "
             "cannot get indexed cannot rank, however good it is.",
     "GEO": "Assistants are increasingly answering questions that used to start "
@@ -634,10 +634,14 @@ def _group_issues(findings: dict, catalog: dict, meta: dict, limit: int = 5) -> 
             # us, and several of them end in "included", so the sentence came
             # out as "including Real examples included, ... and Original
             # insights included." The count is the part that carries meaning —
-            # this is systemic, not a one-off. "Signals" rather than "places":
-            # we counted signals, not pages, and "places" would read as pages.
+            # this is systemic, not a one-off.
+            #
+            # "Checks", not "signals". The cover says "we measured 237 of 313
+            # checks" and the appendix is headed "Full Checkpoint Detail", so a
+            # third word for the same object left the reader working out
+            # whether a signal was a page, a check, or something new.
             finding += (f" The same gap shows up across "
-                        f"{len(g['members'])} different signals.")
+                        f"{len(g['members'])} separate checks.")
         action = (f.get("recommendation") or "").strip()
         if not action:
             action = next((x.get("recommendation", "").strip()
@@ -780,7 +784,7 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
         parts.append(
             f"It scores {o['score']} out of 100 ({str(o['rating']).lower()}). "
             + (f"{n_fail} things are worth fixing, and {urgent} of those should "
-               f"be dealt with this month."
+               f"be resolved within 30 days."
                if urgent else
                f"{n_fail} things are worth fixing, none of them urgent."))
     else:

@@ -206,11 +206,33 @@ def _q(sql: str) -> str:
     return sql.replace("?", "%s") if cfg.is_postgres else sql
 
 
+# How long a request may spend waiting on Postgres before it gives up.
+#
+# These exist because their absence took the API down. `psycopg2.connect()` with
+# no `connect_timeout` blocks FOREVER when the server cannot accept another
+# connection, and a query with no `statement_timeout` blocks forever behind a
+# lock. Uvicorn serves sync routes from a bounded thread pool, so a handful of
+# permanently-hung requests consume every thread — and once that happens the
+# health check cannot be answered either, so Render concludes the whole service
+# is dead and starts returning 502 to the browser.
+#
+# That is the failure mode: a database under pressure became a total outage of a
+# service whose own code was fine. Nothing here makes Postgres faster. What they
+# do is put a ceiling on the damage — a slow database now produces one failed
+# request with a real error, instead of an unbounded pile of stuck threads.
+PG_CONNECT_TIMEOUT = int(os.getenv("PG_CONNECT_TIMEOUT", "10"))
+PG_STATEMENT_TIMEOUT_MS = int(os.getenv("PG_STATEMENT_TIMEOUT_MS", "30000"))
+
+
 @contextmanager
 def conn():
     if cfg.is_postgres:
         import psycopg2  # imported lazily so local dev needs no driver
-        c = psycopg2.connect(cfg.database_url)
+        c = psycopg2.connect(
+            cfg.database_url,
+            connect_timeout=PG_CONNECT_TIMEOUT,
+            # Applied by the server to every statement on this connection.
+            options=f"-c statement_timeout={PG_STATEMENT_TIMEOUT_MS}")
         try:
             yield c
             c.commit()
@@ -254,6 +276,12 @@ MIGRATIONS = [
     ("jobs", "job_type", "TEXT DEFAULT 'audit'"),
     ("audits", "capture_method", "TEXT"),
     ("audits", "extras", "TEXT"),
+    # Last time the worker said anything about this run. An audit whose worker
+    # was killed — a deploy mid-run, an out-of-memory kill, an instance
+    # recycled — keeps `status='checking'` forever, and the status page keeps
+    # cheerfully auto-refreshing against a job that no longer exists. The page
+    # cannot tell "working on it" from "died twenty minutes ago" without this.
+    ("audits", "heartbeat_at", "DOUBLE PRECISION" if cfg.is_postgres else "REAL"),
 ]
 
 

@@ -313,6 +313,47 @@ class MiniMeter(Flowable):
                self.height, stroke=0, fill=1)
 
 
+GOLD = colors.HexColor("#F1B434")
+
+
+class Lamp(Flowable):
+    """
+    A small lightbulb, drawn as vectors.
+
+    Deliberately NOT the emoji. U+1F4A1 is absent from every font this renderer
+    can rely on — Roboto does not have it and neither does DejaVu, which is the
+    fallback we register precisely for stray glyphs — and reportlab's answer to a
+    missing glyph is a solid black box. A hand-drawn path is a dozen lines and
+    cannot fail that way.
+    """
+
+    def __init__(self, size=7.5):
+        super().__init__()
+        self.width = self.height = size
+
+    def wrap(self, aw, ah):
+        return self.width, self.height
+
+    def draw(self):
+        c, s = self.canv, self.width
+        c.saveState()
+        c.setStrokeColor(GOLD)
+        c.setFillColor(GOLD)
+        c.setLineWidth(max(0.5, s * 0.11))
+        c.setLineCap(1)
+        # Glass: a circle sitting above the base.
+        r = s * 0.32
+        cx, cy = s / 2.0, s * 0.63
+        c.circle(cx, cy, r, stroke=1, fill=0)
+        # Neck, down from the glass to the screw base.
+        c.line(cx - r * 0.55, cy - r * 0.86, cx - r * 0.55, s * 0.22)
+        c.line(cx + r * 0.55, cy - r * 0.86, cx + r * 0.55, s * 0.22)
+        # Two filament rings at the base.
+        for y in (s * 0.18, s * 0.06):
+            c.line(cx - r * 0.55, y, cx + r * 0.55, y)
+        c.restoreState()
+
+
 def severity_segments(counts: dict) -> list:
     """[(label, n, color)] in ordinal order, worst first."""
     return [(k, int(counts.get(k, 0) or 0), ORD[k])

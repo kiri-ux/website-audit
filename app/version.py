@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-13"
-BUILD_NOTES = ("On-page intent, keyword use and CTA quality are now judged "
-               "automatically; 27 Search Console and Analytics rows that said "
-               "'read this from the interface' now carry measurements")
+BUILD = "2026.08.20-14"
+BUILD_NOTES = ("A slow database can no longer take the API down; judged rows "
+               "carry a lightbulb; Prepared by is per-audit; definitions land "
+               "at first mention")
 # ---------------------------------------------------------------------------
 
 

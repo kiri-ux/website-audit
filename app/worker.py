@@ -51,10 +51,17 @@ def run_audit_job(audit_id: str):
     opts = json.loads(a.get("options") or "{}")
 
     def step(status, progress):
-        db.update_audit(audit_id, status=status, progress=progress)
+        # heartbeat_at is stamped on EVERY step, not just at the start. It is
+        # what lets the status page distinguish a long phase from a dead worker:
+        # a run whose container was killed mid-judgment stops updating this, and
+        # the page can say so instead of auto-refreshing forever against a job
+        # nothing is working on.
+        db.update_audit(audit_id, status=status, progress=progress,
+                        heartbeat_at=time.time())
         print(f"[worker] {audit_id} :: {progress}", flush=True)
 
-    db.update_audit(audit_id, started_at=time.time(), error=None)
+    db.update_audit(audit_id, started_at=time.time(), error=None,
+                    heartbeat_at=time.time())
     # REUSE A PREVIOUS CRAWL.
     #
     # The crawl is the slow, rude part — 150 pages against someone's server.
@@ -192,7 +199,8 @@ def _after_crawl(a, opts, audit_id, art, findings, step):
         j = run_judgment(
             art, business_model=a.get("vertical"), client=a.get("client_name"),
             progress=lambda d, t: db.update_audit(
-                audit_id, progress=f"judgment {d}/{t}"))
+                audit_id, progress=f"judgment {d}/{t}",
+                heartbeat_at=time.time()))
         findings.update(j)
         # Same reasoning as the DataForSEO line below: when the LLM key is
         # missing every row degrades to a tidy "Need Access" and the report

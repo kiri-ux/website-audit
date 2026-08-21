@@ -145,6 +145,64 @@ SEV_RAMP = {"Critical": "var(--o4)", "High": "var(--o3)",
             "Medium": "var(--o2)", "Low": "var(--o1)", "Opportunity": "var(--track)"}
 
 
+# ---------------------------------------------------------------- judged rows
+#
+# A lightbulb next to the rows the judgment layer produced.
+#
+# WHY IT SAYS WHAT IT SAYS. These rows are read and assessed rather than
+# measured — a crawler can count H1 tags, but "does this page answer the query
+# it ranks for" is a reading, and a reading can be wrong in ways a count cannot.
+# The team needs to know which rows to check hardest before a report goes out.
+#
+# The legend therefore reads "Judged by review rather than measured", which is
+# true, is useful to a client, and does not advertise the mechanism. A client
+# seeing it learns something worth knowing: this row is a qualitative
+# assessment, not a hard number. Our team seeing it knows exactly which rows to
+# reread. One mark, two audiences, no dishonesty in either direction.
+LAMP = ("<svg viewBox='0 0 24 24' width='13' height='13' aria-hidden='true' "
+        "style='vertical-align:-2px;margin-left:5px' fill='none' "
+        "stroke='#F1B434' stroke-width='2' stroke-linecap='round' "
+        "stroke-linejoin='round'>"
+        "<path d='M9 18h6M10 22h4'/>"
+        "<path d='M12 2a7 7 0 0 0-4 12.7V18h8v-3.3A7 7 0 0 0 12 2z'/></svg>")
+
+JUDGED_NOTE = "Judged by review rather than measured."
+
+
+def judged_ids() -> set:
+    """
+    Checkpoint IDs the judgment layer owns.
+
+    Imported defensively for the same reason `access.vendor_ids` is: this module
+    renders reports in the API process, and a failed import must cost us a
+    lightbulb, never the document.
+    """
+    try:
+        from .judgment import CHECKPOINT_IDS
+        return set(CHECKPOINT_IDS)
+    except Exception:  # noqa: BLE001
+        return set()
+
+
+_JUDGED: set | None = None
+
+
+def is_judged(cid: str) -> bool:
+    global _JUDGED
+    if _JUDGED is None:
+        _JUDGED = judged_ids()
+    return cid in _JUDGED
+
+
+def _lamp(cid: str, status: str = "") -> str:
+    """The mark, but only on rows that actually carry a judgment."""
+    # An unanswered row was never judged — it is waiting on a key. Marking it
+    # would send a reviewer to reread an empty cell.
+    if status in ("Need Access", "N/A") or not is_judged(cid):
+        return ""
+    return f"<span title='{JUDGED_NOTE}'>{LAMP}</span>"
+
+
 def _bubbles(text, seen, limit=2):
     """Definition bubbles for jargon in `text` not yet defined. Mutates `seen`."""
     from .glossary import terms_used, entry
@@ -435,7 +493,8 @@ def render_html(meta, sc, findings, catalog, summary=None):
              "<th>Severity</th><th>Finding</th></tr>")
     for cid, f in _top:
         m = catalog[cid]
-        P.append(f"<tr><td><code>{cid}</code></td><td>{e(m['checkpoint'])}</td>"
+        P.append(f"<tr><td><code>{cid}</code></td>"
+                 f"<td>{e(m['checkpoint'])}{_lamp(cid, f['status'])}</td>"
                  f"<td><span class='chip'><b style='background:"
                  f"{SEV_RAMP.get(f['severity'], 'var(--muted)')}'></b>"
                  f"{e(f['severity'])}</span></td>"
@@ -499,13 +558,26 @@ def render_html(meta, sc, findings, catalog, summary=None):
         for cid, f in rows:
             m = catalog[cid]
             col = STATUS_COLOR.get(f["status"], "var(--muted)")
-            P.append(f"<tr><td><code>{cid}</code></td><td>{e(m['checkpoint'])}</td>"
+            P.append(f"<tr><td><code>{cid}</code></td>"
+                     f"<td>{e(m['checkpoint'])}{_lamp(cid, f['status'])}</td>"
                      f"<td><span class='chip'><b style='background:{col}'></b>"
                      f"{e(f['status'])}</span></td>"
                      f"<td><div class='ev'>{e(f['evidence'])}</div>"
                      + (f"<div class='rec'>→ {e(f['recommendation'])}</div>"
                         if f['recommendation'] else "") + "</td></tr>")
         P.append("</table>")
+
+    # The legend for the lightbulb, placed after the full record rather than in
+    # the header — it only means anything once the reader has seen one.
+    if any(is_judged(cid) and f.get("status") not in ("Need Access", "N/A")
+           for cid, f in findings.items()):
+        P.append(f"<div class='note' style='margin-top:22px'>{LAMP} "
+                 f"<b>{JUDGED_NOTE}</b> These checkpoints are qualitative — "
+                 f"things like whether a page answers the question it ranks for, "
+                 f"or whether its call to action is clear. They are assessed "
+                 f"against the page rather than counted, so they carry a "
+                 f"judgment where the rest of the report carries a "
+                 f"measurement.</div>")
 
     if meta.get("build"):
         P.append(f"<div style='margin-top:40px;padding-top:18px;"

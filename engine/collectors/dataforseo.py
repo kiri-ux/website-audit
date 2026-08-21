@@ -363,8 +363,22 @@ def _anchor_shape(domain: str, out: dict) -> None:
     items = (res[0].get("items") or []) if res else []
     if not items:
         return
-    total = sum(int(i.get("backlinks") or 0) for i in items)
-    dofollow = sum(int(i.get("dofollow") or 0) for i in items)
+    # THE FIELD IS NOT CALLED `dofollow`. DataForSEO reports a total and a
+    # NOFOLLOW count; the followed figure is the difference between them. The
+    # previous version read a `dofollow` key that does not exist in this
+    # response, summed nothing, and reported 0% followed on a live profile.
+    total = sum(_num(i, "referring_pages", "backlinks", "referring_domains")
+                for i in items)
+    nofollow = sum(_num(i, "referring_pages_nofollow", "backlinks_nofollow",
+                        "referring_domains_nofollow") for i in items)
+    dofollow = total - nofollow
+    if nofollow == 0 and not any(
+            k in items[0] for k in ("referring_pages_nofollow",
+                                    "backlinks_nofollow",
+                                    "referring_domains_nofollow")):
+        # No nofollow field at all in the payload — we cannot compute a ratio,
+        # and 100% followed would be a fabrication rather than a measurement.
+        dofollow = 0
     # A ZERO FROM A FAILED PARSE IS NOT A FINDING.
     #
     # This shipped "0.0% of backlinks are followed" for a site with 727
@@ -389,8 +403,8 @@ def _anchor_shape(domain: str, out: dict) -> None:
     brand = bare.split(".")[0]
     exact, naked = 0, 0
     for i in items:
-        a = (i.get("anchor") or "").strip().lower()
-        n = int(i.get("backlinks") or 0)
+        a = _str(i, "anchor").lower()
+        n = _num(i, "referring_pages", "backlinks", "referring_domains")
         if not a:
             continue
         if a.startswith(("http://", "https://", "www.")) or a.rstrip("/") == bare:
@@ -461,8 +475,8 @@ def _page_split(domain: str, out: dict, rd) -> None:
         return
     home, deep = 0, 0
     for i in items:
-        url = (i.get("page_address") or i.get("url") or "")
-        n = int((i.get("backlinks") or 0))
+        url = _str(i, "page_address", "url", "page", "address", "domain")
+        n = _num(i, "backlinks", "referring_pages", "referring_domains")
         path = url.split("//")[-1].split("/", 1)
         if len(path) == 1 or path[1] in ("", "/"):
             home += n
@@ -533,6 +547,35 @@ def _toxicity(domain: str, out: dict, spam) -> None:
                        "Low" if pct < 10 else "Medium",
                        "" if pct < 10 else "Review the worst of these and "
                                            "consider a disavow file.")
+
+
+def _num(item: dict, *names, default=0) -> int:
+    """
+    First key that is actually present, as an integer.
+
+    Written after two rounds of the same bug. A parser that reads ONE guessed
+    field name and silently yields zero when the guess is wrong produces a
+    confident, wrong number — "0.0% of backlinks are followed" on a profile with
+    727 backlinks. Naming every plausible key and taking the first one present
+    costs nothing and removes the whole class of failure.
+    """
+    for n in names:
+        v = item.get(n)
+        if v is None:
+            continue
+        try:
+            return int(float(v))
+        except (TypeError, ValueError):
+            continue
+    return default
+
+
+def _str(item: dict, *names, default="") -> str:
+    for n in names:
+        v = item.get(n)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return default
 
 
 def _unreadable(out: dict, ids: list, endpoint: str, sample: dict) -> None:
