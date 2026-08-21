@@ -12,9 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-11"
-BUILD_NOTES = ("Four backlink endpoints wired; ten checkpoints moved from "
-               "manual to measured; UI scaled to adtini's proportions")
+BUILD = "2026.08.20-12"
+BUILD_NOTES = ("Structured data reaches the judgment layer, so the address "
+               "is found; a zero from a failed parse is no longer reported "
+               "as a measurement; definitions moved to first use")
 # ---------------------------------------------------------------------------
 
 

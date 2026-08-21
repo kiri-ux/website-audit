@@ -281,7 +281,7 @@ class _Doc(BaseDocTemplate):
         canvas.setStrokeColor(LINE)
         y = self.bottomMargin - 16
         canvas.line(self.leftMargin, y + 11, self.leftMargin + self.width, y + 11)
-        left = f"{self.meta.get('client','')} — SEO & AI Search Audit"
+        left = f"{self.meta.get('client','')} — Website Audit"
         canvas.drawString(self.leftMargin, y, left[:90])
         canvas.drawRightString(self.leftMargin + self.width, y, f"Page {doc.page}")
         # No build id here. It is operational information for us, and a version
@@ -513,7 +513,7 @@ def _bubbles_for(text, S, seen, width=6.55 * inch, indent=0.0, limit=2,
 
 
 SEVERITY_LEGEND = [
-    ("Critical", "Blocks crawling or indexing, creates real risk, or materially "
+    ("Critical", "Stops the site being found or indexed, creates real risk, or "
                  "hurts revenue.", "0–39", "Critical"),
     ("High", "Large measurable impact, or a problem repeated across the site.",
      "40–59", "Weak"),
@@ -539,7 +539,7 @@ def _access_received(findings: dict) -> str:
         if rows and any(f.get("status") not in ("Need Access", "N/A")
                         and (f.get("confidence") or 0) > 0 for f in rows):
             got.append(label)
-    return ", ".join(got) if got else "None — site crawl and public data only"
+    return ", ".join(got) if got else "None — public data only"
 
 
 
@@ -831,6 +831,10 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     story.append(grid)
 
     # ------------------------------------------------ executive summary
+    # One definition per term, at first use, document-wide. Seeded here rather
+    # than beside the findings because the summary is where the words first
+    # appear.
+    defined = set()
     if summary:
         story.append(Paragraph("Executive Summary", S["h2"]))
         if summary.get("overview"):
@@ -838,6 +842,12 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         if summary.get("headline"):
             story.append(_banner("", summary["headline"], SEQ, S))
             story.append(Spacer(1, 8))
+        # DEFINE HERE, because this is where the words first appear.
+        # "Canonicalization", "E-E-A-T", "Core Web Vitals" all get named in
+        # these two paragraphs, several pages before the findings that used to
+        # carry their definitions. A term explained after the reader has
+        # already met it twice is not help, it is an index.
+        strength_text = []
         for key, title in (("working", "Current Strengths"),
                            ("opportunity", "Biggest Opportunity")):
             items = summary.get(key)
@@ -846,16 +856,21 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             story.append(Paragraph(title, S["h3"]))
             if isinstance(items, str):
                 story.append(Paragraph(_p(items), S["body"]))
+                strength_text.append(items)
             else:
                 # Short lists read better as prose than as bullets; a bulleted
                 # list of two items looks like a form that was filled in.
                 for it in items:
                     story.append(Paragraph(_p(it), S["body"]))
+                    strength_text.append(str(it))
+        if strength_text:
+            for b in _bubbles_for(" ".join(strength_text) + " "
+                                  + str(summary.get("overview") or ""),
+                                  S, defined, width=6.55 * inch, limit=4):
+                story.append(b)
+                story.append(Spacer(1, 5))
 
     # ------------------------------------------------ the five things
-    # One definition per term, at first use, document-wide.
-    defined = set()
-
     five = (summary or {}).get("five_things") or []
     if five:
         story.append(Spacer(1, 6))

@@ -6,8 +6,8 @@ measurement.
 
 THE DESIGN RULE, and the reason this file is shaped the way it is:
 
-    ONE NARROW CALL PER CHECKPOINT, each fed a targeted slice of the crawl
-    artifact, each returning a strict structured object.
+    ONE NARROW CALL PER CHECKPOINT, each fed a targeted slice of the
+    stored site data, each returning a strict structured object.
 
 Do NOT write a single "assess E-E-A-T" prompt over the whole site. A broad
 prompt produces confident mush that any competent SEO spots in seconds, and it
@@ -78,13 +78,29 @@ def _headtail(text: str, chars: int) -> str:
     return f"{text[:head]}\n…[middle of page omitted]…\n{text[-tail:]}"
 
 
-def _slice(pages, chars=1400):
+def _slice(pages, chars=1400, schema=False):
+    """
+    `schema=True` appends the page's JSON-LD.
+
+    Structured data is where a business actually declares its address, hours
+    and legal entity — a `PostalAddress` node is unambiguous in a way that
+    prose never is. Withholding it produced a false negative that reached a
+    client twice: "no physical address is visible", on a site whose schema
+    carries the address and whose footer prints it on every page. The text
+    extractor does not always keep the footer, and no amount of slicing fixes
+    a string that never contained the thing.
+    """
     out = []
     for p in pages:
-        out.append(f"URL: {p.url}\nTITLE: {p.title or '(none)'}\n"
-                   f"H1: {'; '.join(p.h1) or '(none)'}\n"
-                   f"TEXT: {_headtail(p.rendered_text, chars)}\n---")
-    return "\n".join(out) or "(no matching pages found in the crawl)"
+        block = (f"URL: {p.url}\nTITLE: {p.title or '(none)'}\n"
+                 f"H1: {'; '.join(p.h1) or '(none)'}\n"
+                 f"TEXT: {_headtail(p.rendered_text, chars)}")
+        if schema and getattr(p, "schema_raw", None):
+            import json as _j
+            raw = _j.dumps(p.schema_raw)[:1800]
+            block += f"\nSTRUCTURED DATA (JSON-LD): {raw}"
+        out.append(block + "\n---")
+    return "\n".join(out) or "(no matching pages were retrieved)"
 
 
 def _homepage(art):
@@ -131,7 +147,8 @@ SPECS = [
      "certifications, licenses, titles, years of experience? Do not infer "
      "credentials that are not explicitly written."),
     ("EEAT-09", "Organization authority",
-     lambda a: _slice(_pages_matching(a, r"/about|/company|/our-story|/history")),
+     lambda a: _slice(_pages_matching(a, r"/about|/company|/our-story|/history")
+                      or sorted(OK(a), key=lambda p: p.depth)[:4], schema=True),
      "Does the site establish organizational authority — years in business, scale, "
      "locations, accreditations, industry memberships?"),
     ("EEAT-10", "Industry mentions",
@@ -147,11 +164,13 @@ SPECS = [
      "Is there a published editorial policy, content standards page, or statement "
      "of how content is produced and fact-checked?"),
     ("EEAT-20", "Business information",
-     lambda a: _slice(_pages_matching(a, r"/contact|/about|/location|/store")) ,
+     lambda a: _slice(_pages_matching(a, r"/contact|/about|/location|/store"),
+                      schema=True),
      "Is complete business information available — physical address, phone number, "
      "business hours, legal entity name?"),
     ("EEAT-21", "Customer support information",
-     lambda a: _slice(_pages_matching(a, r"/contact|/support|/help|/faq|/service")),
+     lambda a: _slice(_pages_matching(a, r"/contact|/support|/help|/faq|/service"),
+                      schema=True),
      "Are customer support channels clearly presented — phone, email, chat, hours, "
      "expected response times?"),
     ("EEAT-22", "Testimonials",
@@ -184,7 +203,7 @@ SPECS = [
      "Is the content written in natural, conversational language matching how "
      "people actually ask questions, rather than keyword-stuffed copy?"),
     ("GEO-12", "Entity optimization",
-     lambda a: _all_text(a),
+     lambda a: _slice(sorted(OK(a), key=lambda p: p.depth)[:6], 900, schema=True),
      "Are the key entities — brand, products, services, locations, people — named "
      "explicitly and consistently, so a machine can resolve them?"),
     ("GEO-13", "Knowledge Graph optimization",

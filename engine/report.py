@@ -222,21 +222,51 @@ def _todo_panel(findings: dict, catalog: dict) -> list:
             f"add the Vici login as a user on the property.</div></div>")
 
     if b["manual"]:
+        # WHAT AN ANALYST ACTUALLY DOES.
+        #
+        # "Reviewed by hand" answered the wrong question. Told three times that
+        # nothing needed configuring, the next question was still "so what am I
+        # supposed to do with these" — because a list of IDs is not a task. One
+        # line per area, naming the actual work, turns the panel into something
+        # an analyst can pick up.
+        HOW = {
+            "ONP": "Read the priority pages and judge intent, keyword use and "
+                   "CTA quality — the parts a crawler cannot score.",
+            "GEO": "Ask the assistants directly and record whether the brand is "
+                   "cited. The AI visibility monitor does this on a schedule.",
+            "TECH": "Open the failing resources and confirm whether they are "
+                    "genuinely broken or merely slow; confirm sitemap "
+                    "submission in Search Console.",
+            "SEC": "Check subdomain TLS and HSTS with an external scanner.",
+            "PERF": "Open DevTools on the two slowest templates and read the "
+                    "waterfall for compression and minification.",
+            "HTML": "Run the priority templates through the W3C validator and "
+                    "an accessibility checker.",
+            "CANON": "Confirm pagination and any AMP variants declare the "
+                     "canonical you expect.",
+            "ANA": "Confirm events fire in GA4 DebugView on a real session.",
+            "URL": "Look for meta refresh redirects in the page source.",
+            "INTL": "Confirm country targeting matches where they actually "
+                    "sell.",
+        }
         by_sec = defaultdict(list)
         for cid in b["manual"]:
             by_sec[(catalog.get(cid) or {}).get("prefix", "?")].append(cid)
         items = "".join(
-            f"<li><b>{e(SECTION_NAMES.get(k, k))}</b> — {len(v)}: "
-            f"{e(', '.join(sorted(v)))}</li>"
+            f"<li><b>{e(SECTION_NAMES.get(k, k))}</b> — {len(v)}. "
+            f"{e(HOW.get(k, 'Judged by an analyst against the template.'))}"
+            f"<div class='sm' style='color:var(--muted)'>"
+            f"{e(', '.join(sorted(v)))}</div></li>"
             for k, v in sorted(by_sec.items(), key=lambda kv: -len(kv[1])))
         out.append(
             f"<div style='margin-top:12px'>"
             f"<b style='color:var(--seq)'>Reviewed by hand &middot; "
             f"{len(b['manual'])}</b>"
             f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
-            f"<b>Nothing to configure.</b> These checkpoints have no automated "
-            f"test — an analyst answers them during the engagement. They are "
-            f"listed so the count is auditable, not because they are blocking."
+            f"<b>Nothing to configure</b>, and nothing blocking this report. "
+            f"These are judgement calls with no automated test. What each one "
+            f"actually involves is below, so it can be picked up as work "
+            f"rather than read as a gap."
             f"</div>"
             f"<details class='hist'><summary>Show the {len(b['manual'])} "
             f"checkpoints</summary>"
@@ -272,7 +302,7 @@ def render_html(meta, sc, findings, catalog, summary=None):
     # that ran short is noted on the two rows it affects instead — see TECH-07.
     if meta.get("truncated"):
         P.append(f"<div class='note' style='border-left-color:var(--warning)'>"
-                 f"<b>Partial crawl.</b> {e(meta['truncated'])}. Sitewide counts "
+                 f"<b>Partial review.</b> {e(meta['truncated'])}. Sitewide counts "
                  f"below describe the pages we reached, not the whole site.</div>")
 
     if meta.get("crawl_blocked"):

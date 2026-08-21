@@ -363,8 +363,19 @@ def _anchor_shape(domain: str, out: dict) -> None:
     items = (res[0].get("items") or []) if res else []
     if not items:
         return
-    total = sum(int(i.get("backlinks") or 0) for i in items) or 1
+    total = sum(int(i.get("backlinks") or 0) for i in items)
     dofollow = sum(int(i.get("dofollow") or 0) for i in items)
+    # A ZERO FROM A FAILED PARSE IS NOT A FINDING.
+    #
+    # This shipped "0.0% of backlinks are followed" for a site with 727
+    # backlinks, because the field is not called what I guessed and every sum
+    # came out empty. An implausible zero next to a non-zero total is a parse
+    # failure, and reporting it as a measurement is the same class of error as
+    # putting the wrong metric under a confident label. Say we could not read
+    # it, and log what the fields were actually called.
+    if not total or (dofollow == 0 and total > 0):
+        _unreadable(out, ["OFF-13", "OFF-16", "OFF-17"], "anchors", items[0])
+        return
     pct = round(100 * dofollow / total, 1)
     out["OFF-13"] = _f("Pass" if pct >= 50 else "Warning",
                        {"dofollow_pct": pct, "backlinks": total},
@@ -457,7 +468,10 @@ def _page_split(domain: str, out: dict, rd) -> None:
             home += n
         else:
             deep += n
-    total = home + deep or 1
+    total = home + deep
+    if not total:
+        _unreadable(out, ["OFF-19", "OFF-20"], "domain_pages", items[0])
+        return
     d_pct = round(100 * deep / total, 1)
     out["OFF-19"] = _f("Info", {"homepage_backlinks": home},
                        f"{home:,} backlinks point at the homepage.",
@@ -481,12 +495,22 @@ def _toxicity(domain: str, out: dict, spam) -> None:
     inverse of the spam score and SAYS SO rather than inventing a metric name
     the vendor does not publish.
     """
+    # TRUST SCORE.
+    #
+    # DataForSEO publishes no trust metric. The real ones are Majestic's Trust
+    # Flow and Moz's Domain Authority, and neither is in this account. Deriving
+    # a number from the spam score and calling it a Trust Score is a proxy
+    # wearing a vendor's name — the exact pattern that put four wrong metrics
+    # under confident labels last week. So it is Info: the figure is offered as
+    # context, and the row says where a real trust score would come from.
     if spam is not None:
-        out["OFF-07"] = _f("Pass" if spam <= 30 else "Warning",
-                           {"trust_proxy": 100 - int(spam)},
-                           f"No vendor trust score exists; using the inverse of "
-                           f"the spam score, {100 - int(spam)}/100.",
-                           "Low" if spam <= 30 else "Medium")
+        out["OFF-07"] = _f("Info", {"spam_score": int(spam)},
+                           f"No trust score is available from this provider. "
+                           f"For context, the backlink spam score is "
+                           f"{int(spam)}/100. A true trust metric (Majestic "
+                           f"Trust Flow, Moz Domain Authority) needs a "
+                           f"subscription we do not currently hold.",
+                           "Low", "", 1.0, "dataforseo")
     try:
         res = _result(dfs_post("/backlinks/referring_domains/live",
                                [{"target": domain, "limit": 200,
@@ -509,6 +533,26 @@ def _toxicity(domain: str, out: dict, spam) -> None:
                        "Low" if pct < 10 else "Medium",
                        "" if pct < 10 else "Review the worst of these and "
                                            "consider a disavow file.")
+
+
+def _unreadable(out: dict, ids: list, endpoint: str, sample: dict) -> None:
+    """
+    The endpoint answered, but not in the shape we parse.
+
+    Logs the field names it DID return, so the fix is a one-line rename rather
+    than another round of guessing. The rows stay Need Access — an implausible
+    zero presented as a measurement is worse than an honest gap.
+    """
+    keys = sorted(sample.keys())[:20] if isinstance(sample, dict) else []
+    print(f"[dataforseo] {endpoint} parsed to zero — field names are {keys}",
+          flush=True)
+    for cid in ids:
+        out[cid] = _f("Need Access", {"endpoint": endpoint, "fields": keys},
+                      f"The {endpoint} endpoint answered but not in the shape "
+                      f"we read; the numbers would have been wrong, so nothing "
+                      f"is reported.", "Low",
+                      f"Field names returned: {', '.join(keys[:8])}.",
+                      0.0, "dataforseo_shape")
 
 
 def _months_ago(n: int) -> str:

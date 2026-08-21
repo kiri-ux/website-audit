@@ -248,7 +248,7 @@ def _theme_of(checkpoint_name: str, prefix: str) -> tuple:
 # are correct but internal ("On-Page SEO"); these are what you would say out
 # loud to the person paying for the audit.
 PLAIN_AREA = {
-    "TECH": "how search engines crawl the site",
+    "TECH": "how search engines read the site",
     "PERF": "page speed",
     "MOB": "how the site renders on a phone",
     "SCHEMA": "the structured data behind your listings",
@@ -335,7 +335,7 @@ SERVICE_ACTION = {
              "and the redirect map end to end.",
     "canonical": "We consolidate the duplicate URLs and set the canonical "
                  "structure during technical setup.",
-    "indexing": "We take over crawl and indexing control as part of the "
+    "indexing": "We take control of what search engines can reach and index "
                 "technical foundation work.",
     "redirects": "We build and implement the redirect map so existing ranking "
                  "value carries across.",
@@ -480,7 +480,7 @@ _ACTIONS = {
     "responsive images": "Serve responsive image sizes",
     "lazy loading": "Enable lazy loading on below-the-fold images",
     # crawl & indexing
-    "pages are blocked from crawling": "Open up the pages blocked from crawling",
+    "pages are blocked from crawling": "Open up the pages search engines cannot reach",
     "pages returned 4xx status code": "Fix or redirect the pages returning errors",
     "internal links are broken": "Repair the broken internal links",
     "orphan pages identified": "Link the orphaned pages into the site",
