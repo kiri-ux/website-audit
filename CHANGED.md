@@ -1,4 +1,56 @@
-# Changed files — build 2026.08.20-18
+# Changed files — build 2026.08.20-19
+
+## "Why is Reviewed by hand here?" — the panel contradicted itself
+
+The panel headline read **"Action needed before this goes out"**, and directly
+under it a group said **"Nothing to configure, and nothing blocking this
+report."** It demanded action and then listed things needing none. No wonder it
+did not parse.
+
+The headline is now neutral — *"Before this goes out"* — and says which list is
+which. The second group is retitled **Analyst work list**, and its text says what
+it is rather than what it isn't:
+
+> **Not a gap and not a bug** — these are the checkpoints no tool can answer, so
+> a person does them as part of the engagement. They are already excluded from
+> the score, so leaving them until the work starts costs nothing.
+
+## "Why wouldn't we be reviewing something?"
+
+Same question one layer down, on the **Reviewed 4/12** column. Last build I fixed
+the arithmetic; I never explained the gap. The caption now says where the
+difference goes, and points at the coverage panel that breaks it down: checks we
+complete by hand during the engagement, or checks that need access to their
+accounts. Never "we skipped it".
+
+---
+
+## The lamp
+
+**It was in the PDF all along** — sitting in a nested cell fixed at 1.55 inches,
+so on a short checkpoint name it floated an inch and a half from the text, in
+white space between two columns, belonging to neither. Against the **ID** it
+lands in a tidy vertical column, unmistakably attached to its row. That is what
+makes it scannable, and it is why you could not find it.
+
+**The legend is gone from the client PDF.** You were right. The lamp is a signal
+for whoever reviews the draft; the client was never asked to act on it, so a
+paragraph explaining a symbol is furniture. The mark stays in both documents, the
+explanation stays only on the operator page — which is where the review actually
+happens.
+
+---
+
+## Smaller things
+
+| | |
+|---|---|
+| At a glance tiles | Separate rounded cards, matching the dashboard. The first version was one long box with hairlines, on the theory that five borders spend more ink on chrome than on numbers — next to the dashboard it just looked like a table that had lost its header |
+| Footer | `Client - Website Audit`, single hyphen |
+| "Nothing here is a mark against you" | Now "Unmeasured checks are left out of the score, never counted as zero" — the same fact, stated rather than reassured |
+| Completed audit page | **All audits** button at the top. It was a dead end otherwise: back-button only, and after a rerun that lands on a stale status page |
+
+---
 
 ## OFF-18 Image backlinks
 

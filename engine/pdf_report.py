@@ -303,7 +303,7 @@ class _Doc(BaseDocTemplate):
         canvas.setStrokeColor(LINE)
         y = self.bottomMargin - 16
         canvas.line(self.leftMargin, y + 11, self.leftMargin + self.width, y + 11)
-        left = f"{self.meta.get('client','')} — Website Audit"
+        left = f"{self.meta.get('client','')} - Website Audit"
         canvas.drawString(self.leftMargin, y, left[:90])
         canvas.drawRightString(self.leftMargin + self.width, y, f"Page {doc.page}")
         # No build id here. It is operational information for us, and a version
@@ -855,27 +855,52 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     # PARAGRAPH's leading at the 11pt the cell style carries, so 19pt digits
     # overflowed their row and the labels printed on top of the numbers.
     big = ParagraphStyle("glance", parent=S["cell"], fontSize=19, leading=21)
-    trow, lrow = [], []
-    for v, l in tiles:
-        trow.append(Paragraph(f"<b>{v}</b>", big))
-        lrow.append(Paragraph(f"<font size=7.5 color='#52514e'>{l}</font>",
-                              S["cell"]))
-    w = 6.55 / len(tiles) * inch
-    glance = Table([trow, lrow], colWidths=[w] * len(tiles),
-                   rowHeights=[0.34 * inch, 0.20 * inch])
+    # Separate rounded cards, one per number, the way the dashboard draws them.
+    # The first attempt was one long box with hairlines between the tiles, on
+    # the theory that five borders spend more ink on chrome than on numbers.
+    # Next to the dashboard it just looked like a table that had lost its
+    # header — the rounded card is what makes a figure read as a tile.
+    def _tile(v, l):
+        t = Table([[Paragraph(f"<b>{v}</b>", big)],
+                   [Paragraph(f"<font size=7.5 color='#52514e'>{l}</font>",
+                              S["cell"])]],
+                  # 8pt of top padding plus 21pt of leading needs 0.41in; at
+                  # 0.30 the label row drew straight through the digits.
+                  rowHeights=[0.42 * inch, 0.20 * inch])
+        t.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("BACKGROUND", (0, 0), (-1, -1), SURFACE),
+            ("ROUNDEDCORNERS", [5, 5, 5, 5]),
+            ("BOX", (0, 0), (-1, -1), 0.5, LINE),
+            ("LEFTPADDING", (0, 0), (-1, -1), 9),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, 0), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 0),
+            ("TOPPADDING", (0, 1), (-1, 1), 0),
+            ("BOTTOMPADDING", (0, 1), (-1, 1), 8),
+        ]))
+        return t
+
+    # Widths in INCHES until the final multiply. Mixing the two — a gap already
+    # converted to points, then multiplied by inch again — produced columns
+    # wider than the frame and a negative available width inside a cell, which
+    # reportlab reports as a TypeError from deep inside its own error handler.
+    gap_in = 0.07
+    w_in = (6.55 - gap_in * (len(tiles) - 1)) / len(tiles)
+    cells, widths = [], []
+    for i, (v, l) in enumerate(tiles):
+        if i:
+            cells.append("")
+            widths.append(gap_in * inch)
+        cells.append(_tile(v, l))
+        widths.append(w_in * inch)
+    glance = Table([cells], colWidths=widths)
     glance.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BACKGROUND", (0, 0), (-1, -1), SURFACE),
-        ("BOX", (0, 0), (-1, -1), 0.5, LINE),
-        # Hairlines between tiles rather than five separate boxes: at this width
-        # five bordered cards spend more ink on chrome than on numbers.
-        ("LINEAFTER", (0, 0), (-2, -1), 0.5, LINE),
-        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, 0), 9),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 0),
-        ("TOPPADDING", (0, 1), (-1, 1), 1),
-        ("BOTTOMPADDING", (0, 1), (-1, 1), 9),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
     story.append(glance)
     story.append(Spacer(1, 14))
@@ -886,7 +911,8 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                        note="Severity tells you what to fix first, not how much there is.")]
     right = [Paragraph("Audit Coverage", S["h3"]),
              SegmentBar(coverage_segments(*cov), width=3.05 * inch,
-                        note="Nothing here is a mark against you.")]
+                        note="Unmeasured checks are left out of the "
+                             "score, never counted as zero.")]
     grid = Table([[left, right]], colWidths=[3.3 * inch, 3.3 * inch])
     grid.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -1038,9 +1064,10 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     # quickly, "4/12 ... 2" looks like one ratio. Name both, and say so.
     story.append(Paragraph(
         "<b>Reviewed</b> is how many of that area's checks we answered, out of "
-        "the checks that apply to a site like yours — checks that don't apply "
-        "are left out of both numbers rather than counted against us. "
-        "<b>Issues</b> counts how many came back a problem.", S["small"]))
+        "the checks that apply to a site like yours. Where the two numbers "
+        "differ, the rest are checks we complete by hand during the engagement "
+        "or that need access to your accounts — the panel above breaks that "
+        "down. <b>Issues</b> counts how many came back a problem.", S["small"]))
     story.append(Spacer(1, 6))
     rows = [[Paragraph("<b>Section</b>", S["cellsm"]),
              Paragraph("<b>Score</b>", S["cellsm"]),
@@ -1236,23 +1263,6 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         "call, made by hand as part of the work."
         + (f" {n_na} checks that don't apply to a site like yours are left out."
            if n_na else ""), S["small"]))
-    # The lamp's legend. Placed at the head of the full record because that is
-    # where the marks appear, and an unexplained symbol in a client deliverable
-    # is worse than no symbol at all.
-    if any(_judged(cid, f.get("status")) for cid, f in findings.items()):
-        legend = Table([[Lamp(size=8.5), Paragraph(
-            "<b>Judged by review rather than measured.</b> These checkpoints are "
-            "qualitative — whether a page answers the question it ranks for, "
-            "whether its call to action is clear — so they carry a judgment "
-            "where the rest of this report carries a measurement.",
-            S["small"])]], colWidths=[0.22 * inch, 6.28 * inch])
-        legend.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("TOPPADDING", (0, 0), (0, 0), 2),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
-        story.append(Spacer(1, 6))
-        story.append(legend)
 
     for k in ORDER:
         # N/A rows are dropped. A page of "Meta Pixel · N/A · Not detected."
@@ -1295,22 +1305,29 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             # The remediation stays out of the client PDF — it is the work we
             # are selling. It is still on the internal HTML report and in the
             # findings API for the team doing the fixing.
-            name = Paragraph(_p(m.get("checkpoint")), S["cell"])
+            # THE LAMP GOES NEXT TO THE ID, NOT NEXT TO THE NAME.
+            #
+            # It was in the Check column, in a nested table whose first cell was
+            # a fixed 1.55 inches — so on a short checkpoint name the lamp sat
+            # an inch and a half away from the text, floating in white space
+            # between two columns and reading as belonging to neither. Against
+            # the ID it lands in a tidy vertical column, unmistakably attached
+            # to its row, which is what makes it scannable.
+            ident = Paragraph(cid, S["cellsm"])
             if _judged(cid, f.get("status")):
-                # A judged row gets the lamp beside its name. Nested in a table
-                # rather than inlined, because the mark is vector art and a
-                # Paragraph can only hold text.
-                name = Table([[name, Lamp()]], colWidths=[1.55 * inch, 0.16 * inch])
-                name.setStyle(TableStyle([
+                ident = Table([[ident, Lamp(size=7)]],
+                              colWidths=[0.46 * inch, 0.15 * inch])
+                ident.setStyle(TableStyle([
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("TOPPADDING", (1, 0), (1, 0), 2),
+                    ("TOPPADDING", (1, 0), (1, 0), 1),
                     ("LEFTPADDING", (0, 0), (-1, -1), 0),
                     ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
-            data.append([Paragraph(cid, S["cellsm"]), name,
+            data.append([ident,
+                         Paragraph(_p(m.get("checkpoint")), S["cell"]),
                          _pill(f["status"], STATUS_PILL, S, 0.86 * inch),
                          Paragraph(_agree(_p(f.get("evidence"))), S["cell"])])
-        t = Table(data, colWidths=[0.62 * inch, 1.75 * inch, 0.95 * inch, 3.18 * inch],
+        t = Table(data, colWidths=[0.72 * inch, 1.68 * inch, 0.95 * inch, 3.15 * inch],
                   repeatRows=1)
         st = [("VALIGN", (0, 0), (-1, -1), "TOP"),
               ("VALIGN", (2, 1), (2, -1), "MIDDLE"),

@@ -27,9 +27,12 @@ THE LAMP
 --------
 Rows the judgment layer produced are read, not counted — and a reading can be
 wrong in ways a count cannot. They carry a lightbulb so the team knows which
-rows to check hardest before a report goes out. The legend says "Judged by
-review rather than measured", which is true, is useful to a client, and does not
-advertise the mechanism.
+rows to check hardest before a report goes out.
+
+The mark lives in BOTH documents; the legend explaining it lives only in the
+internal one. The client was never asked to act on the lamp, so a paragraph in
+their report explaining a symbol is furniture — and the review it exists to
+prompt happens on the operator page, not in the delivered PDF.
 """
 from __future__ import annotations
 import inspect
@@ -128,6 +131,7 @@ def main():
           "reuse_crawl" in inspect.getsource(api.rerun_audit))
 
     print("\nJUDGED ROWS ARE MARKED, IN BOTH RENDERERS")
+    from engine import report as R
     from engine.report import is_judged, _lamp, LAMP, JUDGED_NOTE
     from engine.pdf_report import _judged
     from engine.judgment import CHECKPOINT_IDS
@@ -148,6 +152,20 @@ def main():
               _lamp("EEAT-01", status) == "" and not _judged("EEAT-01", status))
     check("an answered row is marked", _lamp("EEAT-01", "Warning") != "")
 
+    print("\nTHE MARK IS A TEAM SIGNAL, NOT CLIENT-FACING FURNITURE")
+    # The lamp exists so whoever reviews the draft knows which rows to reread.
+    # The client was never asked to act on it, so a paragraph in their document
+    # explaining a symbol is furniture. It stays on the internal HTML report,
+    # where the review actually happens.
+    import inspect as _i
+    from engine import pdf_report as _pdf
+    check("the client PDF carries no legend paragraph",
+          "Judged by review" not in _i.getsource(_pdf))
+    check("the internal report still explains it",
+          "Judged by review" in _i.getsource(R))
+    check("but the PDF still marks the rows",
+          "Lamp(" in _i.getsource(_pdf))
+
     print("\nTHE MARK IS EXPLAINED, AND EXPLAINED HONESTLY")
     check("the lamp is drawn, not an emoji that renders as a black box",
           "<svg" in LAMP and "\U0001F4A1" not in LAMP)
@@ -156,7 +174,6 @@ def main():
     # The client reads this document. It must not carry a machine disclosure,
     # and it must not carry a falsehood either — hence a description of the
     # row's nature rather than of its provenance.
-    from engine import report as R
     lowered = (JUDGED_NOTE + " " + R.LAMP).lower()
     for word in ("ai-generated", "ai generated", "chatgpt", "llm", "claude",
                  "machine-generated", "automated guess"):

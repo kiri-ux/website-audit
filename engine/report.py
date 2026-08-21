@@ -286,9 +286,15 @@ def _todo_panel(findings: dict, catalog: dict) -> list:
 
     out = ["<div class='note' style='border-left-color:var(--seq);"
            "margin:0 0 22px'>"
-           "<b>Action needed before this goes out.</b> "
+           # NOT "Action needed before this goes out". That headline sat above
+           # a group whose own text says "nothing to configure, nothing
+           # blocking this report", and the contradiction is what made the
+           # whole panel hard to read: it demanded action and then listed
+           # things that need none.
+           "<b>Before this goes out.</b> "
            "<span class='sm'>Internal only — none of this appears in the "
-           "client PDF.</span>"]
+           "client PDF. The first list is ours to fix; the second is the work "
+           "an analyst does during the engagement.</span>"]
 
     if b["vendor"]:
         items = "".join(f"<li><b>{n}</b> — {e(why)}</li>"
@@ -359,13 +365,14 @@ def _todo_panel(findings: dict, catalog: dict) -> list:
             for k, v in sorted(by_sec.items(), key=lambda kv: -len(kv[1])))
         out.append(
             f"<div style='margin-top:12px'>"
-            f"<b style='color:var(--seq)'>Reviewed by hand &middot; "
+            f"<b style='color:var(--seq)'>Analyst work list &middot; "
             f"{len(b['manual'])}</b>"
             f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
-            f"<b>Nothing to configure</b>, and nothing blocking this report. "
-            f"These are judgement calls with no automated test. What each one "
-            f"actually involves is below, so it can be picked up as work "
-            f"rather than read as a gap."
+            f"<b>Not a gap and not a bug</b> — these are the checkpoints no "
+            f"tool can answer, so a person does them as part of the "
+            f"engagement. They are already excluded from the score, so leaving "
+            f"them until the work starts costs nothing. The task for each one "
+            f"is below."
             f"</div>"
             f"<details class='hist'><summary>Show the {len(b['manual'])} "
             f"checkpoints</summary>"
@@ -386,7 +393,20 @@ def render_html(meta, sc, findings, catalog, summary=None):
          "<meta name='viewport' content='width=device-width,initial-scale=1'>",
          _brand_head(),
          f"<title>SEO/GEO Audit — {e(meta['client'])}</title><style>{CSS}</style>",
-         "</head><body class='viz-root'><div class='wrap'>"]
+         "</head><body class='viz-root'><div class='wrap'>",
+         # A way back. This page is a dead end otherwise — the only routes off
+         # it are the browser's back button and editing the URL, and after a
+         # rerun the back button lands on a stale status page.
+         "<div style='margin-bottom:18px'>"
+         "<a href='/' style='display:inline-flex;align-items:center;gap:7px;"
+         "font-size:13.5px;padding:7px 16px;border:1px solid var(--line);"
+         "border-radius:20px;background:var(--surface);color:var(--ink2);"
+         "text-decoration:none'>"
+         "<svg viewBox='0 0 24 24' width='14' height='14' fill='none' "
+         "stroke='currentColor' stroke-width='2' stroke-linecap='round' "
+         "stroke-linejoin='round' aria-hidden='true'>"
+         "<path d='M3 10.5 12 3l9 7.5'/><path d='M5 9.5V21h14V9.5'/></svg>"
+         "All audits</a></div>"]
 
     # WHAT THIS RUN STILL OWES, at the top, before anything else.
     #

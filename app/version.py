@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-18"
-BUILD_NOTES = ("Image backlinks measured, with alt-text coverage; the "
-               "footer reaches the judgment layer; nine more checkpoints "
-               "measured instead of manual")
+BUILD = "2026.08.20-19"
+BUILD_NOTES = ("The lamp sits against the ID where it can be seen; the "
+               "internal panel no longer contradicts itself; rounded tiles; "
+               "a way back from the report page")
 # ---------------------------------------------------------------------------
 
 
