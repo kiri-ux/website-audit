@@ -236,8 +236,12 @@ def main():
     check("backlinks are ours to buy", blocked_on("OFF-01") == "vendor")
     check("a judgment-layer row is ours to configure",
           blocked_on("EEAT-01") == "vendor")
+    # ONP-43 is compression: a response header, not a judgment, so the LLM
+    # layer deliberately does not own it and no collector answers it either.
+    # (ONP-34 used to stand here and now belongs to the judgment layer — a
+    # checkpoint moving from `manual` to `vendor` is what progress looks like.)
     check("an unautomated checkpoint is ours to do by hand",
-          blocked_on("ONP-34") == "manual")
+          blocked_on("ONP-43") == "manual")
     # THE ONE THAT SHIPPED WRONG. A granted, working Search Console connection
     # still left 27 rows the API does not expose, and bucketing by prefix
     # called every one of them a missing client grant — telling us to email a
@@ -252,7 +256,7 @@ def main():
     check("our own missing credentials are never billed to the client",
           blocked_on("GSC-01", {"source": "gsc_misconfigured"}) == "vendor")
     mixed_cat = {"GSC-01": {"prefix": "GSC"}, "OFF-01": {"prefix": "OFF"},
-                 "ONP-34": {"prefix": "ONP"}, "TECH-01": {"prefix": "TECH"}}
+                 "ONP-43": {"prefix": "ONP"}, "TECH-01": {"prefix": "TECH"}}
     c = _acounts({"TECH-01": {"status": "Pass"}}, mixed_cat)
     check("buckets split three ways over the whole catalog",
           (c["client"], c["vendor"], c["manual"], c["measured"]) == (1, 1, 1, 1),

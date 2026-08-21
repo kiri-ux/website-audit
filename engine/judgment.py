@@ -112,6 +112,40 @@ def _all_text(art, limit=8, chars=900):
     return _slice(sorted(OK(art), key=lambda p: p.depth)[:limit], chars)
 
 
+def _priority(art, limit=6, chars=2200):
+    """
+    The pages worth reading, and more of each than the site-wide slice gives.
+
+    "Priority" is not the shallowest pages — a homepage tells you little about
+    whether service pages satisfy intent. It is the pages with real content
+    that a business would care about ranking: enough words to judge, weighted
+    toward money pages, and deduplicated by template so six near-identical
+    location pages do not consume the whole sample.
+
+    A bigger `chars` than the other retrievers on purpose: you cannot judge
+    whether a page satisfies search intent from 900 characters of it.
+    """
+    pages = [p for p in OK(art) if (p.word_count or 0) >= 120]
+    if not pages:
+        pages = OK(art)
+    money = re.compile(r"/service|/product|/practice|/solution|/pricing|"
+                       r"/contact|/quote|/book", re.I)
+    seen, picked = set(), []
+    for p in sorted(pages, key=lambda p: (0 if money.search(p.url) else 1,
+                                          p.depth, -(p.word_count or 0))):
+        # One page per URL template. `/locations/knoxville` and
+        # `/locations/farragut` answer the same question about the same
+        # template, and sampling both wastes half the window.
+        shape = re.sub(r"/[^/]+$", "/*", p.url) if p.depth > 1 else p.url
+        if shape in seen:
+            continue
+        seen.add(shape)
+        picked.append(p)
+        if len(picked) >= limit:
+            break
+    return _slice(picked, chars)
+
+
 # ---------------------------------------------------------------- checkpoints
 # (checkpoint_id, label, retrieval fn, question)
 SPECS = [
@@ -245,6 +279,86 @@ SPECS = [
      lambda a: _all_text(a),
      "Is the brand presented consistently enough across the site that an AI system "
      "would treat it as a single recognizable entity?"),
+
+    # ---- ON-PAGE JUDGMENT ----------------------------------------------
+    #
+    # Fifteen checkpoints that were reported as "reviewed by hand" because a
+    # crawler genuinely cannot score them: whether a page answers the intent
+    # behind its keyword, whether the CTA is any good, whether an outbound link
+    # is to something authoritative. Those are readings, not measurements —
+    # which is exactly what this layer is for.
+    #
+    # ONP-43 (compression) is deliberately NOT here. It is a response header,
+    # not a judgment, and asking a model to guess at one would be the same
+    # confident-but-wrong output the rest of this file exists to prevent.
+    ("ONP-13", "Content optimization",
+     lambda a: _priority(a),
+     "Do these pages read as deliberately written for search and for a reader — "
+     "clear subject, useful depth, sensible structure — or as thin filler that "
+     "exists to have a page?"),
+    ("ONP-24", "Primary keyword included",
+     lambda a: _priority(a),
+     "Does each page's title and opening content make its primary topic "
+     "unmistakable? Name the topic you infer for each page. If you cannot tell "
+     "what a page is trying to rank for, say so."),
+    ("ONP-25", "Brand placement reviewed",
+     lambda a: _priority(a),
+     "Is the brand name placed consistently and sensibly in titles — present but "
+     "not crowding out the topic, and not absent entirely on commercial pages?"),
+    ("ONP-28", "CTA included",
+     lambda a: _priority(a),
+     "Does each page contain a clear call to action a visitor could act on — a "
+     "specific next step, not just a phone number in the header? Quote the CTA "
+     "you find, or say the page has none."),
+    ("ONP-29", "Target keyword included",
+     lambda a: _priority(a),
+     "Does the body content actually use the terms a visitor would search for on "
+     "this topic, in natural language rather than repetition?"),
+    ("ONP-34", "Search intent satisfied",
+     lambda a: _priority(a),
+     "For the query each page is evidently targeting, does the page satisfy the "
+     "intent behind it — informational pages that inform, commercial pages that "
+     "let someone buy or book? Name any page that answers a different intent "
+     "from the one it targets."),
+    ("ONP-35", "Keyword optimization",
+     lambda a: _priority(a),
+     "Is keyword use natural and well-placed, or is it either absent or stuffed? "
+     "Quote an example of whichever you find."),
+    ("ONP-36", "Semantic keywords",
+     lambda a: _priority(a),
+     "Does the content cover the related concepts a thorough treatment of the "
+     "topic would include, or does it repeat one phrase without surrounding "
+     "subject matter?"),
+    ("ONP-37", "EEAT signals",
+     lambda a: _priority(a),
+     "Do these pages carry visible trust signals in the content itself — named "
+     "people, credentials, specifics, verifiable claims?"),
+    ("ONP-38", "Internal linking",
+     lambda a: _priority(a),
+     "Do these pages link to related pages on the site in a way that helps a "
+     "reader continue, or do they dead-end?"),
+    ("ONP-39", "External references",
+     lambda a: _priority(a),
+     "Does the content cite external sources where a claim would benefit from "
+     "one, or does it assert everything unsupported?"),
+    ("ONP-40", "Freshness",
+     lambda a: _priority(a),
+     "Is there any evidence these pages are maintained — dates, current "
+     "references, recent examples? Absence of a date is not by itself a "
+     "failure; content that is visibly stale is."),
+    ("ONP-41", "Duplicate content check",
+     lambda a: _priority(a),
+     "Do any of these pages say substantially the same thing as another, with "
+     "only location or service names swapped? Name the pages if so."),
+    ("ONP-49", "Relevant outbound links",
+     lambda a: _priority(a),
+     "Where the pages link out, are the destinations relevant and useful to the "
+     "reader, or are they incidental?"),
+    ("ONP-50", "Authority references",
+     lambda a: _priority(a),
+     "Do outbound links and citations point at authoritative sources — "
+     "recognized institutions, primary sources, standards bodies — rather than "
+     "at anything convenient?"),
 ]
 
 CHECKPOINT_IDS = [s[0] for s in SPECS]

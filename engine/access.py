@@ -75,6 +75,13 @@ def vendor_ids() -> set:
 OURS_DESPITE_PREFIX = {"gsc_ui_only", "ga4_admin_only",
                        "gsc_misconfigured", "ga4_misconfigured"}
 
+# And a third case, which is neither: reports Google publishes in the Search
+# Console interface and exposes through no API at all — the external-links and
+# top-linking-sites reports. No grant unlocks them and no build we could do
+# would reach them. They belong with the checkpoints an analyst reads by hand,
+# not on a list of things we owe the client or ourselves.
+MANUAL_DESPITE_PREFIX = {"gsc_no_api", "ga4_no_api"}
+
 
 def blocked_on(cid: str, finding: dict | None = None) -> str:
     """
@@ -88,6 +95,8 @@ def blocked_on(cid: str, finding: dict | None = None) -> str:
     src = (finding or {}).get("source") or ""
     if src in OURS_DESPITE_PREFIX:
         return "vendor"
+    if src in MANUAL_DESPITE_PREFIX:
+        return "manual"
     if cid.split("-")[0] in CLIENT_PREFIXES:
         return "client"
     if cid.startswith("OFF-") or cid in vendor_ids():

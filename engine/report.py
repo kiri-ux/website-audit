@@ -230,8 +230,15 @@ def _todo_panel(findings: dict, catalog: dict) -> list:
         # line per area, naming the actual work, turns the panel into something
         # an analyst can pick up.
         HOW = {
-            "ONP": "Read the priority pages and judge intent, keyword use and "
-                   "CTA quality — the parts a crawler cannot score.",
+            # Search intent, keyword use and CTA quality used to live here. The
+            # judgment layer now reads the priority pages and scores them, so
+            # what is left in this bucket is the residue: response headers and
+            # server settings that need a look rather than a reading.
+            "ONP": "Confirm compression and server-side delivery settings on "
+                   "the priority templates.",
+            "GSC": "Open the Search Console links report — the external-links "
+                   "and top-linking-sites views have no API. The backlink data "
+                   "in Off-Page and Authority covers the same ground.",
             "GEO": "Ask the assistants directly and record whether the brand is "
                    "cited. The AI visibility monitor does this on a schedule.",
             "TECH": "Open the failing resources and confirm whether they are "

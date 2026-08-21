@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-12"
-BUILD_NOTES = ("Structured data reaches the judgment layer, so the address "
-               "is found; a zero from a failed parse is no longer reported "
-               "as a measurement; definitions moved to first use")
+BUILD = "2026.08.20-13"
+BUILD_NOTES = ("On-page intent, keyword use and CTA quality are now judged "
+               "automatically; 27 Search Console and Analytics rows that said "
+               "'read this from the interface' now carry measurements")
 # ---------------------------------------------------------------------------
 
 

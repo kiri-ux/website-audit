@@ -216,8 +216,14 @@ def _after_crawl(a, opts, audit_id, art, findings, step):
         return _score_and_save(a, opts, audit_id, art, findings,
                                {"context": _context_of(art)}, step)
     step("checking", "collecting Search Console, Analytics and backlink data")
+    # The crawl and the findings so far both feed Search Console: the artifact
+    # gives URL Inspection something to sample and the link graph to read, and
+    # PERF-11 already holds the CrUX field data the Core Web Vitals report is
+    # built from. Passing them in is what turns 17 "read it from the UI" rows
+    # into measurements.
     gsc = collect_gsc(a["target_url"], opts.get("gsc_refresh_token"),
-                      property_url=opts.get("gsc_property"))
+                      property_url=opts.get("gsc_property"),
+                      artifact=art, known=findings)
     ga4 = collect_ga4(opts.get("ga4_property_id"),
                       opts.get("ga4_refresh_token"),
                       site_url=a["target_url"])

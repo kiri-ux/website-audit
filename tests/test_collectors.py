@@ -127,7 +127,11 @@ def main():
     F.update(j); F.update(g); F.update(a4); F.update(b)
     cat = scoring.load_catalog("seed/checkpoints.csv")
     print("\nCOVERAGE")
-    check("coverage grew by 96 checkpoints", len(F) == base + 96,
+    # 111 = 44 judgment (E-E-A-T, AI Search, on-page) + 22 GSC + 16 GA4 + 29
+    # backlinks. This is asserted exactly, and on purpose: the number only moves
+    # when a collector's row set changes, and that is precisely the change worth
+    # being made to look at.
+    check("coverage grew by 111 checkpoints", len(F) == base + 111,
           f"{base} -> {len(F)}")
     check("coverage is over 80% of the template", len(F) / len(cat) > 0.8,
           f"{len(F)}/{len(cat)} = {100*len(F)//len(cat)}%")

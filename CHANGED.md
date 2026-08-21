@@ -1,3 +1,132 @@
+# Changed files — build 2026.08.20-13
+
+## Two builds you asked for, both about the same thing: stop deferring
+
+### 1. On-page quality is judged, not left for an analyst
+
+*"Read the priority pages and judge intent, keyword use and CTA quality"* was
+printed in the report as **your** homework. It is now the scan's.
+
+Fifteen On-Page checkpoints moved into the judgment layer — ONP-13, 24, 25, 28,
+29, 34, 35, 36, 37, 38, 39, 40, 41, 49, 50. They cover search intent match,
+keyword placement and density, heading structure against the topic, CTA presence
+and clarity, readability, content depth against what the query needs, and
+internal linking relevance.
+
+These need a different sample from the E-E-A-T rows, so they got their own
+retriever. It picks up to six content-bearing pages (120+ words), weights money
+pages first (`/service`, `/product`, `/practice`, `/solution`, `/pricing`,
+`/contact`, `/quote`, `/book`), and **deduplicates by URL shape** so that twelve
+near-identical location pages do not consume the whole sample and leave the
+services page unread. It also passes a wider window — 2,200 characters rather
+than 900 — because you cannot judge whether a page answers a search intent from
+its first paragraph.
+
+**ONP-43 (compression) was deliberately left alone.** It is a response header,
+not a judgment, and asking a language model to guess at one would be a worse
+answer than admitting we have not automated it.
+
+Cost note, since it is real: the judgment layer went from 29 calls per audit to
+44. Runtime is roughly flat — it is still six-way parallel — but the API spend
+per audit rises about 50%.
+
+### 2. The 27 Search Console and Analytics rows that said "read this from the interface"
+
+A granted, working Google connection filled 11 of 38 rows. The other 27 said
+some version of *we have not built this yet*, which is a strange thing to print
+in a document you are charging for. All 27 now carry measurements, from three
+places the collector was not previously looking.
+
+**URL Inspection API — index coverage (GSC-05..11).** Indexed and excluded
+counts, crawled-not-indexed, discovered-not-indexed, soft 404s, server errors,
+redirect errors.
+
+This one comes with a caveat built into every sentence it writes. The API
+answers **one URL per call** and is quota-capped, so it reads a bounded sample —
+the shallowest, best-linked pages first, 25 by default (`GSC_INSPECT_SAMPLE`).
+Every row therefore carries its denominator: *"8 of the 12 pages sampled are
+indexed; all 12 pages found on the site were inspected."* The version of that
+sentence without the denominator would be a lie about a 400-page site, and the
+temptation to write it is exactly why the test suite now asserts the
+denominator is present.
+
+**The `searchAppearance` dimension — rich results (GSC-14..18).** Rich results
+overall, breadcrumbs, product results, FAQ results, video pages, each with
+impressions and clicks.
+
+Absence is handled with some care here. No breadcrumbs is a Warning, because
+breadcrumb markup applies to essentially any site. No **product** results is
+`Info` — a law firm has nothing to sell, and scoring that as a defect is the
+kind of noise that teaches a reader to skim the section. `Info` is already
+excluded from scoring, so it reports the fact without moving the number.
+
+**The GA4 Admin API — configuration (GA4-03, GA4-06).** Enhanced Measurement,
+naming which events are switched off; and key events, read from `keyEvents` with
+a fallback to `conversionEvents` for properties Google has not migrated.
+
+Traffic tells you what happened. Configuration tells you whether what happened
+was measured correctly — and when a number looks wrong, it is almost always the
+second one that explains it.
+
+**Plus GA4-04 events** (with the automatic-event set filtered out, so "3 events
+recorded" cannot pass for a real install), **GA4-07 cross-domain** and **GA4-08
+internal traffic** from one hostname report, and **GA4-13 landing pages**.
+
+GA4-08 measures the *effect* rather than reading the filter config, because the
+Admin API does not expose data filters — if `staging.example.com` is reporting
+into the live property, the filter is not working whatever it says it does.
+
+### Four rows answered from data the audit already had
+
+No new API call for any of these; we were sitting on the answers.
+
+| | |
+|---|---|
+| **GSC-12** Core Web Vitals | The CrUX field data PageSpeed Insights already returned for PERF-11 — the same dataset Search Console's report is built from |
+| **GSC-13** HTTPS | Our own fetches, plus the HTTP→HTTPS upgrade check |
+| **GSC-19** Internal links | The crawl's link graph, which can also name the orphaned pages |
+| **GA4-15** Conversion rate | Organic conversions ÷ organic sessions, two numbers GA4 returns and will not divide |
+
+### Three rows that will never be answered, said plainly
+
+**GSC-20** (external links) and **GSC-21** (top linking sites) have no API in any
+form. **GA4-14** (exit pages) has no equivalent in an event-based model — it was
+a Universal Analytics concept and did not survive the move.
+
+None of the three is a missing client grant, and none is a build being deferred.
+GSC-20/21 now bucket as **"Reviewed by hand"** with a pointer to the backlink
+data in Off-Page and Authority, which covers the same ground properly. GA4-14 is
+marked **N/A** with the reason stated.
+
+This needed a third rule in `engine/access.py`. We already had one for *"the
+prefix says client, the reason says it is ours"*; there is now one for *"the
+prefix says client, the reason says nobody can get it"*.
+
+### No re-consent needed
+
+Both new APIs are covered by the scopes your tokens already hold —
+`webmasters.readonly` for URL Inspection, `analytics.readonly` for the Admin
+API. Nothing to do in Google Cloud.
+
+---
+
+## Files
+
+| File | Change |
+|---|---|
+| `engine/judgment.py` | 15 ONP specs; `_priority()` retriever; a British spelling caught by the voice test |
+| `engine/collectors/analytics.py` | URL Inspection, searchAppearance, GA4 Admin API, four rows from our own data |
+| `engine/access.py` | `MANUAL_DESPITE_PREFIX` — reports with no API are an analyst's read |
+| `app/worker.py` | Passes the crawl and the findings-so-far into the Search Console collector |
+| `engine/report.py` | The On-Page "reviewed by hand" note is now about compression, not intent; a Search Console note added |
+| `tests/test_analytics_build.py` | **New.** 45 checks over the new rows |
+| `tests/test_charts.py` | ONP-34 is no longer manual — it belongs to the judgment layer now |
+| `tests/test_collectors.py` | Coverage grew 96 → 111 |
+
+All 16 suites green.
+
+---
+
 # Changed files — build 2026.08.20-07
 
 ## Restyled to adtini
