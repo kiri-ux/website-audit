@@ -325,6 +325,45 @@ def main():
         check(f"{cid} warns the two will not match",
               "sample" in ev and "lower" in ev)
 
+    print("\nOFF-18 IMAGE BACKLINKS")
+    # This row said "requires an additional DataForSEO backlinks endpoint",
+    # which sent us looking for a call to add when the real problem was a key
+    # we were not finding. Both routes are covered: the summary breakdown when
+    # it is there, the dedicated endpoint when it is not.
+    o = {}
+    D._image_links("example.com", o,
+                   {"referring_links_types": {"anchor": 600, "image": 127}}, 727)
+    check("the summary breakdown answers it with no extra call",
+          o["OFF-18"]["value"]["image_backlinks"] == 127)
+    check("and it is Info — there is no correct number of image links",
+          o["OFF-18"]["status"] == "Info")
+
+    def img_api(path, payload, timeout=None, retries=1):
+        assert "backlinks/backlinks" in path, path
+        return {"tasks": [{"result": [{"items":
+                [{"item_type": "anchor", "anchor": "ooten law"}] * 80
+                + [{"item_type": "image", "alt": "Super Lawyers badge"}] * 15
+                + [{"item_type": "image", "alt": ""}] * 5}]}]}
+
+    real = D.dfs_post
+    D.dfs_post = img_api
+    try:
+        o2 = {}
+        D._image_links("example.com", o2, {"backlinks": 727}, 727)
+    finally:
+        D.dfs_post = real
+    v = o2["OFF-18"]["value"]
+    check("the dedicated endpoint counts image links", v["image_backlinks"] == 20,
+          str(v))
+    check("it flags the ones with no alt text — those describe nothing",
+          v["without_alt_text"] == 5, str(v))
+    check("and it says it read a sample, not the whole profile",
+          "of the 100" in o2["OFF-18"]["evidence"], o2["OFF-18"]["evidence"][:60])
+    # A row that ends "point at.." is the tell of a sentence assembled rather
+    # than written.
+    check("no doubled full stop from the optional clause",
+          ".." not in o2["OFF-18"]["evidence"])
+
     print("\n" + "=" * 68)
     if FAILED:
         print(f"  {len(FAILED)} FAILED: {FAILED}")

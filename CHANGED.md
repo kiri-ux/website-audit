@@ -1,4 +1,37 @@
-# Changed files — build 2026.08.20-17
+# Changed files — build 2026.08.20-18
+
+## OFF-18 Image backlinks
+
+An image backlink is a link where the clickable thing is a picture rather than
+words — a badge, a logo, an infographic embed. They pass authority like any other
+link, but where a text link hands Google a phrase describing the destination, an
+image link hands it the alt attribute, and an image link with **no** alt text
+hands it nothing at all. That is the part worth reporting, and it is why this row
+is not simply a count.
+
+**It turned out not to need a new endpoint after all.** The row read exactly one
+key — `referring_links_types["image"]` — and when that key was not in the
+response it fell through to the catch-all, which said the collector "requires an
+additional DataForSEO backlinks endpoint". That sent us looking for a call to add
+when the real problem was a key we were not finding. Same class of bug as the
+missing `dofollow` field, one row over.
+
+Two routes now:
+
+- **The summary breakdown**, tried first under four possible key names. Costs
+  nothing — the response is already in hand.
+- **`/backlinks/backlinks/live`** if the summary genuinely does not carry it. One
+  metered call, made only when needed, reading the 1,000 most recent links and
+  counting `item_type == "image"` — plus how many of those have empty alt text.
+
+The endpoint route reads a **sample**, so it says so: *"20 of the 1,000 most
+recent backlinks come through an image rather than text."* Same rule as the URL
+Inspection rows — a bounded read never gets written up as a profile-wide total.
+
+And when the summary key is missing, the log now prints the top-level field names
+it did return, so the next fix is a rename rather than another round of guessing.
+
+---
 
 ## "No address" when it's in the footer
 

@@ -200,10 +200,9 @@ def collect_backlinks(domain: str) -> dict:
             f"{broken:,} broken backlinks pointing at missing pages.",
             "Low" if not broken else "Medium",
             "" if not broken else "Redirect the target URLs to recover this equity.")
-    types = s.get("referring_links_types") or {}
-    if isinstance(types, dict) and types.get("image") is not None:
-        info("OFF-18", {"image_backlinks": types["image"]},
-             f"{types['image']:,} backlinks come from images.")
+    # OFF-18 image backlinks. Tried from the summary first — see _image_links
+    # for why that alone was not enough.
+    _image_links(domain, out, s, bl)
     # `referring_pages` and `referring_main_domains` come back from this
     # endpoint but answer no checkpoint in the template. Parking them on the
     # nearest free row would be the same mistake in a new place, so they are
@@ -347,6 +346,81 @@ def _keys(label: str, payload) -> None:
                     break
     except Exception:
         pass
+
+
+def _link_types(s: dict) -> dict:
+    """
+    The by-type breakdown of a backlink profile, wherever this account's
+    response happens to put it.
+
+    OFF-18 read `referring_links_types["image"]` and nothing else, so when the
+    key was not there the row fell through to the catch-all and told us the
+    collector needed "an additional DataForSEO backlinks endpoint" — which was
+    not true, and sent us looking for a call to add rather than a key to read.
+    """
+    for k in ("referring_links_types", "referring_links_type",
+              "backlinks_types", "links_types"):
+        v = s.get(k)
+        if isinstance(v, dict) and v:
+            return {str(kk).lower(): vv for kk, vv in v.items()}
+    return {}
+
+
+def _image_links(domain: str, out: dict, s: dict, bl) -> None:
+    """
+    OFF-18 Image backlinks.
+
+    An image backlink is a link where the clickable thing is a picture rather
+    than words — a badge, a logo, an infographic embed. They still pass
+    authority, but where a text link hands Google a phrase describing the
+    destination, an image link hands it the alt attribute, and an image link
+    with no alt text hands it nothing at all. That is the part worth reporting,
+    and it is why this is not simply a count.
+    """
+    types = _link_types(s)
+    n = types.get("image")
+    if n is None:
+        print(f"[dataforseo] summary has no image link-type count; "
+              f"top-level keys are {sorted(s)[:24]}", flush=True)
+        # The dedicated endpoint. One metered call, made only when the summary
+        # did not already carry the answer.
+        try:
+            res = _result(dfs_post("/backlinks/backlinks/live",
+                                   [{"target": domain, "limit": 1000,
+                                     "backlinks_status_type": "live",
+                                     "mode": "as_is"}]))
+        except Exception as e:  # noqa: BLE001
+            print(f"[dataforseo] backlinks/backlinks failed: "
+                  f"{type(e).__name__}: {e}", flush=True)
+            return
+        items = (res[0].get("items") or []) if res else []
+        if not items:
+            return
+        _keys("backlinks", res)
+        imgs = [i for i in items
+                if str(i.get("item_type") or i.get("type") or "").lower() == "image"]
+        n = len(imgs)
+        sampled = len(items)
+        noalt = sum(1 for i in imgs if not _str(i, "alt", "text", "anchor"))
+        pct = round(100 * n / sampled, 1)
+        # A sample, and it says so — same rule as the URL Inspection rows.
+        out["OFF-18"] = _f(
+            "Info", {"image_backlinks": n, "sampled": sampled,
+                     "pct": pct, "without_alt_text": noalt},
+            f"{n:,} of the {sampled:,} most recent backlinks come through an "
+            f"image rather than text ({pct}%)"
+            + (f"; {noalt:,} of those carry no alt text, so they pass authority "
+               f"but no description of what they point at." if noalt else "."),
+            "Low", "", 1.0, "dataforseo")
+        return
+
+    n = int(n or 0)
+    share = f" ({round(100 * n / bl, 1)}% of the profile)" if bl else ""
+    out["OFF-18"] = _f(
+        "Info", {"image_backlinks": n, "link_types": types},
+        f"{n:,} backlinks come through an image rather than text{share}. "
+        f"An image link passes authority, but only its alt text describes what "
+        f"it points at.", "Low", "", 1.0, "dataforseo")
 
 
 def _anchor_shape(domain: str, out: dict) -> None:
