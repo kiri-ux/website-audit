@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-20"
-BUILD_NOTES = ("The analyst list holds only work for an analyst; Lighthouse "
-               "falls back to DataForSEO so a PSI timeout no longer empties "
-               "fourteen rows; every status states a verdict")
+BUILD = "2026.08.20-21"
+BUILD_NOTES = ("Nine more checkpoints answered from data we already had; "
+               "the analyst list is 24 down to 15; a 404 is no longer "
+               "reported as a permission problem")
 # ---------------------------------------------------------------------------
 
 

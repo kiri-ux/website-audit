@@ -136,9 +136,16 @@ def ana03(a, c):
     meta = re.search(r"google-site-verification", hay, re.I)
     return finding("Pass" if meta else "Need Access", {"meta_verification": bool(meta)},
                    "Search Console verification meta tag present." if meta
-                   else "Cannot confirm Search Console access without client credentials.",
+                   else "No Search Console verification tag in the page source. "
+                        "Verification by DNS record or by an uploaded HTML file "
+                        "leaves no trace we can see from outside, so this is not "
+                        "evidence the site is unverified.",
                    [], "Medium",
-                   "" if meta else "Request Search Console access from the client.")
+                   # The collector overwrites this row whenever it can read the
+                   # property — a working connection IS the verification. This
+                   # branch is only reached when there is no connection at all.
+                   "" if meta else "Confirmed either way once Search Console "
+                                   "access is connected.")
 
 
 @check("ANA-05")

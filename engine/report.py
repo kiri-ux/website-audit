@@ -352,20 +352,17 @@ def _todo_panel(findings: dict, catalog: dict) -> list:
             # somebody still has to set it going.
             "GEO": "Start an AI visibility monitor run for this client; it asks "
                    "each assistant and records whether the brand is cited.",
-            "TECH": "Open the failing resources and confirm whether they are "
-                    "genuinely broken or merely slow; confirm sitemap "
-                    "submission in Search Console.",
+            "TECH": "Open the failing images, stylesheets and scripts and "
+                    "confirm whether they are genuinely broken or merely slow.",
             "SEC": "Check subdomain TLS and HSTS with an external scanner.",
             "PERF": "Open DevTools on the two slowest templates and read the "
                     "waterfall for compression and minification.",
-            "HTML": "Run the priority templates through the W3C validator and "
-                    "an accessibility checker.",
-            "CANON": "Confirm pagination and any AMP variants declare the "
-                     "canonical you expect.",
+            "HTML": "Run the priority templates through the W3C validator.",
+            "CANON": "Spot-check the canonical on a paginated series.",
             "ANA": "Confirm events fire in GA4 DebugView on a real session.",
-            "URL": "Look for meta refresh redirects in the page source.",
-            "INTL": "Confirm country targeting matches where they actually "
-                    "sell.",
+            "URL": "Spot-check redirect behavior in a browser.",
+            "INTL": "Confirm the declared targeting matches where they "
+                    "actually sell — we can read the tags, not the intent.",
         }
         by_sec = defaultdict(list)
         for cid in b["manual"]:

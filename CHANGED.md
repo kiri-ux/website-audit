@@ -1,4 +1,74 @@
-# Changed files — build 2026.08.20-20
+# Changed files — build 2026.08.20-21
+
+## "Why isn't the analyst work done automatically?"
+
+Mostly it should be, and now it is. **The list goes 24 → 15**, and three of the
+remaining fifteen fill themselves at run time when Search Console is connected,
+so in practice it is **twelve**.
+
+Nine rows moved, and not one needed a new credential or a new API. Every answer
+was already in something the crawler had loaded and simply was not writing down.
+The crawler now keeps stylesheet hrefs, `rel=next/prev/amphtml`, and meta
+refresh — three lines of parsing:
+
+| | Answered from |
+|---|---|
+| **URL-05** Meta refresh | The tag, which we were parsing past |
+| **CANON-03** AMP canonicals | `rel=amphtml` targets; **N/A** on a site with no AMP, rather than a question about something that does not exist |
+| **CANON-06** Pagination canonicals | `rel=next/prev` plus the canonical — catches page 2 canonicalizing to page 1, which asks Google to drop everything only on page 2 |
+| **HTML-05** Resources as page links | Internal links ending in an asset extension. A PDF linked from a resources page is normal; a stylesheet linked as navigation is not, and only the second one fails |
+| **INTL-08** Country targeting | hreflang region codes, or the ccTLD, which *is* country targeting and a strong one |
+| **TECH-17** Blocked resources | Stylesheet and script URLs against the robots.txt rules we already parse |
+
+And three from the Search Console connection we already hold. These sit under
+**other prefixes** in the template, which is the only reason they were never
+wired up — the collector filled GSC-01..22 and stopped at the prefix boundary:
+
+| | |
+|---|---|
+| **TECH-29** Sitemap submitted | `GET /sites/{property}/sitemaps` — nobody needs to open Search Console to find out. It also reports errors and when Google last read it, because a submitted sitemap Google cannot parse is worse than none: it looks done |
+| **TECH-35** Index coverage reviewed | GSC-05 to GSC-11 **are** that review; the row now says so and points at them |
+| **ANA-03** Search Console verification | It looked for a verification meta tag and nothing else — so a site verified by DNS or by an uploaded HTML file reported *"cannot confirm Search Console access"* while this same collector was reading its data. A working connection **is** the verification |
+
+### What is genuinely left, and why
+
+- **GEO-23 to GEO-30 (8)** — AI visibility. Automated, but by the **monitor**,
+  which is a separate scheduled run. From this audit's point of view somebody
+  still has to start it. The task text says that now instead of implying hand
+  work.
+- **SEC-06, SEC-07, SEC-15 (3)** — subdomain TLS, HSTS and SNI. These need live
+  handshakes against hosts the crawl never visits, and the subdomains have to be
+  discovered first. Automatable, genuinely — say the word.
+- **TECH-09, TECH-10, TECH-11 (3)** — broken external images and broken
+  JavaScript/CSS. Now that stylesheet URLs are captured this is a bounded HEAD
+  sweep over the assets. It adds requests to the run, so I have not switched it
+  on without asking.
+- **TECH-37 (1)** — AMP issues, marked Advanced-plan-only in the template.
+
+---
+
+## The errors on this run
+
+**"Enhanced Measurement … (HTTP 404) … this is a permission on that one
+setting"** — you were right to question it. **A 404 is not a permission
+problem**, and the message asserted it was while printing the status code that
+disproved it. That would have sent someone to change a Google permission that
+was never the issue.
+
+The cause: `getEnhancedMeasurementSettings` is not served by the **v1beta**
+Admin API endpoint we were calling. It now tries v1beta, falls back to
+**v1alpha** on a 404 only — a 403 means the endpoint exists and we are not
+allowed in, so asking a different version gets the same answer — and the message
+distinguishes the two: 403 says Editor is needed, 404 says *our call to fix, no
+action on the client's side.*
+
+**"Cannot confirm Search Console access without client credentials"** — that was
+ANA-03, and see above. It is answered by the connection working.
+
+**`domain_pages` shape (2)** — the last-resort reader shipped in ‑20 and needs a
+run to clear.
+
+---
 
 ## "Is everything in Analyst work actually for a human?"
 

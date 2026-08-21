@@ -72,6 +72,14 @@ def _vendor_ids() -> set:
         ids |= set(REGISTRY)
     except Exception:  # noqa: BLE001
         pass
+    # Rows a collector answers from under a different prefix — the sitemap
+    # submission and index-coverage rows live in TECH, and Search Console
+    # verification lives in ANA, but Search Console answers all three.
+    try:
+        from engine.collectors.analytics import GSC_EXTRA_IDS
+        ids |= set(GSC_EXTRA_IDS)
+    except Exception:  # noqa: BLE001
+        pass
     return ids
 
 

@@ -210,6 +210,11 @@ def _need_access(ids, reason, src):
 # ------------------------------------------------------------------ GSC
 GSC_IDS = [f"GSC-{i:02d}" for i in range(1, 23)]
 
+# Rows this collector answers that live under OTHER prefixes in the template.
+# The bucketing needs to know about them or they read as an analyst's job even
+# though an endpoint answers them.
+GSC_EXTRA_IDS = ("TECH-29", "TECH-35", "ANA-03")
+
 
 def _candidates(site_url: str) -> set:
     """
@@ -671,6 +676,9 @@ def collect_gsc(site_url: str, refresh_token: str | None = None,
                                "index answers all three of these.",
                                0.0, "gsc_no_api"))
 
+    # ---- three rows outside the GSC block that this connection answers -----
+    out.update(_sitemap_and_coverage(prop, tok, out, label))
+
     for cid in GSC_IDS:
         out.setdefault(cid, _f(
             "Need Access", {},
@@ -678,6 +686,73 @@ def collect_gsc(site_url: str, refresh_token: str | None = None,
             "Search Console UI (Index Coverage, Core Web Vitals, Enhancements).",
             "Low", "Capture manually from Search Console, or use the Index "
                    "Inspection API for per-URL coverage.", 0.0, "gsc_ui_only"))
+    return out
+
+
+def _sitemap_and_coverage(prop: str, tok: str, gsc: dict, label: str) -> dict:
+    """
+    TECH-29, TECH-35 and ANA-03 — three rows that were on an analyst's list and
+    are answered by the Search Console connection we already hold.
+
+    They sit outside the GSC block in the template, which is the only reason
+    they were never wired up: the collector filled GSC-01..22 and stopped at the
+    prefix boundary. Nobody has to open Search Console to find out whether a
+    sitemap was submitted; there is an endpoint for it.
+    """
+    out = {}
+    # ANA-03. The verification meta tag was the only signal we looked for, so a
+    # site verified by DNS or by an HTML file reported "cannot confirm Search
+    # Console access" while this very function was reading its data.
+    out["ANA-03"] = _f("Pass", {"via_login": label},
+                       f"Search Console is connected and returning data for "
+                       f"this property (read via {label}), which is the "
+                       f"verification working.", "Low", "", 1.0, "gsc")
+
+    # TECH-35. Index coverage IS reviewed — GSC-05..11 above are that review.
+    cov = gsc.get("GSC-05") or {}
+    if cov.get("status") not in (None, "Need Access"):
+        v = cov.get("value") or {}
+        out["TECH-35"] = _f(
+            cov.get("status", "Pass"),
+            {"indexed": v.get("indexed"), "sampled": v.get("sampled")},
+            f"Index coverage was reviewed through the URL Inspection API: "
+            f"{v.get('indexed')} of {v.get('sampled')} pages sampled are "
+            f"indexed. The full breakdown is in GSC-05 to GSC-11.",
+            "Low", "", 1.0, "gsc")
+
+    try:
+        r = _api(f"{GSC_API}/sites/{prop}/sitemaps", tok)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[gsc] sitemaps call failed: {_describe(exc)}", flush=True)
+        return out
+    maps = r.get("sitemap") or []
+    if not maps:
+        out["TECH-29"] = _f(
+            "Fail", {"sitemaps": 0},
+            "No XML sitemap has been submitted in Search Console. Google will "
+            "still find pages by following links, but a sitemap is how it "
+            "learns about pages nothing links to yet.", "Medium",
+            "Submit the sitemap in Search Console.", 1.0, "gsc")
+        return out
+    # `errors` and `warnings` are strings in this response. Anything non-zero
+    # is worth naming: a submitted sitemap Google cannot parse is worse than
+    # none, because it looks done.
+    errs = sum(int(m.get("errors") or 0) for m in maps)
+    warns = sum(int(m.get("warnings") or 0) for m in maps)
+    paths = [m.get("path") for m in maps if m.get("path")]
+    last = max((m.get("lastDownloaded") or "") for m in maps) or ""
+    out["TECH-29"] = _f(
+        "Pass" if not errs else "Warning",
+        {"sitemaps": len(maps), "paths": paths[:10], "errors": errs,
+         "warnings": warns, "last_downloaded": last[:10]},
+        f"{len(maps)} sitemap(s) submitted"
+        + (f", last read by Google on {last[:10]}" if last else "")
+        + (f"; {errs} error(s) and {warns} warning(s) reported." if errs
+           else (f"; {warns} warning(s) reported." if warns else ", with no "
+                 "errors reported.")),
+        "Low" if not errs else "Medium",
+        "" if not errs else "Fix the sitemap errors — Google is rejecting part "
+                            "of what you submitted.", 1.0, "gsc")
     return out
 
 
@@ -954,6 +1029,30 @@ def _report(pid: str, tok: str, dims: list[str], mets: list[str], limit: int = 5
     return out
 
 
+# `getEnhancedMeasurementSettings` is not in every version of the Admin API.
+# A 404 from v1beta is not a permission problem and not a missing grant — it is
+# us asking an endpoint that does not serve this method. Try the alpha surface,
+# which does.
+GA4_ADMIN_ALPHA = "https://analyticsadmin.googleapis.com/v1alpha"
+
+
+def _enhanced_settings(pid: str, sid: str, tok: str) -> dict:
+    last = None
+    for base in (GA4_ADMIN, GA4_ADMIN_ALPHA):
+        try:
+            return _api(f"{base}/properties/{pid}/dataStreams/{sid}"
+                        f"/enhancedMeasurementSettings", tok)
+        except Exception as exc:  # noqa: BLE001
+            import urllib.error
+            last = exc
+            # Only a 404 is worth retrying on another version. A 403 means the
+            # endpoint exists and we are not allowed in, and asking the alpha
+            # surface the same question gets the same answer.
+            if not (isinstance(exc, urllib.error.HTTPError) and exc.code == 404):
+                raise
+    raise last
+
+
 def _enhanced_row(pid: str, tok: str) -> dict:
     """GA4-03. Enhanced Measurement lives on the data stream, in the Admin API."""
     try:
@@ -971,8 +1070,7 @@ def _enhanced_row(pid: str, tok: str) -> dict:
     for s in web:
         sid = (s.get("name") or "").split("/")[-1]
         try:
-            em = _api(f"{GA4_ADMIN}/properties/{pid}/dataStreams/{sid}"
-                      f"/enhancedMeasurementSettings", tok)
+            em = _enhanced_settings(pid, sid, tok)
         except Exception as exc:  # noqa: BLE001
             # This swallowed its exception silently and the row came back
             # saying "requires the admin API" on a run where the admin API was
@@ -999,18 +1097,35 @@ def _enhanced_row(pid: str, tok: str) -> dict:
             # amount of retrying changes that. Saying "Editor" turns a dead end
             # into a one-line ask.
             forbidden = any(e.startswith("HTTP 403") for e in errs)
-            rec = ("This method needs Editor on the property; a Viewer grant "
-                   "can read the traffic but not the stream settings. Ask for "
-                   "Editor, or read Enhanced Measurement from the GA4 "
-                   "interface." if forbidden else
-                   "Confirm the Vici login can see the data stream, not only "
-                   "the property.")
+            missing = any(e.startswith("HTTP 404") for e in errs)
+            # DO NOT CALL A 404 A PERMISSION PROBLEM.
+            #
+            # The first version of this message said "this is a permission on
+            # that one setting" whatever the status code, and then printed
+            # HTTP 404 immediately before it. 404 means the endpoint did not
+            # serve the method — our call, not their account — and asserting
+            # otherwise sends someone to change a Google permission that was
+            # never the problem. Only 403 is a permission.
+            if forbidden:
+                why = ("Everything else in GA4 on this report was read with the "
+                       "same login, so this is a permission on that one "
+                       "setting rather than a missing grant.")
+                rec = ("This method needs Editor on the property; a Viewer "
+                       "grant reads the traffic but not the stream settings.")
+            elif missing:
+                why = ("The Analytics Admin API did not serve this method for "
+                       "this data stream on either the beta or the alpha "
+                       "endpoint. That is our call to fix, not anything about "
+                       "the account.")
+                rec = "Ours to fix — no action on the client's side."
+            else:
+                why = "Everything else in GA4 on this report read normally."
+                rec = ("Confirm the Vici login can see the data stream, not "
+                       "only the property.")
             return {"GA4-03": _f(
                 "Need Access", {"errors": sorted(set(errs))},
                 f"Enhanced Measurement could not be read for {len(errs)} data "
-                f"stream(s) ({joined}). Everything else in GA4 on this report "
-                f"was read successfully with the same login, so this is a "
-                f"permission on that one setting rather than a missing grant.",
+                f"stream(s) ({joined}). {why}",
                 "Low", rec, 0.0, "ga4_admin_only")}
         return {}
     on, off = sorted(set(on)), sorted(set(off) - set(on))

@@ -61,6 +61,10 @@ class Art:
 
 # ------------------------------------------------------------------ fake Google
 def gsc_api(url, token, payload=None, timeout=60):
+    if url.endswith("/sitemaps"):
+        return {"sitemap": [{"path": "https://example.com/sitemap.xml",
+                             "errors": "0", "warnings": "2",
+                             "lastDownloaded": "2026-08-19T04:11:00.000Z"}]}
     if url.endswith("/sites"):
         return {"siteEntry": [{"siteUrl": "https://example.com/"}]}
     if "searchAnalytics" in url:
@@ -324,6 +328,25 @@ def main():
         check(f"{cid} names its source", "backlink index" in ev, ev[:70])
         check(f"{cid} warns the two will not match",
               "sample" in ev and "lower" in ev)
+
+    print("\nTHREE ROWS OUTSIDE THE GSC BLOCK THAT THIS CONNECTION ANSWERS")
+    # They sit under other prefixes in the template, which is the only reason
+    # they were never wired up — the collector filled GSC-01..22 and stopped at
+    # the prefix boundary, leaving three rows on a person's list that an
+    # endpoint answers outright.
+    check("the submitted sitemap is read, not asked about",
+          gsc["TECH-29"]["status"] == "Pass", str(gsc["TECH-29"]["status"]))
+    check("it names when Google last read it",
+          "2026-08-19" in gsc["TECH-29"]["evidence"], gsc["TECH-29"]["evidence"])
+    check("index coverage points at the rows that did the reviewing",
+          "GSC-05" in gsc["TECH-35"]["evidence"], gsc["TECH-35"]["evidence"][:70])
+    # ANA-03 looked for a verification META TAG only, so a site verified by DNS
+    # or by an HTML file reported "cannot confirm Search Console access" while
+    # this same collector was reading its data.
+    check("verification is confirmed by the connection working",
+          gsc["ANA-03"]["status"] == "Pass")
+    check("and it does not claim we cannot confirm access",
+          "cannot confirm" not in gsc["ANA-03"]["evidence"].lower())
 
     print("\nOFF-18 IMAGE BACKLINKS")
     # This row said "requires an additional DataForSEO backlinks endpoint",

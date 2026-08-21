@@ -76,6 +76,9 @@ class Page:
     links_internal: list = field(default_factory=list)  # {href, anchor, rel}
     links_external: list = field(default_factory=list)
     scripts: list = field(default_factory=list)       # src URLs + inline snippets
+    stylesheets: list = field(default_factory=list)   # <link rel=stylesheet> hrefs
+    rel_links: dict = field(default_factory=dict)     # rel -> [href]  (next/prev/amphtml)
+    meta_refresh: str | None = None                   # content= of <meta http-equiv=refresh>
     inline_script_text: str = ""
 
     # structured data
@@ -366,6 +369,26 @@ class Crawler:
         pg.viewport = (vp.get("content") or "").strip() if vp else None
         html_tag = soup.find("html")
         pg.lang = html_tag.get("lang") if html_tag else None
+        # Relationships the template asks about and we were not keeping:
+        # pagination (rel next/prev), AMP variants (rel amphtml) and stylesheet
+        # URLs. Each one is a checkpoint that had been sitting on an analyst's
+        # list purely because nobody wrote down what the crawler already saw.
+        for lk in soup.find_all("link", href=True):
+            rels = lk.get("rel") or []
+            rels = rels if isinstance(rels, list) else [rels]
+            for r in rels:
+                r = str(r).lower()
+                if r in ("next", "prev", "previous", "amphtml", "stylesheet"):
+                    href = urljoin(url, lk["href"])
+                    if r == "stylesheet":
+                        pg.stylesheets.append(href)
+                    else:
+                        pg.rel_links.setdefault(
+                            "prev" if r == "previous" else r, []).append(href)
+        mr = soup.find("meta", attrs={"http-equiv": lambda v: v and v.lower() == "refresh"})
+        if mr and mr.get("content"):
+            pg.meta_refresh = str(mr["content"])[:120]
+
         pg.hreflang = [{"lang": l.get("hreflang"), "href": urljoin(url, l.get("href", ""))}
                        for l in soup.find_all("link", attrs={"hreflang": True})]
 

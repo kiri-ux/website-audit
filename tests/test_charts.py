@@ -284,7 +284,10 @@ def main():
         check(f"{cid} is ours, not a person's", blocked_on(cid) == "vendor",
               blocked_on(cid))
     # The genuinely unautomated ones must NOT be swept up by the same rule.
-    for cid in ("SEC-06", "CANON-03", "URL-05", "INTL-08"):
+    # CANON-03, URL-05 and INTL-08 stood here and have since been automated —
+    # this list shrinking is the whole point, so it follows them down. What is
+    # left needs live TLS handshakes against hosts the crawl never visits.
+    for cid in ("SEC-06", "SEC-07", "SEC-15"):
         check(f"{cid} really is a person's job", blocked_on(cid) == "manual")
 
     print("\nCOVERAGE IS REPORTED AS 'OF WHAT APPLIES', NOT 'OF THE TEMPLATE'")
