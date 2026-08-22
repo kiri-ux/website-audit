@@ -19,9 +19,11 @@ Three buckets, one rule each:
           client to do. It disappears the moment the key is set, which makes it
           a deployment checklist item rather than a finding.
 
-  manual  No automation exists for this checkpoint. Brendan's template handles
-          these by hand and so do we. Honest framing: reviewed during the
-          engagement, not "we couldn't get in".
+  manual  No automation exists for this checkpoint at all. Brendan's template
+          handles these by hand and so did we. As of this build the catalog has
+          NONE left — every one has been automated in turn — but the bucket
+          stays, because the fallback below has to land somewhere and it must
+          not land on the client.
 
 Deliberately conservative: anything unrecognised falls to `manual` rather than
 `client`, because over-reporting the client's homework is the failure we are
@@ -78,6 +80,15 @@ def _vendor_ids() -> set:
     try:
         from engine.collectors.analytics import GSC_EXTRA_IDS
         ids |= set(GSC_EXTRA_IDS)
+    except Exception:  # noqa: BLE001
+        pass
+    # AI visibility. These ran last on the analyst list, and only because the
+    # monitor had to be started by hand from a profile someone typed out. The
+    # audit builds that profile from its own crawl now and runs the panel as a
+    # phase, so an empty GEO row means a platform key we have not set — ours.
+    try:
+        from engine.aivis.geo_checks import GEO_IDS
+        ids |= set(GEO_IDS)
     except Exception:  # noqa: BLE001
         pass
     return ids

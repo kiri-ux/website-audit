@@ -132,3 +132,10 @@ def summary_row(agg: dict, profile) -> dict:
         "citation_gap": agg.get("citation_gap"),
         "answers_ok": agg.get("answers_ok"),
     }
+
+
+# The eight rows this module answers. Exported so the access bucketing knows
+# they belong to a tool of ours rather than to a person — they were the last
+# entries on the analyst work list, and only because the monitor had to be
+# started by hand. It is a phase of the audit now.
+GEO_IDS = tuple(f"GEO-{i}" for i in range(23, 31))

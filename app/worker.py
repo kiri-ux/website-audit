@@ -307,6 +307,67 @@ def _after_crawl(a, opts, audit_id, art, findings, step):
     return _score_and_save(a, opts, audit_id, art, findings, extras, step)
 
 
+def _ai_visibility(a, audit_id, findings, extras, step):
+    """
+    Ask the assistants, in line, and record what they said.
+
+    Failures here must never take the audit down: the eight rows degrade to
+    unanswered exactly as they did before, which is the state this whole phase
+    is an improvement on.
+    """
+    try:
+        from engine.aivis.providers import active_providers
+        providers, skipped = active_providers()
+        if not providers:
+            print(f"[worker] {audit_id} AI visibility skipped — no platform "
+                  f"keys configured ({', '.join(skipped) or 'none found'})",
+                  flush=True)
+            return
+        from engine.aivis.panel import profile_from_audit, build_panel
+        from engine.aivis.monitor import run_panel
+        from engine.aivis.geo_checks import findings_from_run
+
+        ctx = (extras.get("context") or {})
+        profile = profile_from_audit(a["client_name"], a["target_url"], ctx,
+                                     a.get("vertical"))
+        queries = build_panel(profile)
+        names = ", ".join(sorted(p.name for p in providers))
+        step("checking", f"asking {len(providers)} AI assistants about "
+                         f"{profile.brand}")
+        print(f"[worker] {audit_id} AI visibility: {len(queries)} questions "
+              f"across {names}"
+              + (f" (skipped: {', '.join(skipped)})" if skipped else ""),
+              flush=True)
+
+        # One repeat, not three. Three is right for a trend line, where
+        # run-to-run variance has to be averaged out; for a first reading it
+        # triples the spend to sharpen a number the report rounds anyway.
+        run = run_panel(profile, queries=queries, providers=providers,
+                        repeats=int(os.getenv("AIVIS_AUDIT_REPEATS", "1")),
+                        progress=lambda d, t: db.update_audit(
+                            audit_id, progress=f"AI visibility {d}/{t}",
+                            heartbeat_at=time.time()))
+        if run.get("error"):
+            print(f"[worker] {audit_id} AI visibility failed: {run['error']}",
+                  flush=True)
+            return
+        agg = run.get("aggregate") or {}
+        rows = findings_from_run(agg, profile)
+        findings.update(rows)
+        answered = sum(1 for f in rows.values() if f.get("status") != "Need Access")
+        extras["ai_visibility"] = {
+            **{k: agg.get(k) for k in
+               ("citation_rate", "mention_rate", "unprompted_citation_rate",
+                "client_citations", "top_competitor_domain")},
+            "platforms": names, "skipped": skipped,
+            "questions": len(queries), "from_audit": True}
+        print(f"[worker] {audit_id} AI visibility answered {answered}/"
+              f"{len(rows)} GEO rows", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[worker] {audit_id} AI visibility errored: "
+              f"{type(exc).__name__}: {exc}", flush=True)
+
+
 def _context_of(art):
     from engine.context import extract as extract_context
     bc = extract_context(art)
@@ -341,6 +402,22 @@ def _score_and_save(a, opts, audit_id, art, findings, extras, step):
             extras["screenshots"] = shots
             print(f"[worker] {audit_id} captured {len(shots)} evidence shots",
                   flush=True)
+
+    # ---- AI visibility, as a phase of the audit rather than a separate errand
+    #
+    # GEO-23..30 were the last eight rows on the "needs a person" list, and the
+    # person's job was building a monitor profile by hand from facts the crawl
+    # had already extracted. That is data entry, not judgment.
+    #
+    # The monitor is still a standalone product — a monthly time series with a
+    # frozen question panel, which is what a retainer is sold on. What changes
+    # here is only that the FIRST run can start itself, so the audit can say
+    # something about AI visibility instead of promising to later.
+    #
+    # Opt-in, because it is the one phase that spends money per question across
+    # several platforms.
+    if opts.get("run_aivis"):
+        _ai_visibility(a, audit_id, findings, extras, step)
 
     step("scoring", f"{len(findings)} checkpoints evaluated; scoring")
     cat = db.catalog()

@@ -151,3 +151,72 @@ def panel_summary(qs: list[Query]) -> dict:
     unprompted = sum(1 for q in qs if not q.prompted)
     return {"total": len(qs), "by_intent": dict(by),
             "unprompted": unprompted, "prompted": len(qs) - unprompted}
+
+
+# ---------------------------------------------------------------- from an audit
+#
+# WHY THIS EXISTS.
+#
+# The monitor was built as a standalone product — a monthly time series, its own
+# profile, its own frozen question panel — and that is still what it is. But
+# being standalone meant GEO-23 to GEO-30 sat unanswered in every audit, on a
+# list headed "needs a person", waiting for someone to go and set up a profile
+# by hand before the audit could say anything about AI visibility at all.
+#
+# The audit already knows the brand, the domain, what the business sells and
+# where. Rebuilding that by hand to start a monitor run is data entry, not
+# judgment. This turns what the crawl learned into a profile good enough for a
+# first run, which both fills those eight rows and seeds the series the retainer
+# is sold on.
+#
+# It does NOT replace a hand-built profile. Competitors and aliases are the two
+# things a crawl cannot infer and a human supplies in seconds, and a profile
+# saved for a client should be edited to include them before the second run.
+
+_VERTICAL_CATEGORY = {
+    "ecommerce": "online retailer",
+    "finance_ymyl": "financial services firm",
+    "local_service": "local service business",
+    "healthcare": "healthcare provider",
+    "legal": "law firm",
+    "saas": "software company",
+}
+
+
+def profile_from_audit(client_name: str, url: str, context: dict | None = None,
+                       vertical: str | None = None) -> "ClientProfile":
+    """Build a first-run ClientProfile from what the audit already learned."""
+    ctx = context or {}
+    domain = (url or "").split("//")[-1].split("/")[0].lower()
+    domain = domain[4:] if domain.startswith("www.") else domain
+    brand = (ctx.get("brand") or client_name or domain.split(".")[0]).strip()
+
+    # Category, in the words the business used about itself where possible.
+    # `self_description` is quoted from their own copy, which beats anything we
+    # would infer from a URL pattern.
+    desc = (ctx.get("self_description") or "").strip()
+    category = (desc[:80] if 8 <= len(desc) <= 120
+                else _VERTICAL_CATEGORY.get(vertical or "", "business"))
+
+    locations = []
+    for loc in (ctx.get("locations") or []):
+        name = " ".join(x for x in (loc.get("city"), loc.get("region")) if x)
+        if name and name not in locations:
+            locations.append(name)
+    locations = locations[:8] or list(ctx.get("states") or [])[:8]
+
+    # Top-level URL paths are the closest thing a crawl has to a service list:
+    # /personal-injury, /car-accidents, /workers-comp.
+    services = [str(s).strip("/").replace("-", " ").replace("_", " ")
+                for s in (ctx.get("sections") or [])[:10]]
+    services = [s for s in services
+                if s and s.lower() not in
+                ("blog", "news", "about", "contact", "privacy", "terms",
+                 "sitemap", "search", "category", "tag", "author", "wp content")]
+
+    return ClientProfile(
+        brand=brand, domain=domain, category=category,
+        products=services if ctx.get("has_ecommerce") else [],
+        locations=locations,
+        services=[] if ctx.get("has_ecommerce") else services,
+        competitors=[], aliases=[])

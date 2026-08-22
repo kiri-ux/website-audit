@@ -1,4 +1,59 @@
-# Changed files — build 2026.08.20-22
+# Changed files — build 2026.08.20-23
+
+## "Why is the monitor separate?" — it was, and now it is not
+
+Two real reasons, and one that had quietly stopped being one.
+
+**The real ones.** The monitor is a **time series**: it runs monthly against a
+*frozen* question panel, because regenerating the questions between runs makes
+consecutive points incomparable while still looking like a trend. And it spends
+money per question across several platforms, so it is not something to fire
+without meaning to.
+
+**The one that was not.** Starting the *first* run meant a person building a
+client profile by hand — brand, domain, category, locations, services — from
+facts the crawl had already extracted. That is data entry, not judgment, and it
+is the only reason GEO-23 to GEO-30 were still on a list headed "needs a person".
+
+So the audit builds the profile itself now, from its own crawl: the brand and
+locations from structured data, the category from the business's own words where
+they say what they are (`self_description` is quoted from their copy, which beats
+anything we would infer from a URL), and the service list from top-level URL
+paths with the boilerplate sections dropped. Then it runs the panel as a phase,
+like the judgment layer, and the eight rows fill in the same report.
+
+It does **not** replace a hand-built profile. Competitors and aliases are the two
+things a crawl cannot infer and a person supplies in seconds; a profile kept for
+a client should get those before the second run.
+
+**Opt-in, with a checkbox on the audit form** next to the other phases — it is
+the one phase that costs money per question. One repeat rather than three:
+three is right for a trend line where run-to-run variance has to be averaged out,
+but for a first reading it triples the spend to sharpen a number the report
+rounds anyway.
+
+Failures never take the audit down. No platform keys, a provider erroring, a
+profile we could not build — the eight rows degrade to unanswered exactly as they
+did before, which is the state this whole phase improves on.
+
+### The analyst work list is now zero
+
+Nothing in the 313-checkpoint catalog needs a person. The panel says so:
+
+> **Nothing outstanding.** Every checkpoint either has an answer, needs the
+> client's access, or does not apply to this site.
+
+The `manual` bucket stays in the code, because the fallback rule has to land
+somewhere and it must never land on the client. The test now asserts the rule
+with an id the catalog does not contain, and asserts separately that no real
+checkpoint reaches it.
+
+Two GEO rows will still read as unmeasured with every key set: **GEO-24**
+Featured Snippets and **GEO-25** Passage Ranking are Google SERP features, not AI
+chat platforms, and the monitor says so rather than guessing. A SERP source would
+answer them — that is a build, not a chore.
+
+---
 
 ## The analyst work list is down to 8
 

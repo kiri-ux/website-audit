@@ -369,6 +369,7 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
                 run_judgment: str = Form(""),
                 run_collectors: str = Form(""),
                 run_screenshots: str = Form(""),
+                run_aivis: str = Form(""),
                 reuse_crawl: str = Form(""), phases: str = Form(""),
                 gsc_property: str = Form(""), ga4_property_id: str = Form(""),
                 x_api_key: str | None = Header(None)):
@@ -388,6 +389,11 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
         opts["skip_judgment"] = not run_judgment
         opts["skip_collectors"] = not run_collectors
         opts["skip_screenshots"] = not run_screenshots
+    # Opt-IN, not opt-out like the three above. This phase spends money per
+    # question across several platforms, so an unticked box means off — and so
+    # does a script that has never heard of it.
+    if run_aivis:
+        opts["run_aivis"] = True
     # Reuse the newest crawl we still hold for this exact URL. The client's
     # server is not asked for another 150 pages just because our LLM key was
     # missing last time.

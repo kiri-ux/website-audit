@@ -593,6 +593,10 @@ def dashboard_html(audits, principal, queue_depth):
                  form='auditform' style='width:auto'> Evidence screenshots
           <span style='color:var(--muted)'>(~30s)</span></label>
         <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
+          <input type='checkbox' name='run_aivis' value='1'
+                 form='auditform' style='width:auto'> AI visibility
+          <span style='color:var(--muted)'>(asks each assistant; ~2 min)</span></label>
+        <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
           <input type='checkbox' name='reuse_crawl' value='1'
                  form='auditform' style='width:auto'> Reuse the last crawl of
           this URL

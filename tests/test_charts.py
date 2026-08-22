@@ -239,11 +239,14 @@ def main():
     # SEC-06 is subdomain HSTS: no crawler check, no collector, no judgment
     # spec — it genuinely needs a person with an external TLS scanner.
     #
-    # ONP-34 stood here, then ONP-43, and both moved out as they were
-    # automated. A checkpoint leaving this bucket is what progress looks like;
-    # the test just has to follow it to whatever is still genuinely by hand.
-    check("an unautomated checkpoint is ours to do by hand",
-          blocked_on("GEO-23") == "manual")
+    # ONP-34, then ONP-43, then CANON/URL/INTL, then SEC, then the GEO rows —
+    # every occupant of this bucket has been automated in turn, and the catalog
+    # now has none. What is tested is the RULE, with an id the catalog does not
+    # contain: anything unrecognised must still fall to `manual` rather than to
+    # `client`, because over-reporting the client's homework is the failure the
+    # whole three-way split exists to prevent.
+    check("an unrecognised checkpoint is ours to do by hand",
+          blocked_on("ZZZ-01") == "manual")
     # THE ONE THAT SHIPPED WRONG. A granted, working Search Console connection
     # still left 27 rows the API does not expose, and bucketing by prefix
     # called every one of them a missing client grant — telling us to email a
@@ -258,7 +261,7 @@ def main():
     check("our own missing credentials are never billed to the client",
           blocked_on("GSC-01", {"source": "gsc_misconfigured"}) == "vendor")
     mixed_cat = {"GSC-01": {"prefix": "GSC"}, "OFF-01": {"prefix": "OFF"},
-                 "GEO-23": {"prefix": "GEO"}, "TECH-01": {"prefix": "TECH"}}
+                 "ZZZ-01": {"prefix": "ZZZ"}, "TECH-01": {"prefix": "TECH"}}
     c = _acounts({"TECH-01": {"status": "Pass"}}, mixed_cat)
     check("buckets split three ways over the whole catalog",
           (c["client"], c["vendor"], c["manual"], c["measured"]) == (1, 1, 1, 1),
@@ -290,8 +293,11 @@ def main():
     # visibility rows, which a separate scheduled run answers rather than this
     # audit. If they ever leave too, this assertion should be deleted, not
     # weakened: an empty analyst list would be the point of all of it.
-    for cid in ("GEO-23", "GEO-30"):
-        check(f"{cid} really is a person's job", blocked_on(cid) == "manual")
+    import csv as _csv2
+    _all = {r["id"] for r in _csv2.DictReader(open("seed/checkpoints.csv"))}
+    left = sorted(c for c in _all if blocked_on(c) == "manual")
+    check("no checkpoint in the catalog needs a person at all", not left,
+          str(left))
 
     print("\nCOVERAGE IS REPORTED AS 'OF WHAT APPLIES', NOT 'OF THE TEMPLATE'")
     # "Analytics & Tracking — Reviewed 4/12" next to a rating of Strong reads as

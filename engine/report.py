@@ -406,6 +406,14 @@ def _todo_panel(findings: dict, catalog: dict) -> list:
             f"checkpoints</summary>"
             f"<ul style='margin:6px 0 0 18px'>{items}</ul></details></div>")
 
+    if not b["manual"] and not b["vendor"]:
+        # Both lists empty. Saying nothing looks like the panel failed to
+        # render; saying so is a small piece of good news at the top of a
+        # review.
+        out.append("<div style='margin-top:12px' class='sm'>"
+                   "<b style='color:var(--good)'>Nothing outstanding.</b> "
+                   "Every checkpoint either has an answer, needs the client's "
+                   "access, or does not apply to this site.</div>")
     out.append("</div>")
     return out
 

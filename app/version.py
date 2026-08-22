@@ -12,10 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-22"
-BUILD_NOTES = ("The analyst list is down to the eight AI-visibility rows; "
-               "asset and TLS sweeps added; the Reviewed column is gone from "
-               "the client report")
+BUILD = "2026.08.20-23"
+BUILD_NOTES = ("AI visibility runs as a phase of the audit, so the analyst "
+               "work list is empty for the first time")
 # ---------------------------------------------------------------------------
 
 
