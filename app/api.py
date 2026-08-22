@@ -94,9 +94,34 @@ def healthz():
         depth = Q.depth()
     except Exception:  # noqa: BLE001
         pass
+    # THE WHOLE GOOGLE PICTURE, NOT A THIRD OF IT.
+    #
+    # This reported `google_client` — the presence of GOOGLE_CLIENT_ID — and
+    # nothing else. All three values are required and any one of them missing
+    # produces the same symptom, so a health check that confirms one of three
+    # is worse than none: it tells you the part that is fine.
+    #
+    # `logins` is the count, never the labels and obviously never the tokens.
+    goog = {"client_id": bool(os.getenv("GOOGLE_CLIENT_ID")),
+            "client_secret": bool(os.getenv("GOOGLE_CLIENT_SECRET")),
+            "tokens": False, "logins": 0}
+    # Whether those tokens carry the Tag Manager scope is NOT reported here.
+    # Answering it means calling Google, and healthz calling a dependency is
+    # exactly what made /healthz unanswerable and got the instance pulled.
+    # The access preflight answers it instead, per site, in one click.
+    try:
+        idx = _ga._token_index()
+        goog["tokens"] = bool(idx)
+        goog["logins"] = len(idx)
+    except Exception:  # noqa: BLE001
+        pass
+    goog["ready"] = all((goog["client_id"], goog["client_secret"],
+                         goog["tokens"]))
     return {"ok": True, "mode": cfg.mode, "queue_depth": depth,
             "oauth_setup": bool(os.getenv("OAUTH_SETUP_TOKEN")),
-            "google_client": bool(os.getenv("GOOGLE_CLIENT_ID")),
+            "google": goog,
+            # Kept so anything already watching this key keeps working.
+            "google_client": goog["client_id"],
             **version.info()}
 
 
@@ -364,9 +389,17 @@ def oauth_callback(request: Request, code: str = "", state: str = "",
         f"pre{{padding:14px;overflow:auto;font-size:13px}}"
         f"h1{{font-size:20px}}</style></head><body>"
         f"<h1>Access granted for <code>{_hesc(label)}</code></h1>"
-        f"<p>Paste this as <b>GOOGLE_TOKENS</b> on <b>vici-audit-worker</b>. It "
-        f"already includes every login this service currently knows about, so "
-        f"replace the whole value.</p>"
+        f"<p>Paste this as <b>GOOGLE_TOKENS</b> on <b>BOTH</b> "
+        f"<b>vici-audit-worker</b> and <b>vici-audit-api</b>. It already "
+        f"includes every login this service currently knows about, so replace "
+        f"the whole value.</p>"
+        f"<p style='background:#fdf6ec;border:1px solid #f0d9a8;"
+        f"border-radius:8px;padding:11px 14px'>Both services, not just the "
+        f"worker &mdash; and <b>GOOGLE_CLIENT_ID</b> and "
+        f"<b>GOOGLE_CLIENT_SECRET</b> have to be on both too. The worker "
+        f"collects the data; the API runs the access check on the audit form. "
+        f"A refresh token is useless without the client pair, because it is "
+        f"the pair that exchanges it.</p>"
         f"<pre>{_hesc(merged)}</pre>"
         f"<p>Then unset <b>OAUTH_SETUP_TOKEN</b> — these two routes disappear "
         f"when it is gone.</p>"

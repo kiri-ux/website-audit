@@ -874,13 +874,22 @@ GTM_ACCOUNT_CAP = 40          # per login; see _gtm_containers
 
 def _scope_missing(exc) -> bool:
     """
-    Is this 403 "your token lacks the scope" rather than "you lack access"?
+    Why did this 403? Returns "scope", "api_disabled", or False.
 
-    Same status code, opposite owners. Google distinguishes them only in the
-    body, with `ACCESS_TOKEN_SCOPE_INSUFFICIENT` in the error status or a
-    reason of `insufficientPermissions`/`accessNotConfigured`. Getting this
-    wrong prints our own missing consent as the client's missing invite, which
-    is the exact error the three access buckets exist to prevent.
+    Three different problems arrive as the same status code and Google
+    distinguishes them only in the body:
+
+      scope        the token predates the tagmanager scope. Re-consent.
+      api_disabled the Tag Manager API is not enabled on the Cloud project
+                   this client ID belongs to. One click in the console — and
+                   telling someone to re-authorize every login instead is a
+                   half-hour that fixes nothing.
+      False        a real permission gap: this login was never invited to that
+                   GTM account. The only one of the three that is the
+                   client's, and the only one worth an email.
+
+    Collapsing these prints our own configuration gap as the client's missing
+    invite, which is the exact error the access buckets exist to prevent.
     """
     import urllib.error
     if not isinstance(exc, urllib.error.HTTPError) or exc.code not in (401, 403):
@@ -891,10 +900,20 @@ def _scope_missing(exc) -> bool:
         return False
     err = body.get("error") or {}
     blob = json.dumps(err).lower()
-    return ("access_token_scope_insufficient" in blob
+    # accessNotConfigured is a DIFFERENT problem with the same owner.
+    #
+    # It means the Tag Manager API is not enabled on the Google Cloud project
+    # the client ID belongs to — which is one click in the console, not a
+    # re-consent. Both are ours, so both used to return the same "re-authorize
+    # each login" message, and following that instruction on an unenabled API
+    # re-consents every login and changes nothing.
+    if "accessnotconfigured" in blob or "has not been used in project" in blob:
+        return "api_disabled"
+    if ("access_token_scope_insufficient" in blob
             or "insufficientpermissions" in blob
-            or "accessnotconfigured" in blob
-            or "request had insufficient authentication scopes" in blob)
+            or "request had insufficient authentication scopes" in blob):
+        return "scope"
+    return False
 
 
 def _gtm_containers(tok: str) -> list:
@@ -988,7 +1007,7 @@ def _gtm_probe(site_url: str, idx: dict) -> dict:
                  finding, and ANA-01 already reports it.
     """
     installed = gtm_ids_on_page(site_url)
-    mine, truncated, scope_blocked, errors = [], False, False, []
+    mine, truncated, scope_blocked, errors = [], False, None, []
     for label, refresh in (idx or {}).items():
         tok = access_token(refresh)
         if not tok:
@@ -996,8 +1015,9 @@ def _gtm_probe(site_url: str, idx: dict) -> dict:
         try:
             rows, trunc = _gtm_containers(tok)
         except Exception as exc:  # noqa: BLE001
-            if _scope_missing(exc):
-                scope_blocked = True
+            why = _scope_missing(exc)
+            if why:
+                scope_blocked = scope_blocked or why
             else:
                 errors.append(f"{label}: {_describe(exc)}")
             continue
@@ -1005,6 +1025,13 @@ def _gtm_probe(site_url: str, idx: dict) -> dict:
         for r in rows:
             mine.append({**r, "login": label})
 
+    if scope_blocked == "api_disabled" and not mine:
+        return {"ok": False, "ours": True, "scope": True,
+                "installed": installed,
+                "detail": ("The Tag Manager API is not enabled on the Google "
+                           "Cloud project this OAuth client belongs to. Enable "
+                           "'Tag Manager API' there and this answers itself — "
+                           "no re-consent and nothing from the client.")}
     if scope_blocked and not mine:
         return {"ok": False, "ours": True, "scope": True,
                 "installed": installed,
@@ -1093,8 +1120,11 @@ def list_properties(max_age: float = 120.0) -> dict:
         except Exception as exc:  # noqa: BLE001
             out["errors"].append(
                 f"{label} Tag Manager: "
-                + ("the login has not approved the Tag Manager scope yet"
-                   if _scope_missing(exc) else _describe(exc)))
+                + ({"scope": "the login has not approved the Tag Manager "
+                             "scope yet",
+                    "api_disabled": "the Tag Manager API is not enabled on "
+                                    "this Cloud project"}.get(
+                       _scope_missing(exc)) or _describe(exc)))
 
     out["gsc"].sort(key=lambda r: r["site"].lower())
     out["ga4"].sort(key=lambda r: (r["name"] or "").lower())

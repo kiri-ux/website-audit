@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-32"
-BUILD_NOTES = ("Four wrong consent findings fixed, states and industries "
-               "plumbed through, and the evidence layer finally rendered")
+BUILD = "2026.08.20-33"
+BUILD_NOTES = ("Four wrong consent findings fixed, the evidence layer "
+               "rendered, and /healthz reports all three Google values")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

@@ -505,6 +505,23 @@ def main():
         check("and it says how to fix it",
               "Re-authorize" in r["detail"] and "client" in r["detail"])
 
+        # 1b. The API not being enabled on the Cloud project is a THIRD
+        #     problem behind the same 403 — one click in the console, not a
+        #     re-consent. Telling someone to re-authorize every login instead
+        #     is half an hour that fixes nothing.
+        def _off(url, tok, payload=None, timeout=60):
+            raise _403({"error": {
+                "status": "PERMISSION_DENIED",
+                "message": "Tag Manager API has not been used in project 1 "
+                           "before or it is disabled.",
+                "details": [{"reason": "accessNotConfigured"}]}})
+        AA._api = _off
+        r = AA._gtm_probe("https://x.com", {"rz": "t"})
+        check("an API that is not enabled says so, and does not say re-consent",
+              "not enabled" in r["detail"] and "Re-authorize" not in r["detail"],
+              r["detail"][:70])
+        check("and it is still ours, never the client's", r.get("ours") is True)
+
         # 2. The container the PAGE runs is one we hold. The only green.
         def _ok(url, tok, payload=None, timeout=60):
             if url.endswith("/accounts"):

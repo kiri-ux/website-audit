@@ -1,6 +1,42 @@
-# Changed files — build 2026.08.20-32
+# Changed files — build 2026.08.20-33
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## Setup, made checkable
+
+Three things that would have sent you down the wrong path while wiring up
+Google.
+
+**`/healthz` reported one of the three required values.** It returned
+`google_client` — the presence of `GOOGLE_CLIENT_ID` — and nothing about the
+secret or the tokens. All three are required and any one missing produces the
+identical symptom, so a health check confirming the part that is fine is worse
+than none. It now returns:
+
+```json
+"google": { "client_id": true, "client_secret": true,
+            "tokens": true, "logins": 2, "ready": true }
+```
+
+Counts only, never labels and obviously never tokens. Whether those tokens
+carry the Tag Manager scope is deliberately **not** answered here — that means
+calling Google, and healthz touching a dependency is what made it unanswerable
+and got the instance pulled. The access preflight answers it per site instead.
+
+**The OAuth success page said to paste the token on `vici-audit-worker`.**
+Following that exactly leaves the preflight broken, because the API runs it in
+its own container. It now says both services, and that the client pair has to
+be on both too.
+
+**A 403 from Tag Manager had three causes and one message.** `accessNotConfigured`
+means the Tag Manager API is not enabled on the Cloud project the client ID
+belongs to — one click in the console, not a re-consent. It was folded in with
+the missing-scope case, so the advice was "re-authorize each login", which on a
+disabled API is half an hour that changes nothing. Three causes, three messages
+now: `scope` (re-consent), `api_disabled` (enable it), and a real permission gap
+(the only one that is the client's).
 
 ---
 
@@ -451,11 +487,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-32.zip
+unzip -o vici-audit-2026.08.20-33.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-32` in the header before
+Both services redeploy. Confirm `build 2026.08.20-33` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`
