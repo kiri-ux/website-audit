@@ -375,6 +375,27 @@ def main():
     check("the API accepts both",
           {"consent_states", "consent_industries"} <= set(_sig.parameters))
 
+    print("\nA PHASE THAT CANNOT RUN STILL WRITES ITS ROWS")
+    # Both optional phases used to `return` on their unhappy paths — a failed
+    # import, no platform keys — leaving their checkpoints with NO finding at
+    # all. The panel could then only say "produced no result for this run",
+    # which names no cause, because the cause went to a log and was dropped.
+    from app.worker import _phase_unanswered as _pu
+    from engine.consent.checks import CONS_IDS as _CID
+    rows = _pu(_CID, "The consent scanner could not be loaded on this worker "
+                     "(ImportError: no module named playwright).",
+               "This is a deployment problem, not a client one.")
+    check("every checkpoint in the phase gets a row",
+          set(rows) == set(_CID), f"{len(rows)} rows")
+    check("unanswered, never passed or failed",
+          {r["status"] for r in rows.values()} == {"Need Access"})
+    check("carrying zero confidence, so scoring leaves them out",
+          all(r["confidence"] == 0.0 for r in rows.values()))
+    check("and naming the actual cause rather than the absence of a result",
+          "playwright" in rows["CONS-01"]["evidence"].lower())
+    check("with a fix that says whose problem it is",
+          "deployment problem" in rows["CONS-01"]["recommendation"])
+
     print("\nSTRUCTURED EVIDENCE REACHES THE READER")
     # Every finding carries a `value` dict; the DB stored it and NOTHING
     # rendered it. The reader got one sentence where eight request URLs

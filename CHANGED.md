@@ -1,6 +1,43 @@
-# Changed files — build 2026.08.20-34
+# Changed files — build 2026.08.20-35
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## A phase that bails now says why
+
+Reloading the report did not move those fifteen rows, and the reason is a
+second bug underneath the first.
+
+`_consent()` and `_ai_visibility()` both had `return` statements on their
+unhappy paths — a failed import, no platform keys — that wrote **nothing**.
+Not a failed row, not an unanswered row: no finding at all for those
+checkpoints. Which means:
+
+- The retroactive fix in ‑34 could not classify them, because "not requested"
+  is decided from the audit's options and these rows had been requested.
+- The panel could only fall back to *"the consent and privacy scan produced no
+  result for this run"* — true, and naming no cause, because a checkpoint with
+  no finding has no evidence to quote.
+- The actual cause was printed to the worker log and then dropped.
+
+Every other part of this codebase treats an unmeasured thing as something that
+must **say** it is unmeasured. These two made theirs vanish.
+
+Both now write a full set of rows on every exit path, at zero confidence so
+scoring still leaves them out, naming the cause and whose problem it is:
+
+> **CONS-01…09 · Need access** — The consent scanner could not be loaded on
+> this worker (ImportError: …). *This is a deployment problem, not a client one
+> — the scanner needs Playwright and Chromium in the worker image.*
+
+> **GEO-23…30 · Need access** — No AI platform keys are set on this worker, so
+> no assistant was asked. *Set one or more of OPENAI_API_KEY,
+> ANTHROPIC_API_KEY, PERPLEXITY_API_KEY or GEMINI_API_KEY on
+> vici-audit-worker. Missing: chatgpt, perplexity, copilot, ai_overview.*
+
+Silence became a diagnosis. The next run tells you which of the two it is
+instead of leaving it to be inferred.
 
 ---
 
@@ -510,11 +547,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-34.zip
+unzip -o vici-audit-2026.08.20-35.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-34` in the header before
+Both services redeploy. Confirm `build 2026.08.20-35` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`

@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-34"
-BUILD_NOTES = ("Unticked phases are read off the audit's own options, so "
-               "every existing report stops printing them as defects")
+BUILD = "2026.08.20-35"
+BUILD_NOTES = ("A phase that cannot run now writes nine rows naming the "
+               "cause, instead of leaving nine rows silently missing")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

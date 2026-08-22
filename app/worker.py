@@ -336,6 +336,29 @@ def _after_crawl(a, opts, audit_id, art, findings, step):
     return _score_and_save(a, opts, audit_id, art, findings, extras, step)
 
 
+def _phase_unanswered(ids, why, rec="", src="phase_unavailable"):
+    """
+    Rows for a phase that could not run.
+
+    A PHASE THAT BAILS MUST STILL WRITE ITS ROWS.
+
+    Both optional phases used to `return` on their unhappy paths — a failed
+    import, no platform keys — leaving their checkpoints with no finding at
+    all. Every other part of this codebase treats an unmeasured thing as
+    something that must SAY it is unmeasured; these two made theirs vanish,
+    and a checkpoint with no finding has no evidence to quote, so the internal
+    panel could only fall back to "the consent and privacy scan produced no
+    result for this run". True, and it names no cause, because the cause was
+    printed to a log nobody was reading and then dropped.
+
+    Writing the rows costs nothing and turns silence into a diagnosis.
+    """
+    return {cid: {"status": "Need Access", "value": {}, "evidence": why,
+                  "affected_pages": [], "severity": "Low",
+                  "recommendation": rec, "confidence": 0.0, "source": src}
+            for cid in ids}
+
+
 def _consent(a, audit_id, findings, extras, opts, step):
     """
     One consent scan of the homepage, turned into nine checkpoints.
@@ -352,10 +375,20 @@ def _consent(a, audit_id, findings, extras, opts, step):
     """
     try:
         from engine.consent import scan_site
-        from engine.consent.checks import findings_from_scan
+        from engine.consent.checks import findings_from_scan, CONS_IDS
     except Exception as exc:  # noqa: BLE001
         print(f"[worker] {audit_id} consent scanner unavailable: "
               f"{type(exc).__name__}: {exc}", flush=True)
+        try:
+            from engine.consent.checks import CONS_IDS as _ids
+        except Exception:  # noqa: BLE001
+            _ids = tuple(f"CONS-{i:02d}" for i in range(1, 10))
+        findings.update(_phase_unanswered(
+            _ids,
+            f"The consent scanner could not be loaded on this worker "
+            f"({type(exc).__name__}: {exc}).",
+            "This is a deployment problem, not a client one — the scanner "
+            "needs Playwright and Chromium in the worker image."))
         return
     step("checking", "checking consent, cookie banner and pre-consent tags")
     try:
@@ -404,6 +437,14 @@ def _ai_visibility(a, audit_id, findings, extras, step):
             print(f"[worker] {audit_id} AI visibility skipped — no platform "
                   f"keys configured ({', '.join(skipped) or 'none found'})",
                   flush=True)
+            from engine.aivis.geo_checks import GEO_IDS
+            findings.update(_phase_unanswered(
+                GEO_IDS,
+                "No AI platform keys are set on this worker, so no assistant "
+                "was asked.",
+                "Set one or more of OPENAI_API_KEY, ANTHROPIC_API_KEY, "
+                "PERPLEXITY_API_KEY or GEMINI_API_KEY on vici-audit-worker. "
+                "Missing: " + (", ".join(skipped) or "none reported") + "."))
             return
         from engine.aivis.panel import profile_from_audit, build_panel
         from engine.aivis.monitor import run_panel
