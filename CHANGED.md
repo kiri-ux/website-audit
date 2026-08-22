@@ -1,6 +1,54 @@
-# Changed files — build 2026.08.20-36
+# Changed files — build 2026.08.20-37
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## THE ACTUAL CAUSE: the findings table was written before the phases ran
+
+Everything I said about this before was wrong. It is not the scanner, not the
+worker's keys, not a stale container. It is four lines of ordering in
+`_score_and_save`:
+
+```
+db.save_findings(audit_id, findings)     ← line 4.  The ONLY write.
+...
+_consent(...)                            ← line 35. Adds 9 rows to the dict.
+_ai_visibility(...)                      ← line 51. Adds 6 more.
+db.save_scores(...) / db.update_audit(extras=...)
+```
+
+The two optional phases add their findings to the in-memory dict **after the
+only write to the findings table**. Scoring then runs on that dict, and
+`extras` is saved after that — so every downstream signal said the phases had
+worked:
+
+| Symptom | Why it lied |
+|---|---|
+| `extras.consent` and `extras.ai_visibility` populated | written after the phases, and they *had* run |
+| Coverage read **322/322** | scoring reads the in-memory dict, which had all 15 |
+| Findings table had none of the 15 | the only write happened 40 lines earlier |
+| Panel said *"produced no result for this run"* | that is the message for a checkpoint with **no row at all** |
+
+So the report insisted the phases produced nothing while the audit row proved
+they had run. Every reading of that pointed outward — at Chromium, at platform
+keys, at the deploy — and the scanner was working correctly the entire time.
+
+**Fix:** save again after both phases. `save_findings` deletes and rewrites the
+audit's rows, so the second call is idempotent and costs one statement. The
+early save stays, because a crash inside an optional phase should still leave a
+readable audit.
+
+`test_e2e` now asserts the ordering structurally — the last write to the
+findings table must come after the last phase that adds to it, and an early
+save must still exist. That is the shape of the bug, so that is what the test
+holds.
+
+### This has been true since the consent phase shipped in ‑28
+
+Every audit run since then dropped its consent rows, and every audit with AI
+visibility ticked dropped those too. Nothing needs re-crawling — hit **Run
+again** with the crawl reused and the rows will be there.
 
 ---
 
@@ -597,11 +645,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-36.zip
+unzip -o vici-audit-2026.08.20-37.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-36` in the header before
+Both services redeploy. Confirm `build 2026.08.20-37` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`

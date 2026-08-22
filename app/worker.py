@@ -500,6 +500,9 @@ def _context_of(art):
 def _score_and_save(a, opts, audit_id, art, findings, extras, step):
     """Screenshots, scoring, persistence. Reached by every path, including the
     one that skips collectors entirely."""
+    # An EARLY save, so a crash in the optional phases below still leaves a
+    # readable audit rather than nothing. It is not the last word — see the
+    # second save after the phases have run.
     db.save_findings(audit_id, findings)
 
     # ---- evidence screenshots ------------------------------------------
@@ -554,6 +557,29 @@ def _score_and_save(a, opts, audit_id, art, findings, extras, step):
     # One is a bug; the other is a run that did exactly what was asked.
     extras["phases_run"] = {"run_consent": bool(opts.get("run_consent")),
                             "run_aivis": bool(opts.get("run_aivis"))}
+
+    # SAVE AGAIN. THE FIRST SAVE HAPPENED BEFORE THE PHASES RAN.
+    #
+    # This is the bug that made nine consent rows and six GEO rows vanish from
+    # every audit since the consent phase shipped, and it hid behind a set of
+    # symptoms that all pointed elsewhere:
+    #
+    #   * `extras["consent"]` and `extras["ai_visibility"]` were populated, so
+    #     the phases had plainly RUN.
+    #   * Coverage read 322/322, because scoring runs on this in-memory dict
+    #     and could see all fifteen.
+    #   * The findings table had none of them, because the only write happened
+    #     forty lines earlier.
+    #   * So the panel fell to "produced no result for this run" — the message
+    #     for a checkpoint with no row at all — and every reading of that
+    #     pointed at the scanner, the worker's keys, or the deploy. The scanner
+    #     was fine the whole time. The rows were written to a dict that was
+    #     never flushed again.
+    #
+    # `save_findings` deletes and rewrites the audit's rows, so a second call
+    # is idempotent and costs one statement. The early save stays, because a
+    # crash inside an optional phase should still leave a readable audit.
+    db.save_findings(audit_id, findings)
 
     step("scoring", f"{len(findings)} checkpoints evaluated; scoring")
     cat = db.catalog()
