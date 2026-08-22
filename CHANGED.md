@@ -1,6 +1,139 @@
-# Changed files — build 2026.08.20-31
+# Changed files — build 2026.08.20-32
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## THE CONSENT SCANNER: FOUR FINDINGS THAT WERE WRONG
+
+I went through the standalone scanner against what the audit actually surfaces.
+The gap is bigger than "some detail is missing" — **four checkpoints were
+reporting wrong answers**, and they are fixed here. Full parity is a plan, not
+a single build; that's at the bottom.
+
+### 1. A scan that never saw the page was reported as findings
+
+`_apply_verdict()` marks a bot challenge, an HTTP 4xx, or a sub-2KB body as
+`inconclusive` — and deliberately leaves `error = None` and `ok = True`,
+because from the scanner's point of view the *run* succeeded. Our adapter
+guarded only on `error`.
+
+So a Cloudflare "Checking your browser" page produced:
+
+> **CONS-02 · Fail · Critical** — A consent platform is installed but no banner appeared.
+> **CONS-04 · Pass** — No advertising or analytics tags contacted their servers before consent.
+
+about a page consisting of the words *"Checking your browser"*. The standalone
+tool refuses this explicitly: *"Nothing here should be treated as a finding
+about the site."* Now all nine rows come back unanswered, carrying the
+diagnosis — HTTP status, body size, page title, whether a challenge was served
+— and pointing at the extension, which is the thing that gets past it.
+
+### 2. CONS-04 passed sites with no CMP and live ad pixels
+
+`_dedupe_product_pixels()` strips every ungated pre-consent row whose URL
+matches one of the client's product pixels, so the standalone UI can show it
+once under **Product pixels** instead of twice. And `ungated` is the severity
+the scanner assigns to *every* pre-consent tracker **when there is no CMP at
+all**.
+
+The standalone tool gets away with this because it renders the products
+section right underneath. **We never read `products`.** So a site with no
+consent platform running Meta and GA4 — about as bad as this gets — came back:
+
+> **CONS-04 · Pass** — No advertising or analytics tags contacted their servers before consent.
+
+Now the product pixels are folded back in. And the fix text is source-aware,
+because `src` decides *who does the work*:
+
+> In Tag Manager, set an additional consent check requiring `ad_storage` on
+> GA4, then publish. **Meta Pixel is hardcoded in the page template**, so no
+> container change will stop it — the tag has to come out of the theme and be
+> reinstated behind the consent event.
+
+Previously both got the same sentence, which sent someone hunting in GTM for a
+tag that was never in the container.
+
+### 3. "State privacy law requirements" was checking no state
+
+The scanner takes `states=` and `industries=`. The worker passed them. **Nothing
+ever set them** — no form field, no option, nowhere. Grepping the repo for
+`consent_states` found the worker line and nothing else.
+
+Consequences, both live until this build:
+
+- `states` was always empty → the GPC pass never ran → **CONS-06 was permanently
+  "Need Access"**, on all twelve states that require GPC to be honored.
+- The only row that ever arrived was the universal privacy-policy-link check
+  tagged `US`. So CONS-08, titled **"State privacy law requirements"**, reported
+  *"All 1 checked requirements are met across US"* — a privacy-policy-link check
+  wearing a state-law label, printed as a clean pass on twenty states nobody had
+  looked at.
+
+**20 states and 3 sensitive-industry rules were vendored, tested, and
+unreachable for want of a form field.** The form now has both: a states box
+prefilled `CA CO CT TX VA OR` (prefilled because blank is how this went unnoticed
+— an empty list is not "check nothing", it is "silently answer nothing"), and an
+industry field backed by the 346-entry vocabulary, which switches on the
+Healthcare / Children-directed / Financial rules.
+
+`US` is no longer counted as a state. With no states selected CONS-08 is
+unanswered, never a pass.
+
+### 4. A notice bar counted as a consent platform
+
+`NOTICE_ONLY_CMP` is a banner with an OK button, no reject, no preferences — it
+informs, collects nothing, and offers no opt-out. Our adapter counted any entry
+in `cmps[]` as a **Pass**, so it read *"Notice-only banner is installed on this
+site"* — green, on the finding most likely to matter legally. Now a Fail that
+says what is missing.
+
+---
+
+## THE EVIDENCE LAYER, WHICH WAS BEING COLLECTED AND THROWN AWAY
+
+Every finding carries a `value` dict. The collectors fill it, `db.py` stores it,
+`/api/audits/{id}/findings` returns it — and **nothing rendered it.** Grepping
+`report.py`, `pdf_report.py`, `ui.py` and `summarise.py` for `value` returned
+nothing at all.
+
+So the reader got one sentence — *"3 trackers fired before any consent
+interaction: Meta, GA4, TikTok"* — while the eight request URLs proving it sat
+in the database unread. That is the difference between a claim and evidence, and
+it is the whole reason someone opens a detail row.
+
+Findings now render their structured evidence: vendors, the actual request URLs,
+Consent Mode defaults, container ids, what matched the CMP signature, and the
+failing state requirements **with the scanner's own statute explanation** rather
+than a bare `CA: GPC signal` label. Deliberately narrow — it renders the shapes
+it recognizes and skips the rest, rather than dumping JSON at a client.
+
+Also carried through now: `cmps[].notes` (the per-CMP operator warnings, e.g.
+OneTrust firing its event on every page view including reject), `gtm.gtag_only`
+(gtag.js with no container is a materially different remediation from no Google
+tagging at all, and both read identically before).
+
+---
+
+## What full parity still needs — sequenced
+
+Being straight with you: this build fixes what was **wrong**. It does not yet
+replace the standalone tool. What's left, in the order I'd build it:
+
+| # | Gap | Size |
+|---|---|---|
+| 1 | **`gtm_api.py`** — 551 lines, not vendored at all. Reads the *published* container over OAuth and returns per-tag `consent_status` (NEEDED vs NOT_SET). That is ground truth for "is this tag gated", independent of what fired on one page load. Also `find_by_domain()`, which reads the container for a site that blocked the browser. | large |
+| 2 | **`products` / `post_consent` as checkpoints** — "is the client's bought pixel actually installed, firing, and correctly gated". 11 products, 10 fields per pixel, currently no checkpoint at all. | medium |
+| 3 | **Remediation layer** — owner badges (VICI / CLIENT), dependency ordering, the 5-step GTM procedure, the Consent Mode verdict stamp. We emit one `recommendation` string per row. | medium |
+| 4 | **Multi-page scanning** — conversion URLs alongside the homepage, with site-level checks running once. We scan one page. | medium |
+| 5 | **Client share link** — unauthenticated per-run URL with DSP name masking and internal work suppressed. | medium |
+| 6 | **Raw scan persistence + run history** | small |
+| 7 | **Scheduled batch scanning, CSV export, the alerting rule** (`verdict bad` OR post-reject violation OR failing state check OR a bought product firing zero) | small |
+
+One note on language, from the scanner's own README: *"No 'compliant',
+'certified,' or 'passed' anywhere in product copy — 'no issues detected in
+checked items' is the ceiling."* Our status vocabulary says **Pass**. Worth a
+conversation before this goes in front of a client's counsel.
 
 ---
 
@@ -318,11 +451,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-31.zip
+unzip -o vici-audit-2026.08.20-32.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-31` in the header before
+Both services redeploy. Confirm `build 2026.08.20-32` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`

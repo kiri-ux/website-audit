@@ -264,6 +264,131 @@ def main():
         srv.should_exit = True
         t.join(timeout=5)
 
+    F = findings_from_scan
+
+    print("\nA SCAN THAT NEVER SAW THE PAGE ANSWERS NOTHING")
+    # The worst bug this adapter had. `_apply_verdict` marks a bot challenge,
+    # a 4xx, or a sub-2KB body as inconclusive and DELIBERATELY leaves
+    # error=None and ok=True, because the run itself succeeded. Guarding only
+    # on `error` let all of it through, so a Cloudflare "Checking your
+    # browser" page produced Critical findings about a consent banner.
+    r = F({"mode": "full", "error": None, "inconclusive": True,
+           "challenged": True, "http_status": 403, "html_len": 900,
+           "page_title": "Just a moment...",
+           "verdict_detail": "Scan inconclusive - bot challenge served",
+           "cmps": [], "banner_visible": False, "pre_consent": [],
+           "optout_link": None})
+    check("an inconclusive scan produces no findings at all",
+          {v["status"] for v in r.values()} == {"Need Access"},
+          str(sorted({v["status"] for v in r.values()})))
+    check("and it carries the diagnosis so the next run is not a guess",
+          "403" in r["CONS-02"]["evidence"]
+          and "challenge" in r["CONS-02"]["evidence"].lower())
+    check("and points at the tool that gets past it",
+          "extension" in r["CONS-02"]["recommendation"])
+
+    print("\nA NOTICE BAR IS NOT A CONSENT PLATFORM")
+    # A bar with an OK button and no reject collects nothing and offers no
+    # opt-out. Counting any cmps[] entry as a Pass made it a green row on the
+    # finding most likely to matter legally.
+    r = F({"mode": "basic", "cmps": [{"name": "Notice-only banner"}]})
+    check("a notice-only banner fails CONS-01 rather than passing it",
+          r["CONS-01"]["status"] == "Fail", r["CONS-01"]["status"])
+    check("and says what it is missing",
+          "reject" in r["CONS-01"]["evidence"].lower())
+    r = F({"mode": "basic", "cmps": [{"name": "OneTrust", "gtm_event": "X",
+                                      "notes": "fires on every page view"}]})
+    check("a real CMP still passes", r["CONS-01"]["status"] == "Pass")
+    check("and the per-CMP operator note is carried through, not dropped",
+          r["CONS-01"]["value"].get("notes") == ["fires on every page view"])
+
+    print("\nA SITE WITH NO CMP AND LIVE PIXELS CANNOT PASS 'NO TRACKING'")
+    # _dedupe_product_pixels strips every ungated pre-consent row that matches
+    # a product pixel, so it can be shown once under Product pixels instead of
+    # twice. "ungated" is what EVERY pre-consent tracker gets when there is no
+    # CMP. The standalone tool renders products right below; this adapter never
+    # read them — so no CMP + Meta + GA4 came back "Pass: no advertising or
+    # analytics tags contacted their servers before consent."
+    r = F({"mode": "full", "cmps": [], "pre_consent": [], "products": [
+        {"product": "Meta", "pixels": [
+            {"name": "Meta Pixel", "fired_pre": True, "severity": "ungated",
+             "sample_url": "https://facebook.com/tr?id=1", "src": "page"}]},
+        {"product": "GA4", "pixels": [
+            {"name": "GA4", "fired_pre": True, "severity": "ungated",
+             "sample_url": "https://g.co/collect", "src": "runtime"}]}]})
+    check("product pixels that fired pre-consent are counted",
+          r["CONS-04"]["status"] == "Fail", r["CONS-04"]["status"])
+    check("and both vendors are named",
+          set(r["CONS-04"]["value"]["vendors"]) == {"GA4", "Meta Pixel"})
+    # `src` decides WHO does the work. A hardcoded tag cannot be fixed in GTM,
+    # and telling someone to fix it there sends them hunting for a tag that
+    # was never in the container.
+    rec = r["CONS-04"]["recommendation"]
+    check("a runtime tag is sent to Tag Manager",
+          "Tag Manager" in rec and "GA4" in rec.split("hardcoded")[0])
+    check("and a hardcoded tag is sent to the theme instead",
+          "hardcoded in the page template" in rec and "Meta Pixel" in rec)
+    check("an actually-clean site still passes",
+          F({"mode": "full", "cmps": [], "pre_consent": [],
+             "products": []})["CONS-04"]["status"] == "Pass")
+
+    print("\n'STATE PRIVACY LAW REQUIREMENTS' MUST CHECK A STATE")
+    # The scanner always emits one universal privacy-policy row tagged "US".
+    # Because nothing ever requested a state, that row was the only one that
+    # arrived, and this checkpoint reported "All 1 checked requirements are met
+    # across US" — a privacy-policy-link check wearing a state-law label, shown
+    # as a clean pass on twenty states nobody had looked at.
+    r = F({"mode": "full", "state_checks": [
+        {"state": "US", "check": "Privacy policy link", "status": "pass"}]})
+    check("no states selected is unanswered, never a pass",
+          r["CONS-08"]["status"] == "Need Access", r["CONS-08"]["status"])
+    check("and it says how to make it answerable",
+          "states" in r["CONS-08"]["recommendation"].lower())
+    r = F({"mode": "full", "state_checks": [
+        {"state": "US", "check": "Privacy policy link", "status": "pass"},
+        {"state": "CA", "check": "GPC signal", "status": "fail",
+         "detail": "California requires GPC to be honored as an opt-out."},
+        {"state": "CO", "check": "Opt-out mechanism", "status": "pass"}]})
+    check("with states selected it counts only the state rows",
+          r["CONS-08"]["value"]["checks"] == 2, str(r["CONS-08"]["value"]))
+    check("and never reports 'US' as a state",
+          "US" not in r["CONS-08"]["value"]["states"])
+    check("the statute explanation is carried, not replaced by a label",
+          "California requires"
+          in (r["CONS-08"]["value"]["failures"][0]["detail"] or ""))
+
+    print("\nTHE FORM CAN ACTUALLY SET STATES AND INDUSTRIES")
+    # Both were vendored, tested and unreachable: the scanner took them, the
+    # worker passed them, and nothing ever set them.
+    import app.ui as _ui, inspect as _insp
+    from types import SimpleNamespace as _N
+    _html = _ui.dashboard_html([], _N(name="V", email="e"), 0,
+                               caps={"consent": True, "aivis": True})
+    check("the form offers a states field", "consent_states" in _html)
+    check("prefilled, because blank silently checked nothing",
+          "value='CA CO CT TX VA OR'" in _html)
+    check("and an industry field", "consent_industries" in _html)
+    import app.api as _api
+    # submit_form, not create_audit — create_audit is the JSON API and the
+    # consent options are a form concern.
+    _sig = _insp.signature(_api.submit_form)
+    check("the API accepts both",
+          {"consent_states", "consent_industries"} <= set(_sig.parameters))
+
+    print("\nSTRUCTURED EVIDENCE REACHES THE READER")
+    # Every finding carries a `value` dict; the DB stored it and NOTHING
+    # rendered it. The reader got one sentence where eight request URLs
+    # proving it sat unread.
+    from engine.report import _value_block
+    _vb = _value_block({"vendors": ["Meta Pixel"],
+                        "examples": ["https://facebook.com/tr?id=1"],
+                        "by_source": {"page": ["Meta Pixel"]}})
+    check("vendors are rendered", "Meta Pixel" in _vb)
+    check("the request URL is rendered", "facebook.com/tr" in _vb)
+    check("and the source is spelled out, not left as a keyword",
+          "hardcoded in the page template" in _vb)
+    check("an empty value renders nothing at all", _value_block({}) == "")
+
     print("\n" + "=" * 68)
     if FAILED:
         print(f"  {len(FAILED)} FAILED: {FAILED}")

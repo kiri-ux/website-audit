@@ -192,9 +192,14 @@ def main():
                "normalis", "licence", "defence", "catalogue"]
     root = pathlib.Path(__file__).resolve().parent.parent
     offenders = []
+    # engine/consent/checks.py is OUR adapter and its strings are printed in
+    # the client report; it was simply never on this list, so "recognised" and
+    # "honoured" shipped in the consent findings for three builds. The rest of
+    # engine/consent/ is the vendored scanner and stays off the list — we do
+    # not restyle a dependency.
     for f in ("engine/summarise.py", "engine/pdf_report.py", "engine/report.py",
               "engine/glossary.py", "engine/context.py", "engine/charts.py",
-              "engine/judgment.py", "app/ui.py"):
+              "engine/judgment.py", "engine/consent/checks.py", "app/ui.py"):
         text = (root / f).read_text()
         # reportlab's own API is spelled drawCentredString. That is a third-party
         # identifier, not our copy, so it is removed before the scan rather than

@@ -622,6 +622,22 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
                       "OPENAI_API_KEY, ANTHROPIC_API_KEY, PERPLEXITY_API_KEY "
                       "or GEMINI_API_KEY there")
 
+    # The state list and the industry vocabulary come from the scanner itself,
+    # so the form cannot drift from what the checks actually support.
+    try:
+        from engine.consent.state_checks import STATE_CHECKS as _SC
+        from engine.consent.industries import INDUSTRIES as _IND
+    except Exception:  # noqa: BLE001
+        _SC, _IND = {}, []
+    NSTATES = len(_SC) or 20
+    # Default to the states that actually carry a GPC duty plus the big
+    # comprehensive-law states. Prefilled rather than blank because a blank
+    # box is how this ended up unset for six builds — and an empty list is not
+    # "check nothing", it is "silently answer nothing".
+    DEFAULT_STATES = " ".join([x for x in ("CA", "CO", "CT", "TX", "VA", "OR")
+                               if not _SC or x in _SC])
+    INDOPTS = "".join(f"<option value=\"{e(i)}\">" for i in _IND[:400])
+
     body = f"""
     <div class='sub'>
       <span class='chip build'>{e(version.label())}</span></div>
@@ -751,6 +767,35 @@ banner, Consent Mode and what fires before consent. No crawl.'>
           <span class='tick'>{TICK}</span>
           Reuse the last crawl
           <span class='note'>no new requests to their site</span></label>
+      </div>
+      <!-- THE TWO INPUTS THAT MAKE THE CONSENT CHECKS REAL.
+           Without states, the scanner never runs its GPC pass and never
+           evaluates a single state requirement, so CONS-06 sat on "Need
+           Access" forever and CONS-08 — "State privacy law requirements" —
+           reported on one universal privacy-policy-link row. Without an
+           industry, the healthcare / children / financial rules never fire.
+           Both were vendored, tested and unreachable for want of a form
+           field. -->
+      <div id='consentopts' style='margin-top:10px;display:grid;
+           grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:12px'>
+        <div>
+          <label>States to check <span class='note'>consent scan</span></label>
+          <input name='consent_states' form='auditform' id='cstates'
+                 value='{DEFAULT_STATES}'
+                 placeholder='CA CO CT …'>
+          <div class='sm' style='color:var(--muted);margin-top:3px'>
+            {NSTATES} supported. 12 of them require Global Privacy Control to be
+            honored, and that pass only runs when one of those is listed.</div>
+        </div>
+        <div>
+          <label>Industry <span class='note'>optional</span></label>
+          <input name='consent_industries' form='auditform' list='indlist'
+                 placeholder='e.g. Hospital, Dentist, Credit Union'>
+          <datalist id='indlist'>{INDOPTS}</datalist>
+          <div class='sm' style='color:var(--muted);margin-top:3px'>
+            Health, children's and financial contexts carry extra rules — FTC
+            pixel enforcement, COPPA, GLBA. Leave blank to skip them.</div>
+        </div>
       </div>
       <div class='sm' style='color:var(--muted);margin-top:6px'>
         Reusing a crawl re-scores the pages we already have. Sitewide counts

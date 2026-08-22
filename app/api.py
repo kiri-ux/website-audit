@@ -401,6 +401,8 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
                 run_screenshots: str = Form(""),
                 run_aivis: str = Form(""),
                 run_consent: str = Form(""),
+                consent_states: str = Form(""),
+                consent_industries: str = Form(""),
                 quick: str = Form(""),
                 reuse_crawl: str = Form(""), phases: str = Form(""),
                 gsc_property: str = Form(""), ga4_property_id: str = Form(""),
@@ -429,6 +431,25 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
         opts["run_aivis"] = True
     if run_consent:
         opts["run_consent"] = True
+        # STATES AND INDUSTRIES WERE NEVER PLUMBED, AND THAT SILENTLY GUTTED
+        # TWO CHECKPOINTS.
+        #
+        # The scanner takes both. The worker passed both. Nothing ever SET
+        # them, so `states` arrived as None on every run — which meant the GPC
+        # pass never ran (CONS-06 was permanently "Need Access"), the per-state
+        # loop never executed, and CONS-08, titled "State privacy law
+        # requirements", reported on the single universal privacy-policy-link
+        # row: "All 1 checked requirements are met across US."
+        #
+        # Twenty states and three sensitive-industry rules were vendored,
+        # tested, and unreachable.
+        st = [x.strip().upper() for x in consent_states.replace(",", " ").split()
+              if x.strip()]
+        if st:
+            opts["consent_states"] = st
+        ind = [x.strip() for x in consent_industries.split(",") if x.strip()]
+        if ind:
+            opts["consent_industries"] = ind
 
     # A CONSENT CHECK IS A ONE-PAGE AUDIT.
     #

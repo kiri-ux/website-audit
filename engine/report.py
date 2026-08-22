@@ -134,6 +134,15 @@ code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
  background:#152436;border-color:#24405e}}
 .bubble .bi{font-size:17px;line-height:1.25;flex:none}
 .bubble b{color:var(--ink)}
+.vbox{margin:7px 0 0;display:grid;grid-template-columns:auto 1fr;gap:3px 12px;
+ font-size:12.5px;align-items:baseline}
+.vk{color:var(--muted);white-space:nowrap}
+.vv{color:var(--ink2);word-break:break-word}
+.vc{display:inline-block;background:var(--track);border-radius:4px;
+ padding:1px 6px;margin:0 4px 3px 0;font-size:11.5px;word-break:break-all;
+ max-width:100%}
+.vlist{grid-column:1/-1;margin:2px 0 0 16px;padding:0;color:var(--ink2)}
+.vlist li{margin-bottom:5px}
 .note{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--seq);
  border-radius:8px;padding:14px 18px;font-size:13.5px;color:var(--ink2);margin:14px 0}
 """
@@ -258,6 +267,77 @@ def _bubbles(text, seen, limit=2):
                    f"{g['icon']}</span><div><b>{e(g['name'])}</b> — "
                    f"{e(g['definition'])}</div></div>")
     return out
+
+
+# ---- the evidence that was being collected and thrown away ------------------
+#
+# Every finding carries a `value` dict — the vendors that fired, the request
+# URLs, the Consent Mode defaults, the failing state requirements with their
+# statute context, the container ids. The collectors fill it, the database
+# stores it, the API returns it, and until this build NOTHING RENDERED IT.
+# Grepping report.py, pdf_report.py, ui.py and summarise.py for "value" found
+# nothing at all.
+#
+# So the reader got one `evidence` sentence per row — "3 trackers fired before
+# any consent interaction: Meta, GA4, TikTok" — while the eight example request
+# URLs proving it sat in the database unread. That is the difference between a
+# claim and evidence, and it is the whole reason someone opens a detail row.
+#
+# Deliberately narrow: a value dict can hold anything, so this renders the
+# shapes it recognizes and skips the rest rather than dumping JSON at a client.
+_VALUE_LABELS = {
+    "vendors": "Vendors", "examples": "Requests", "defaults": "Consent Mode",
+    "failures": "Failing requirements", "states": "States checked",
+    "containers": "Containers", "gtag_ids": "gtag ids", "evidence": "Matched on",
+    "notes": "Notes", "by_source": "Where they load from",
+    "cmps": "Platforms", "link_text": "Link text",
+}
+_VALUE_SKIP = {"pre_consent", "informational", "count", "checks", "failing",
+               "visible", "universal_only", "notice_only", "gtag_only",
+               "event", "gtm_event"}
+
+
+def _value_block(val: dict) -> str:
+    """Render the structured evidence under a finding, or nothing."""
+    if not isinstance(val, dict) or not val:
+        return ""
+    rows = []
+    for key, label in _VALUE_LABELS.items():
+        v = val.get(key)
+        if not v or key in _VALUE_SKIP:
+            continue
+        if key == "failures":
+            # The one shape worth its own treatment: state, requirement, and
+            # the scanner's own explanation of why it applies.
+            items = "".join(
+                f"<li><b>{e(x.get('state'))} &middot; {e(x.get('check'))}</b>"
+                + (f"<div class='rec' style='font-style:normal'>"
+                   f"{e(' '.join(str(x.get('detail')).split())[:400])}</div>"
+                   if x.get("detail") else "") + "</li>"
+                for x in v[:12] if isinstance(x, dict))
+            rows.append(f"<div class='vk'>{label}</div>"
+                        f"<ul class='vlist'>{items}</ul>")
+            continue
+        if key == "by_source":
+            human = {"page": "hardcoded in the page template",
+                     "runtime": "injected by Tag Manager",
+                     "unknown": "source not determined"}
+            body = "; ".join(f"{', '.join(vv)} &mdash; {human.get(k, k)}"
+                             for k, vv in v.items() if vv)
+            rows.append(f"<div class='vk'>{label}</div><div class='vv'>{body}</div>")
+            continue
+        if isinstance(v, dict):
+            body = ", ".join(f"{e(k)}: {e(x)}" for k, x in list(v.items())[:10])
+        elif isinstance(v, (list, tuple)):
+            body = "".join(f"<code class='vc'>{e(x)}</code>" for x in v[:8]
+                           if x) or ""
+            if len(v) > 8:
+                body += f"<span class='vv'> +{len(v) - 8} more</span>"
+        else:
+            body = e(v)
+        if body:
+            rows.append(f"<div class='vk'>{label}</div><div class='vv'>{body}</div>")
+    return f"<div class='vbox'>{''.join(rows)}</div>" if rows else ""
 
 
 def _brand_head() -> str:
@@ -652,6 +732,7 @@ def render_html(meta, sc, findings, catalog, summary=None):
                  f"{SEV_RAMP.get(f['severity'], 'var(--muted)')}'></b>"
                  f"{e(f['severity'])}</span></td>"
                  f"<td><div class='ev'>{e(f['evidence'])}</div>"
+                 + _value_block(f.get("value"))
                  + (f"<div class='rec'>→ {e(f['recommendation'])}</div>"
                     if f['recommendation'] else "") + "</td></tr>")
     P.append("</table>")
@@ -716,6 +797,7 @@ def render_html(meta, sc, findings, catalog, summary=None):
                      f"<td><span class='chip'><b style='background:{col}'></b>"
                      f"{e(status_word(f['status']))}</span></td>"
                      f"<td><div class='ev'>{e(f['evidence'])}</div>"
+                     + _value_block(f.get("value"))
                      + (f"<div class='rec'>→ {e(f['recommendation'])}</div>"
                         if f['recommendation'] else "") + "</td></tr>")
         P.append("</table>")
