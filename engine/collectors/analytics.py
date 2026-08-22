@@ -703,13 +703,52 @@ def collect_gsc(site_url: str, refresh_token: str | None = None,
     # ---- three rows outside the GSC block that this connection answers -----
     out.update(_sitemap_and_coverage(prop, tok, out, label))
 
+    # A BOUNDARY WITH A ROUTE THROUGH IT.
+    #
+    # "Read this from the Search Console UI" is true and it is not an
+    # instruction — it does not say which of eleven reports, or where, and the
+    # property is already known here so making someone navigate to it by hand
+    # is asking them to retype something we hold. Every row now carries the
+    # exact deep link and the two sentences of what to do when it opens.
+    #
+    # `resource_id` is the property string, URL-encoded, which is how Search
+    # Console addresses a property in its own query string.
+    prop_q = urllib.parse.quote(prop or "", safe="")
+    _UI = {
+        "coverage": ("Indexing → Pages",
+                     f"https://search.google.com/search-console/index"
+                     f"?resource_id={prop_q}",
+                     "Read the 'Why pages aren't indexed' table. The numbers "
+                     "worth recording are the total indexed and the top three "
+                     "exclusion reasons by page count."),
+        "cwv": ("Experience → Core Web Vitals",
+                f"https://search.google.com/search-console/core-web-vitals"
+                f"?resource_id={prop_q}",
+                "Open Mobile first. Record the Poor and Needs-improvement URL "
+                "counts and the metric named for each group."),
+        "enh": ("Enhancements",
+                f"https://search.google.com/search-console/enhancements"
+                f"?resource_id={prop_q}",
+                "Each structured-data type that appears here has its own row. "
+                "Record valid, warning and error counts per type."),
+    }
+    # Which of the three reports answers which checkpoint. A row sent to the
+    # wrong report is worse than one sent to none.
+    _WHICH = {}
     for cid in GSC_IDS:
+        low = (cid or "").upper()
+        _WHICH[cid] = ("cwv" if low in ("GSC-12", "GSC-13", "GSC-14")
+                       else "enh" if low in ("GSC-15", "GSC-16")
+                       else "coverage")
+    for cid in GSC_IDS:
+        where, link, how = _UI[_WHICH.get(cid, "coverage")]
         out.setdefault(cid, _f(
-            "Need Access", {},
-            "Not available through the Search Console API — read this from the "
-            "Search Console UI (Index Coverage, Core Web Vitals, Enhancements).",
-            "Low", "Capture manually from Search Console, or use the Index "
-                   "Inspection API for per-URL coverage.", 0.0, "gsc_ui_only"))
+            "Need Access",
+            {"console_report": where, "console_url": link},
+            f"Google publishes this in Search Console under {where} and "
+            f"exposes no API for it.",
+            "Low", f"{how} Open it directly: {link}",
+            0.0, "gsc_ui_only"))
     return out
 
 

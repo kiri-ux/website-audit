@@ -77,7 +77,7 @@ body{margin:0;background:var(--plane);color:var(--ink);
 /* ---- chrome: rail, top bar, breadcrumb ---- */
 .rail{position:fixed;left:0;top:0;bottom:0;width:var(--rail);background:var(--rail-bg);
  display:flex;flex-direction:column;align-items:center;padding:16px 0;gap:8px;z-index:20}
-.rail a,.rail span{width:40px;height:40px;border-radius:6px;display:flex;
+.rail a,.rail span{width:40px;height:40px;border-radius:12px;display:flex;
  align-items:center;justify-content:center;color:#93aed2;font-size:19px;
  text-decoration:none}
 .rail a:hover{background:rgba(255,255,255,.08);text-decoration:none}
@@ -130,9 +130,36 @@ code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
 .topbar .burger{color:#5c6673}
 .topbar .right{color:var(--ink2)}
 
+/* ---- audit form layout ---- */
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+ gap:12px;margin-top:12px}
+.hint{color:var(--muted);margin-top:4px;line-height:1.45}
+.jobs{display:flex;flex-wrap:wrap;gap:10px}
+.job{display:flex;align-items:center;gap:9px;cursor:pointer;
+ border:1px solid var(--line);border-radius:14px;padding:11px 16px;
+ background:var(--surface);flex:1;min-width:270px;font-size:14px}
+.job:hover{border-color:var(--blue)}
+.job:has(input:checked){border-color:var(--blue);background:#eef5fd}
+.job input{position:absolute;opacity:0;pointer-events:none}
+.job b{font-weight:600;color:var(--ink)}
+.job .note{color:var(--muted);font-weight:400;font-size:12.5px;flex-basis:100%;
+ margin-left:29px;margin-top:-2px}
+.job .tick{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--line);
+ display:inline-flex;align-items:center;justify-content:center;flex:none;
+ color:transparent;background:var(--surface)}
+.job:has(input:checked) .tick{background:var(--blue);border-color:var(--blue);
+ color:#fff}
+/* A settings block belongs to the job above it, so it is hidden when that job
+   is off rather than sitting there inert — a control you cannot act on is
+   noise, and this form had seven of them. */
+.joblet{display:none;margin-top:14px;padding:14px 16px;border-radius:14px;
+ background:var(--plane);border:1px solid var(--line-2)}
+.joblet.on{display:block}
+.ph-wrap{display:flex;flex-wrap:wrap;gap:8px}
+
 /* ---- market pills ---- */
 .geobox{display:flex;flex-wrap:wrap;gap:6px;align-items:center;
- border:1px solid var(--line);border-radius:4px;background:var(--surface);
+ border:1px solid var(--line);border-radius:10px;background:var(--surface);
  padding:6px 8px;min-height:41px}
 .geobox:focus-within{border-color:var(--blue);
  box-shadow:0 0 0 3px rgba(28,91,166,.12)}
@@ -173,10 +200,13 @@ label .note{color:var(--muted);font-weight:400;font-size:12px;
  font-weight:500}
 
 /* ---- forms ---- */
-form#auditform{display:grid;grid-template-columns:2fr 1.4fr 1fr .7fr auto;
- gap:10px;align-items:end}
+/* The form lays ITSELF out now, in `.fgrid` rows sized to their content.
+   This forced every direct child into a fixed five-column grid — fine for the
+   four fields it was written for, and it turned an eleven-field form into a
+   collage the moment the fields were reordered. */
+form#auditform{display:block}
 label{display:block;font-size:12px;color:var(--ink2);margin-bottom:4px;font-weight:600}
-input,select{width:100%;padding:10px 13px;border:1px solid var(--line);border-radius:4px;
+input,select{width:100%;padding:10px 13px;border:1px solid var(--line);border-radius:10px;
  background:var(--surface);color:var(--ink);font:inherit;font-size:14.5px}
 input:focus,select:focus{outline:none;border-color:var(--blue);
  box-shadow:0 0 0 2px rgba(22,104,193,.14)}
@@ -210,11 +240,11 @@ table{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px;
  background:var(--surface)}
 th{text-align:left;font-weight:500;color:#fff;background:var(--navy);font-size:14px;
  padding:15px 16px;white-space:nowrap}
-th:first-child{border-radius:4px 0 0 0} th:last-child{border-radius:0 4px 0 0}
+th:first-child{border-radius:10px 0 0 0} th:last-child{border-radius:0 4px 0 0}
 td{padding:15px 16px;border-bottom:1px solid var(--line-2)}
 tr:hover td{background:#f8fafc}
 td.num{text-align:right;font-variant-numeric:tabular-nums}
-table.sub{margin-top:8px;font-size:12px;border:1px solid var(--line);border-radius:4px}
+table.sub{margin-top:8px;font-size:12px;border:1px solid var(--line);border-radius:10px}
 table.sub td{padding:7px 9px}
 td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 
@@ -292,7 +322,7 @@ td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 
 /* ---- client rows ---- */
 .crow{display:flex;gap:18px;align-items:flex-start;background:var(--surface);
- border:1px solid var(--line);border-radius:6px;padding:18px 22px;margin-bottom:10px}
+ border:1px solid var(--line);border-radius:12px;padding:18px 22px;margin-bottom:10px}
 .crow:hover{border-color:#c7d2e0}
 .cscore{flex:none;padding-top:2px}
 .cmain{flex:1;min-width:0}
@@ -302,7 +332,7 @@ td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
  font-size:13.5px;color:var(--ink2)}
 .cact{flex:none;display:flex;gap:6px;align-items:center}
 .warn{margin-top:8px;font-size:12px;color:var(--ink2);background:#fdf6ec;
- border-left:3px solid var(--gold);border-radius:4px;padding:8px 11px}
+ border-left:3px solid var(--gold);border-radius:10px;padding:8px 11px}
 .empty{color:var(--muted);padding:24px 0;text-align:center;font-size:13px}
 
 /* ---- disclosure: adtini uses a tab strip; a details row is the same idea ---- */
@@ -318,7 +348,7 @@ td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
  border-top-color:var(--blue);border-radius:50%;animation:s .8s linear infinite;
  vertical-align:-1px}
 @keyframes s{to{transform:rotate(360deg)}}
-.bar{height:7px;background:var(--track);border-radius:4px;overflow:hidden;min-width:90px}
+.bar{height:7px;background:var(--track);border-radius:10px;overflow:hidden;min-width:90px}
 .bar>i{display:block;height:100%;background:var(--blue);border-radius:0 4px 4px 0}
 .rail-p{position:relative;height:5px;background:var(--track);border-radius:3px;
  margin:18px 0 4px;overflow:hidden}
@@ -725,74 +755,38 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
     <h2>New audit</h2>
     <div class='card'><form method='post' action='/audits' id='auditform'>
       <input type='hidden' name='phases' value='1'>
-      <div><label>Target URL</label>
-        <input name='target_url' id='turl'
-               placeholder='https://www.example.com/' required></div>
-      <div><label>Client name</label>
-        <input name='client_name' placeholder='Grand Furniture' required></div>
-      <div><label>Vertical</label><select name='vertical'>
-        <option value=''>generic</option><option value='ecommerce'>ecommerce</option>
-        <option value='finance_ymyl'>finance / YMYL</option>
-        <option value='local_service'>local service</option></select></div>
-      <div><label>Max pages</label><input name='max_pages' type='number' value='150'></div>
-      <div style='display:flex;gap:8px'>
-        <button type='submit'>Run audit</button>
-        <!-- Same form, one page, consent only. `quick` is what the API reads;
-             formnovalidate is deliberate — this path needs the URL and nothing
-             else, and a required Client name should not block a spot check. -->
-        <button type='submit' name='quick' value='consent' class='alt'
-                title='Load the homepage in a browser and check the cookie
-banner, Consent Mode and what fires before consent. No crawl.'>
-          Consent check</button>
-      </div>
-    </form>
-    <div style='margin-top:12px'>
-      <button type='button' class='btn ghost' id='ckbtn'
-              onclick='checkAccess()'>Check Google access</button>
-      <!-- Own line, full width. Beside the button it inherited whatever narrow
-           column the button sat in, and a sentence like "No property matching
-           this site in 1 login(s)" came out one word per line. -->
-      <div id='ckout' class='sm'
-           style='color:var(--muted);margin-top:8px;line-height:1.6'></div>
-    </div>
-    <!-- auto-fit, not 1fr 1fr. A third fixed column squeezed the GSC
-         property URLs to about eight characters on a laptop; this keeps three
-         across on a wide screen and drops to two or one rather than shrinking
-         every column past legibility. -->
-    <div id='pickers' style='display:none;margin-top:10px;
-         grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:12px'>
-      <div>
-        <label>Search Console property</label>
-        <input id='gscfilter' placeholder='filter…' oninput='filterSel("gsc")'
-               style='margin-bottom:4px;font-size:12.5px'>
-        <select name='gsc_property' id='gscsel' form='auditform'></select>
-      </div>
-      <div>
-        <label>GA4 property</label>
-        <input id='ga4filter' placeholder='filter…' oninput='filterSel("ga4")'
-               style='margin-bottom:4px;font-size:12.5px'>
-        <select name='ga4_property_id' id='ga4sel' form='auditform'></select>
-      </div>
-      <div>
-        <label>Tag Manager container</label>
-        <input id='gtmfilter' placeholder='filter…' oninput='filterSel("gtm")'
-               style='margin-bottom:4px;font-size:12.5px'>
-        <select name='gtm_container' id='gtmsel' form='auditform'></select>
-      </div>
-    </div>
 
-    <div style='margin-top:14px;display:grid;
-                grid-template-columns:1fr 1fr;gap:10px'>
-      <div><label>Primary markets
-          <span class='note'>where they actually sell</span></label>
-        <!-- A PILL EDITOR, not a free-text box, because this field feeds the
-             consent scan. Typed as one long string, "Anderson County, TN ×
-             Blount County, TN × …" is unreadable and unverifiable: nobody can
-             see at a glance that all thirteen resolved, and a market that
-             resolves to no state contributes nothing to the state-law checks
-             while looking exactly like one that does.
-             The visible input builds pills; the hidden field carries the
-             canonical string, so the server contract is unchanged. -->
+      <!-- WHO AND WHERE ---------------------------------------------------
+           Reordered to the order a person actually knows things in: who the
+           client is, then their site, then the facts about their business,
+           then the accounts, then what to run. The old order opened with a
+           URL and asked for the vertical before the name. -->
+      <div class='fgrid'>
+        <div><label>Client name</label>
+          <input name='client_name' placeholder='Grand Furniture' required></div>
+        <div><label>Client website</label>
+          <input name='target_url' id='turl'
+                 placeholder='https://www.example.com/' required></div>
+      </div>
+      <div class='fgrid'>
+        <div>
+          <label>Industry</label>
+          <!-- One control, not a filter beside a select. A datalist IS the
+               filter: type to narrow, or open it and scroll. Two boxes doing
+               one job was the thing that needed removing. -->
+          <input name='consent_industries' form='auditform' list='indlist'
+                 placeholder='Type to search 346 industries…'>
+          <datalist id='indlist'>{INDOPTS}</datalist>
+          <div class='sm hint'>Also drives the health, children's and
+            financial rules — FTC pixel enforcement, COPPA, GLBA.</div>
+        </div>
+        <div><label>Partner name <span class='note'>report cover</span></label>
+          <input name='partner' form='auditform' placeholder='Vici Media'>
+          <div class='sm hint'>Blank uses the configured firm name.</div></div>
+      </div>
+
+      <div style='margin-top:14px'>
+        <label>Primary markets <span class='note'>where they actually sell</span></label>
         <div class='geobox' id='geobox'>
           <span id='geopills'></span>
           <input id='geoinput' class='geoin' autocomplete='off'
@@ -800,155 +794,142 @@ banner, Consent Mode and what fires before consent. No crawl.'>
         </div>
         <input type='hidden' name='primary_markets' id='primary_markets'
                form='auditform'>
-        <div class='sm' id='geonote' style='color:var(--muted);margin-top:4px'>
-          Type a market and press Enter. Each one needs a state — that is what
-          decides which privacy laws get checked.</div>
+        <div class='sm hint' id='geonote'>Each market needs a state — that is
+          what decides which privacy laws get checked.</div>
       </div>
-      <div><label>Primary conversion</label>
-        <input name='primary_conversion' form='auditform'
-               placeholder='Book an appointment'></div>
+
+      <div style='margin-top:14px'>
+        <label>Products they bought
+          <span class='note'>which pixels we expect to find</span></label>
+        <div class='tgrow' id='prrow'>{PRODUCT_TOGGLES}</div>
+        <input type='hidden' name='consent_products' id='consent_products'
+               form='auditform'>
+      </div>
+
+      <div style='margin-top:14px'>
+        <label>Conversion URLs
+          <span class='note'>scanned as well as the homepage</span></label>
+        <div class='geobox' id='cvbox'>
+          <span id='cvpills'></span>
+          <input id='cvinput' class='geoin' autocomplete='off'
+                 placeholder='clientsite.com/thank-you'>
+        </div>
+        <input type='hidden' name='conversion_urls' id='conversion_urls'
+               form='auditform'>
+      </div>
+    </form>
+
+    <!-- GOOGLE ACCESS ----------------------------------------------------->
+    <div style='margin-top:18px;padding-top:16px;border-top:1px solid var(--line-2)'>
+      <button type='button' class='btn ghost' id='ckbtn'
+              onclick='checkAccess()'>Check Google access</button>
+      <div id='ckout' class='sm'
+           style='color:var(--muted);margin-top:8px;line-height:1.6'></div>
+    </div>
+    <div id='pickers' style='display:none;margin-top:10px;
+         grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:12px'>
+      <div><label>Search Console property</label>
+        <select name='gsc_property' id='gscsel' form='auditform'></select></div>
+      <div><label>GA4 property</label>
+        <select name='ga4_property_id' id='ga4sel' form='auditform'></select></div>
+      <div><label>Tag Manager container</label>
+        <select name='gtm_container' id='gtmsel' form='auditform'></select></div>
     </div>
 
-    <div style='margin-top:14px'>
-      <label>Partner name</label>
-      <input name='partner' form='auditform'
-             placeholder='Vici Media'>
-      <div style='font-size:12px;color:var(--muted);margin-top:4px'>
-        Name on the report cover. Leave blank to use the default.</div>
-    </div>
-    <div style='margin-top:12px;display:flex;gap:20px;font-size:12.5px;color:var(--ink2)'>
-      <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
-        <input type='checkbox' name='browser_ua' value='1' form='auditform'
-               style='width:auto'> Use a browser user-agent
-        <span style='color:var(--muted)'>(if the site blocks bots)</span></label>
-      <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
-        <input type='checkbox' name='render_js' value='1' form='auditform'
-               style='width:auto'> Render JavaScript
-        <span style='color:var(--muted)'>(slower; for SPA sites)</span></label>
-    </div>
+    <!-- WHAT TO RUN -------------------------------------------------------
+         TWO JOBS, NOT SEVEN CHECKBOXES.
+         The old strip mixed a phase of the audit with a whole separate
+         product and made them look like peers. They are not: one crawls the
+         site and scores 322 checkpoints, the other loads pages in a browser
+         and watches what fires. Either, or both. Each opens its own settings
+         instead of scattering them across the form. -->
+    <div style='margin-top:20px;padding-top:16px;border-top:1px solid var(--line-2)'>
+      <div class='sm' style='font-weight:600;letter-spacing:.06em;
+           text-transform:uppercase;color:var(--muted);margin-bottom:9px'>
+        What to run</div>
+      <div class='jobs'>
+        <label class='job' id='jobaudit'>
+          <input type='checkbox' id='do_audit' name='do_audit' value='1'
+                 checked form='auditform' onchange='jobSync()'>
+          <span class='tick'>{TICK}</span>
+          <b>Full audit</b>
+          <span class='note'>crawls the site and scores 322 checkpoints</span>
+        </label>
+        <label class='job' id='jobconsent'>
+          <input type='checkbox' id='do_consent' name='run_consent' value='1'
+                 checked form='auditform' onchange='jobSync()'>
+          <span class='tick'>{TICK}</span>
+          <b>Consent check</b>
+          <span class='note'>cookie banner, pre-consent tags, state law</span>
+        </label>
+      </div>
 
-    <div style='margin-top:16px;padding-top:14px;border-top:1px solid var(--line)'>
-      <div style='font-size:12px;font-weight:700;margin-bottom:9px;
-                  text-transform:uppercase;letter-spacing:.07em;
-                  color:var(--muted)'>What to run</div>
-      <div class='phases'>
-        <label class='ph'>
-          <input type='checkbox' name='run_judgment' value='1' checked
+      <div class='joblet' id='auditopts'>
+        <div class='ph-wrap'>
+          <label class='ph'><input type='checkbox' name='run_judgment'
+            value='1' checked form='auditform'><span class='tick'>{TICK}</span>
+            Read and judge the pages
+            <span class='note'>E-E-A-T, on-page, AI-readiness</span></label>
+          <label class='ph'><input type='checkbox' name='run_collectors'
+            value='1' checked form='auditform'><span class='tick'>{TICK}</span>
+            Search Console, Analytics, off-page</label>
+          <label class='ph'><input type='checkbox' name='run_screenshots'
+            value='1' checked form='auditform'><span class='tick'>{TICK}</span>
+            Evidence screenshots <span class='note'>~30s</span></label>
+          <label class='ph'><input type='checkbox' name='run_aivis' value='1'
+            {AIVIS_ATTR} form='auditform'><span class='tick'>{TICK}</span>
+            Ask the AI assistants <span class='note'>{AIVIS_NOTE}</span></label>
+          <label class='ph'><input type='checkbox' name='reuse_crawl' value='1'
+            form='auditform'><span class='tick'>{TICK}</span>
+            Reuse the last crawl
+            <span class='note'>no new requests to their site</span></label>
+          <label class='ph'><input type='checkbox' name='browser_ua' value='1'
+            form='auditform'><span class='tick'>{TICK}</span>
+            Browser user-agent <span class='note'>if the site blocks bots</span></label>
+          <label class='ph'><input type='checkbox' name='render_js' value='1'
+            form='auditform'><span class='tick'>{TICK}</span>
+            Render JavaScript <span class='note'>slower; for SPA sites</span></label>
+        </div>
+        <div style='margin-top:10px;max-width:200px'>
+          <label>Max pages</label>
+          <input name='max_pages' type='number' value='150' min='1' max='500'
                  form='auditform'>
-          <span class='tick'>{TICK}</span>
-          Read and judge the pages
-          <span class='note'>E-E-A-T, on-page, AI-readiness</span></label>
-        <label class='ph'>
-          <input type='checkbox' name='run_collectors' value='1' checked
-                 form='auditform'>
-          <span class='tick'>{TICK}</span>
-          Search Console, Analytics, off-page</label>
-        <label class='ph'>
-          <input type='checkbox' name='run_screenshots' value='1' checked
-                 form='auditform'>
-          <span class='tick'>{TICK}</span>
-          Evidence screenshots <span class='note'>~30s</span></label>
-        <label class='ph'>
-          <input type='checkbox' name='run_aivis' value='1' {AIVIS_ATTR}
-                 form='auditform'>
-          <span class='tick'>{TICK}</span>
-          Ask the AI assistants <span class='note'>{AIVIS_NOTE}</span></label>
-        <label class='ph'>
-          <input type='checkbox' name='run_consent' value='1' checked
-                 form='auditform'>
-          <span class='tick'>{TICK}</span>
-          Consent &amp; privacy
-          <span class='note'>cookie banner, pre-consent tags</span></label>
-        <label class='ph'>
-          <input type='checkbox' name='reuse_crawl' value='1' form='auditform'>
-          <span class='tick'>{TICK}</span>
-          Reuse the last crawl
-          <span class='note'>no new requests to their site</span></label>
+        </div>
+        <div class='sm hint'>Reusing a crawl re-scores the pages we already
+          have, so sitewide counts describe the site as of that crawl.</div>
       </div>
-      <!-- THE TWO INPUTS THAT MAKE THE CONSENT CHECKS REAL.
-           Without states, the scanner never runs its GPC pass and never
-           evaluates a single state requirement, so CONS-06 sat on "Need
-           Access" forever and CONS-08 — "State privacy law requirements" —
-           reported on one universal privacy-policy-link row. Without an
-           industry, the healthcare / children / financial rules never fire.
-           Both were vendored, tested and unreachable for want of a form
-           field. -->
-      <div id='consentopts' style='margin-top:10px;display:grid;
-           grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:12px'>
-        <div>
-          <label>States to check
-            <span class='note' id='cstatesrc'>from the markets above</span></label>
-          <!-- DERIVED, NOT DEFAULTED. This was prefilled `CA CO CT TX VA OR`,
-               which is a reasonable guess and wrong for every client who does
-               not sell in those states. A Knoxville law firm was having
-               California's law tested and Tennessee's ignored. The markets
-               already say where they sell; the states now follow them, and
-               editing this box by hand detaches it. -->
-          <div class='tgrow' id='strow'>{STATE_TOGGLES}</div>
-          <input type='hidden' name='consent_states' id='cstates'
-                 form='auditform'>
-          <div class='sm' style='color:var(--muted);margin-top:5px'
-               id='cstatenote'>
-            All {NSTATES} states with a law we check. The ones your markets
-            imply are on; click to add or remove.
+
+      <div class='joblet' id='consentopts'>
+        <div class='fgrid'>
+          <div>
+            <label>States to check
+              <span class='note' id='cstatesrc'>from the markets above</span></label>
+            <div class='tgrow' id='strow'>{STATE_TOGGLES}</div>
+            <input type='hidden' name='consent_states' id='cstates'
+                   form='auditform'>
+            <div class='sm hint' id='cstatenote'>All {NSTATES} states with a
+              law we check. Filled means chosen; outlined means your markets
+              imply it.</div>
+          </div>
+          <div>
+            <label>Implementation <span class='note'>who owns the tags</span></label>
+            <select name='implementation' form='auditform'>
+              <option value=''>Not specified</option>
+              <option value='vici_gtm'>Vici-owned GTM</option>
+              <option value='client_gtm'>Client-owned GTM</option>
+              <option value='client_placement'>Client placement</option>
+              <option value='hardcoded'>Hardcoded in the site</option>
+            </select>
+            <div class='sm hint'>Decides whether a finding is our work queue
+              or a conversation with the client.</div>
           </div>
         </div>
-        <div>
-          <label>Implementation
-            <span class='note'>who owns the tags</span></label>
-          <!-- Decides who a consent finding is addressed to. A pixel firing
-               pre-consent in a container we own is our work queue; the same
-               pixel in a container the client controls is a conversation.
-               Same finding, different owner, and the report could not tell
-               them apart because nothing ever asked. -->
-          <select name='implementation' form='auditform'>
-            <option value=''>Not specified</option>
-            <option value='vici_gtm'>Vici-owned GTM</option>
-            <option value='client_gtm'>Client-owned GTM</option>
-            <option value='client_placement'>Client placement</option>
-            <option value='hardcoded'>Hardcoded in the site</option>
-          </select>
-        </div>
-        <div>
-          <label>Conversion URLs
-            <span class='note'>scanned as well as the homepage</span></label>
-          <!-- The consent scan has only ever looked at the homepage, and said
-               so. But a thank-you page is where the conversion pixels
-               actually fire, so it is the page most likely to carry an
-               ungated one — and the page nobody was looking at. -->
-          <div class='geobox' id='cvbox'>
-            <span id='cvpills'></span>
-            <input id='cvinput' class='geoin' autocomplete='off'
-                   placeholder='clientsite.com/thank-you'>
-          </div>
-          <input type='hidden' name='conversion_urls' id='conversion_urls'
-                 form='auditform'>
-        </div>
-        <div style='grid-column:1/-1'>
-          <label>Products they bought
-            <span class='note'>which pixels we expect to find</span></label>
-          <!-- Without this the scan reports what IS firing. With it, it can
-               report what is NOT: a product the client pays for whose pixel
-               never fires is invisible otherwise, and it is the finding with
-               money attached. -->
-          <div class='tgrow' id='prrow'>{PRODUCT_TOGGLES}</div>
-          <input type='hidden' name='consent_products' id='consent_products'
-                 form='auditform'>
-        </div>
-        <div>
-          <label>Industry <span class='note'>optional</span></label>
-          <input name='consent_industries' form='auditform' list='indlist'
-                 placeholder='e.g. Hospital, Dentist, Credit Union'>
-          <datalist id='indlist'>{INDOPTS}</datalist>
-          <div class='sm' style='color:var(--muted);margin-top:3px'>
-            Health, children's and financial contexts carry extra rules — FTC
-            pixel enforcement, COPPA, GLBA. Leave blank to skip them.</div>
-        </div>
       </div>
-      <div class='sm' style='color:var(--muted);margin-top:6px'>
-        Reusing a crawl re-scores the pages we already have. Sitewide counts
-        then describe the site as of that crawl, so use a fresh one to check
-        whether a fix has landed.</div>
+
+      <div style='margin-top:18px;display:flex;gap:10px;align-items:center'>
+        <button type='submit' form='auditform' id='gobtn'>Scan site</button>
+        <span class='sm' style='color:var(--muted)' id='gonote'></span>
+      </div>
     </div>
     </div>
 
@@ -1325,6 +1306,23 @@ banner, Consent Mode and what fires before consent. No crawl.'>
       geoRender();
     }}
     geoInit();
+
+    // Each job's settings appear only when that job is on.
+    function jobSync() {{
+      var a = document.getElementById('do_audit');
+      var c = document.getElementById('do_consent');
+      document.getElementById('auditopts').classList.toggle('on', !!(a && a.checked));
+      document.getElementById('consentopts').classList.toggle('on', !!(c && c.checked));
+      var go = document.getElementById('gobtn');
+      var note = document.getElementById('gonote');
+      var on = (a && a.checked) + (c && c.checked ? 1 : 0);
+      if (go) go.disabled = !on;
+      if (!note) return;
+      note.textContent = !on ? 'Pick at least one.'
+        : (a && a.checked && c && c.checked) ? 'Full audit and consent check.'
+        : (a && a.checked) ? 'Full audit only.' : 'Consent check only.';
+    }}
+    jobSync();
 
     function prefill(btn) {{
       var st = JSON.parse(btn.dataset.prefill);

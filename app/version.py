@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-40"
-BUILD_NOTES = ("Conversion URLs harvested out of prose with no cap, and a "
-               "permanent Google API boundary is no longer on the fix list")
+BUILD = "2026.08.20-41"
+BUILD_NOTES = ("The panel was truncating away the diagnosis it had just "
+               "gained, and the form is now two jobs instead of seven boxes")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

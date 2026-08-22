@@ -383,7 +383,7 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
         a rerun to see them.
         """
         from engine.access import owner
-        c, detail = Counter(), {}
+        c, detail, longest = Counter(), {}, {}
         for cid in ids:
             f = findings.get(cid) or {}
             # A checkpoint with NO finding has no evidence to quote, and the
@@ -393,12 +393,24 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             own = owner(cid)
             fallback = (f"{own} produced no result for this run"
                         if own else "no check produced a result")
-            ev = " ".join(str(f.get("evidence") or fallback).split())[:110]
+            # GROUP ON A SHORT KEY, DISPLAY THE WHOLE THING.
+            #
+            # This truncated to 110 characters for both jobs at once, and the
+            # diagnosis is at the END of the sentence — so the moment the
+            # scanner started reporting WHY the browser failed, the panel cut
+            # it off mid-clause and printed the identical unhelpful line it
+            # had printed for three builds. It looked like nothing had been
+            # fixed. Everything had been fixed except the last 40 characters
+            # of the string, which were the only ones that mattered.
+            full = " ".join(str(f.get("evidence") or fallback).split())
+            ev = full[:110]
             c[ev] += 1
+            longest[ev] = max(longest.get(ev, ""), full, key=len)
             rec = " ".join(str(f.get("recommendation") or "").split())
             if rec and ev not in detail:
                 detail[ev] = rec[:180]
-        return [(why, n, detail.get(why, "")) for why, n in c.most_common(4)]
+        return [(longest.get(why, why), n, detail.get(why, ""))
+                for why, n in c.most_common(4)]
 
     out = ["<div class='note' style='border-left-color:var(--seq);"
            "margin:0 0 22px'>"

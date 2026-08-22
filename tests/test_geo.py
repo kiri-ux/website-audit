@@ -218,6 +218,36 @@ def main():
     check("phrased as a limit rather than a task",
           "not a gap in the run" in _h2)
 
+    print("\nTHE FORM ASKS THE REAL QUESTION")
+    check("the primary action says what it does", "Scan site" in html)
+    check("full audit and consent check are independent jobs",
+          "do_audit" in html and 'name=\'run_consent\'' in html)
+    _s2 = _i.getsource(_api.submit_form)
+    check("and unticking the audit runs the one-page consent path",
+          "if not do_audit and run_consent" in _s2)
+    check("target URL is named for what it is",
+          "Client website" in html and ">Target URL<" not in html)
+    check("vertical is gone from the form",
+          "name='vertical'" not in html)
+    check("and so is primary conversion",
+          "name='primary_conversion'" not in html)
+    check("industry is one control, not a filter beside a select",
+          html.count("id='indlist'") == 1 and "gscfilter" not in html)
+
+    print("\nA BOUNDARY CARRIES A ROUTE THROUGH IT")
+    # "Read this from the Search Console UI" is true and is not an
+    # instruction: it does not say which of eleven reports, or where, and the
+    # property is already known.
+    from engine.collectors import analytics as _an
+    _asrc = _i.getsource(_an)
+    check("each UI-only row names its report",
+          "Indexing \u2192 Pages" in _asrc and "Core Web Vitals" in _asrc)
+    check("and carries a deep link to the property",
+          "search.google.com/search-console/index" in _asrc
+          and "resource_id=" in _asrc)
+    check("with what to record once it opens",
+          "exclusion reasons by page count" in _asrc)
+
     print("\n" + "=" * 68)
     if FAILED:
         print(f"  {len(FAILED)} FAILED: {FAILED}")

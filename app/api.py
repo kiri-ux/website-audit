@@ -440,6 +440,7 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
                 conversion_urls: str = Form(""),
                 implementation: str = Form(""),
                 quick: str = Form(""),
+                do_audit: str = Form(""),
                 reuse_crawl: str = Form(""), phases: str = Form(""),
                 gsc_property: str = Form(""), ga4_property_id: str = Form(""),
                 gtm_container: str = Form(""),
@@ -538,6 +539,15 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
     # answer, and a page that shows progress. So it is an audit with one page
     # and one phase, and it inherits the queue, the status page, the report,
     # the client grouping and the rerun button for free.
+    # THE TWO JOBS ARE INDEPENDENT NOW.
+    #
+    # "What to run" used to be seven peer checkboxes mixing phases of the
+    # audit with a separate product. Untick every audit phase and you still
+    # got a 150-page crawl doing nothing with the result. The form asks the
+    # real question — full audit, consent check, or both — and unticking the
+    # audit reduces it to the one-page consent path that already existed.
+    if not do_audit and run_consent:
+        quick = "consent"
     if quick == "consent":
         opts.update({"max_pages": 1, "skip_judgment": True,
                      "skip_collectors": True, "skip_screenshots": True,
@@ -562,6 +572,11 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
         opts["ga4_property_id"] = ga4_property_id.strip()
     if gtm_container.strip():
         opts["gtm_container"] = gtm_container.strip()
+    # `vertical` and `primary_conversion` came off the form: industry says
+    # what the business is far more precisely than four hardcoded verticals,
+    # and the conversion was intake nobody filled in and nothing branched on.
+    # Both are still accepted by the JSON API, so a script that sends them
+    # keeps working and an old audit still renders what it stored.
     for k, v in (("primary_markets", primary_markets),
                  ("primary_conversion", primary_conversion),
                  ("partner", partner)):

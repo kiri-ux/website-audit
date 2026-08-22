@@ -1,6 +1,92 @@
-# Changed files — build 2026.08.20-40
+# Changed files — build 2026.08.20-41
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## Why you kept seeing the same error: the panel truncated the fix
+
+You were right to push. The diagnosis **was** being generated — and the panel
+was cutting it off.
+
+`reasons()` truncated evidence to 110 characters, and the new diagnosis sits at
+the **end** of the sentence:
+
+```
+This ran as a basic scan — raw HTML with no browser — which cannot see
+the banner, Consent Mode, or what fired before consent. The browser did
+not start: BrowserType.launch: …
+└──────────────── first 110 characters ────────────────┘ ✂
+```
+
+So the moment the scanner started reporting *why*, the panel chopped it
+mid-clause and printed the identical unhelpful line it had printed for three
+builds. Everything was fixed except the last forty characters of the string,
+which were the only ones that mattered.
+
+The tell was in your screenshot all along: the sub-line read *"This is a worker
+deployment problem, not a client one"* — which is the recommendation emitted
+**only when a cause was recorded**. The cause existed. It just never reached
+the page.
+
+Two changes: the panel groups on a short key and **displays the whole string**,
+and the evidence now **leads with the cause**, so any future truncation loses
+the explanation of what a basic scan is — which never changes — before it
+loses the exception.
+
+> **The browser did not start on the worker — BrowserType.launch: Executable
+> doesn't exist at /ms-playwright/… — so this fell back to a basic scan of the
+> raw HTML**, which cannot see the banner, Consent Mode, or what fired before
+> consent.
+
+---
+
+## The eight Search Console rows now carry a route, not just a verdict
+
+You asked whether this is forever manual. For those eight, yes — Google
+publishes them in the interface and exposes no API. But *"read this from the
+Search Console UI"* is not an instruction: it does not say which of eleven
+reports, or where, and we already know the property.
+
+Each row now carries the report name, a **deep link straight to that report for
+that property**, and what to record when it opens:
+
+| Rows | Report | What to record |
+|---|---|---|
+| Index coverage | Indexing → Pages | Total indexed, and the top three exclusion reasons by page count |
+| Core Web Vitals | Experience → Core Web Vitals | Mobile first: Poor and Needs-improvement URL counts, and the metric named for each |
+| Enhancements | Enhancements | Valid / warning / error counts per structured-data type |
+
+The link is built from the property already selected on the form, so it opens
+on the right site rather than the property picker.
+
+**On the extension:** it could capture these, and that is a genuinely good idea
+— it already runs in a signed-in browser, which is exactly what these reports
+need. It is not in this build. Worth doing after the consent dashboard.
+
+---
+
+## The form, rebuilt
+
+- **"Run audit" → "Scan site."**
+- **Order**, as asked: client name, client website *(renamed from Target URL)*,
+  industry, partner name, primary markets, products, conversion URLs, Google
+  access, then the two jobs.
+- **"What to run" is two jobs, not seven checkboxes.** Full audit and consent
+  check are a separate product and a phase of one, and the old strip made them
+  look like peers — untick every audit phase and you still got a 150-page crawl
+  doing nothing with the result. Each job now opens its own settings; unticking
+  the audit drops to the one-page consent path that already existed. Both on by
+  default, either can be off, and the button says which you are about to run.
+- **One control for industry**, not a filter box beside a select. A datalist
+  *is* the filter: type to narrow, or open and scroll.
+- **Vertical and Primary conversion are gone.** Industry says what the business
+  is far more precisely than four hardcoded verticals, and the conversion was
+  intake nobody filled in and nothing branched on. Both still accepted by the
+  JSON API, so scripts keep working and old audits still render what they
+  stored.
+- **Rounder corners** throughout, and the form lays itself out — a leftover
+  five-column grid rule was turning the reordered fields into a collage.
 
 ---
 
@@ -876,11 +962,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-40.zip
+unzip -o vici-audit-2026.08.20-41.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-40` in the header before
+Both services redeploy. Confirm `build 2026.08.20-41` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`

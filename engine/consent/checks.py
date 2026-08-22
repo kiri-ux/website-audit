@@ -198,12 +198,18 @@ def findings_from_scan(scan: dict | None) -> dict:
         # is an instruction with no next step attached — the reason lived in
         # the worker's log, which is gone by the time anyone reads the report.
         why = " ".join(str(scan.get("full_scan_error") or "").split())
+        # CAUSE FIRST. Any display that truncates should lose the explanation
+        # of what a basic scan is — which never changes — before it loses the
+        # exception, which is the only part that tells anyone what to do.
         out.update(_unanswered(
             _NEEDS_BROWSER,
-            "This ran as a basic scan — raw HTML with no browser — which "
-            "cannot see the banner, Consent Mode, or what fired before "
-            "consent."
-            + (f" The browser did not start: {why}" if why else ""),
+            (f"The browser did not start on the worker — {why} — so this fell "
+             f"back to a basic scan of the raw HTML, which cannot see the "
+             f"banner, Consent Mode, or what fired before consent."
+             if why else
+             "This ran as a basic scan — raw HTML with no browser — which "
+             "cannot see the banner, Consent Mode, or what fired before "
+             "consent."),
             "This is a worker deployment problem, not a client one."
             if why else
             "Re-run with the browser available on the worker."))
