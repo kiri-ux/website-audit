@@ -493,13 +493,24 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             # The button stays hidden until the extension's content script
             # marks the element present, so a browser without it sees the
             # honest instruction rather than a control that does nothing.
-            + (f"<div id='vici-console' style='margin-top:10px'"
+            # VISIBLE ALWAYS, WITH AN HONEST STATE.
+            #
+            # This shipped hidden until the extension's content script
+            # revealed it, which is tidy and useless: someone told the button
+            # exists, looking at a page with no button, has no way to tell a
+            # missing extension from a broken build. The control is always
+            # here now, and without the extension it says so and links to it.
+            + (f"<div id='vici-console' style='margin-top:11px'"
                f" data-audit-id='{e((meta or {}).get('audit_id') or '')}'"
                f" data-gsc-property="
                f"'{e((meta or {}).get('gsc_property') or '')}'>"
-               f"<button id='vici-console-go' type='button' class='btn ghost'"
-               f" style='display:none'>Capture these from Search Console"
-               f"</button></div>"
+               f"<button id='vici-console-go' type='button' class='btn ghost'>"
+               f"Capture these from Search Console</button>"
+               f"<span id='vici-console-note' class='sm' "
+               f"style='color:var(--muted);margin-left:10px'>"
+               f"Needs the Site Scanner extension, version 1.3 or newer &mdash; "
+               f"<a href='/extension.zip'>download</a>, then reload it at "
+               f"chrome://extensions.</span></div>"
                if (meta or {}).get("audit_id") else "")
             + "</div>")
 

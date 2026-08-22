@@ -8,13 +8,27 @@ beautifulsoup4>=4.12,<5.0
 lxml>=5.1
 reportlab>=4.0,<5.0           # client PDF — imported by app.api at startup
 
-# NOTE: playwright is deliberately NOT listed.
-# The base image (mcr.microsoft.com/playwright/python) already ships it, pinned
-# to the browser build baked into the image. Reinstalling it here can upgrade
-# the Python package past the bundled Chromium and break JS rendering with a
-# confusing "executable doesn't exist" error at runtime.
-# If you move off the Playwright base image, add it back AND run
-# `playwright install --with-deps chromium`.
+# PINNED TO THE BASE IMAGE'S OWN VERSION, and here on purpose.
+#
+# This said "deliberately NOT listed — the base image already ships it", and
+# the reasoning was sound: reinstalling can drag the Python package past the
+# Chromium baked into the image and produce a confusing "executable doesn't
+# exist" at runtime.
+#
+# It was also, in production, wrong. The worker reported
+#
+#     Playwright is not importable on this worker: No module named 'playwright'
+#
+# so the consent scan fell back to parsing raw HTML on every single run, and
+# five checkpoints went unanswered for weeks. Whatever the base image ships,
+# what mattered was whether the interpreter that runs our code can import it —
+# and nothing checked.
+#
+# The version is pinned to the SAME 1.42.0 the image is built from, so the
+# package and the browsers at PLAYWRIGHT_BROWSERS_PATH stay in step and the
+# original concern does not come back. Moving to a newer base image means
+# moving this line with it.
+playwright==1.42.0
 
 # Production backends. Safe to install everywhere; only imported when the
 # matching env var is set (see app/config.py), so local dev never touches them.

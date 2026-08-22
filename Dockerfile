@@ -49,6 +49,18 @@ COPY . .
 # app.api has no side effects: no DB connection, no queue, no network.
 RUN python3 -c "import app.api, app.worker; print('import check passed')"
 
+# AND CHECK THE BROWSER, which the line above does not.
+#
+# `import app.worker` succeeds with or without Playwright, because the consent
+# scanner imports it lazily and falls back to a basic HTML scan when it cannot.
+# That fallback is the right behaviour at runtime and it made a missing module
+# invisible at build time: the image built clean, the worker started clean, and
+# every consent scan quietly answered four of nine questions instead of nine.
+#
+# Assert it here, where it costs one line and fails the build instead of
+# degrading a client report.
+RUN python3 -c "import playwright; from playwright.sync_api import sync_playwright; print('playwright import check passed')"
+
 # Non-root. The base image provides the `pwuser` account.
 RUN mkdir -p /srv/data && chown -R pwuser:pwuser /srv
 USER pwuser

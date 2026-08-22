@@ -115,10 +115,20 @@ def main():
     # wrong before anything has been measured.
     con = open(os.path.join(root, "extension", "content.js")).read()
     html = open(os.path.join(root, "extension", "popup.html")).read()
+    import inspect as _i2
+    from engine import report as _rep
+    panel_src = _i2.getsource(_rep._todo_panel)
     check("the report page carries the id and the property",
           "vici-console" in con and "gscProperty" in con)
-    check("and the button is hidden until the extension is actually there",
-          "btn.style.display" in con)
+    # WAS: asserted the button stayed hidden until the extension revealed it.
+    # Tidy, and useless — someone told the button exists, looking at a page
+    # with no button, cannot tell a missing extension from a broken build.
+    # It is always visible now; the extension removes the caveat beside it.
+    check("the button is always visible, and says what it needs",
+          "vici-console-note" in panel_src
+          and "Site Scanner extension" in panel_src)
+    check("and the extension removes that caveat when it is present",
+          "vici-console-note" in con and "note.remove()" in con)
     from engine.report import _todo_panel
     from engine.scoring import load_catalog
     cat = load_catalog("seed/checkpoints.csv")

@@ -130,6 +130,31 @@ code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
 .topbar .burger{color:#5c6673}
 .topbar .right{color:var(--ink2)}
 
+/* ---- hover help ----
+   Every one of these lines was true and none of them was needed twice. On
+   screen together they turned a nine-field form into a wall of grey prose,
+   and the fields themselves stopped being findable. They are on an `i` now:
+   there when someone wants them, gone when they don't. */
+.tip{display:inline-flex;align-items:center;justify-content:center;
+ width:14px;height:14px;border-radius:50%;border:1px solid var(--line);
+ color:var(--muted);font-size:10px;font-weight:700;font-style:normal;
+ margin-left:6px;cursor:help;position:relative;vertical-align:1px;
+ background:var(--surface);letter-spacing:0;text-transform:none}
+.tip:hover{border-color:var(--blue);color:var(--blue)}
+/* LEFT-ALIGNED TO THE MARKER, not centered on it. Centering put half the
+   bubble off the left edge of the viewport for every field in the first
+   column — readable in the middle of the form and clipped everywhere it
+   mattered. */
+.tip:after{content:attr(data-tip);position:absolute;left:-10px;bottom:calc(100% + 8px);
+ width:270px;max-width:min(270px,70vw);padding:9px 12px;border-radius:12px;
+ background:var(--navy);color:#fff;font-size:12.5px;font-weight:400;
+ line-height:1.5;text-align:left;opacity:0;pointer-events:none;
+ transition:opacity .12s;z-index:40;box-shadow:0 6px 20px rgba(11,29,51,.22)}
+.tip:before{content:'';position:absolute;left:2px;bottom:calc(100% + 3px);
+ border:5px solid transparent;
+ border-top-color:var(--navy);opacity:0;transition:opacity .12s;z-index:41}
+.tip:hover:after,.tip:hover:before,.tip:focus:after,.tip:focus:before{opacity:1}
+
 /* ---- audit form layout ---- */
 .fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
  gap:12px;margin-top:12px}
@@ -770,23 +795,21 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
       </div>
       <div class='fgrid'>
         <div>
-          <label>Industry</label>
+          <label>Industry<i class='tip' tabindex='0' data-tip="Also drives the health, children&#39;s and financial rules — FTC pixel enforcement, COPPA, GLBA.">i</i></label>
           <!-- One control, not a filter beside a select. A datalist IS the
                filter: type to narrow, or open it and scroll. Two boxes doing
                one job was the thing that needed removing. -->
           <input name='consent_industries' form='auditform' list='indlist'
                  placeholder='Type to search 346 industries…'>
           <datalist id='indlist'>{INDOPTS}</datalist>
-          <div class='sm hint'>Also drives the health, children's and
-            financial rules — FTC pixel enforcement, COPPA, GLBA.</div>
+
         </div>
-        <div><label>Partner name <span class='note'>report cover</span></label>
-          <input name='partner' form='auditform' placeholder='Vici Media'>
-          <div class='sm hint'>Blank uses the configured firm name.</div></div>
+        <div><label>Partner name<i class='tip' tabindex='0' data-tip="Printed on the report cover. Leave it blank to use the configured firm name.">i</i></label>
+          <input name='partner' form='auditform' placeholder='Vici Media'></div>
       </div>
 
       <div style='margin-top:14px'>
-        <label>Primary markets <span class='note'>where they actually sell</span></label>
+        <label>Primary markets<i class='tip' tabindex='0' data-tip="Where they actually sell. Each market needs a state — that is what decides which privacy laws get checked.">i</i></label>
         <div class='geobox' id='geobox'>
           <span id='geopills'></span>
           <input id='geoinput' class='geoin' autocomplete='off'
@@ -794,21 +817,18 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
         </div>
         <input type='hidden' name='primary_markets' id='primary_markets'
                form='auditform'>
-        <div class='sm hint' id='geonote'>Each market needs a state — that is
-          what decides which privacy laws get checked.</div>
+        <div class='sm hint' id='geonote'></div>
       </div>
 
       <div style='margin-top:14px'>
-        <label>Products they bought
-          <span class='note'>which pixels we expect to find</span></label>
+        <label>Products they bought<i class='tip' tabindex='0' data-tip="Which pixels we expect to find. Without this the scan reports what IS firing; with it, it can report a product they pay for whose pixel never fires.">i</i></label>
         <div class='tgrow' id='prrow'>{PRODUCT_TOGGLES}</div>
         <input type='hidden' name='consent_products' id='consent_products'
                form='auditform'>
       </div>
 
       <div style='margin-top:14px'>
-        <label>Conversion URLs
-          <span class='note'>scanned as well as the homepage</span></label>
+        <label>Conversion URLs<i class='tip' tabindex='0' data-tip="Scanned as well as the homepage. A thank-you page is where conversion pixels actually fire, so it is the page most likely to carry an ungated one. Paste a list — the URLs are picked out of it.">i</i></label>
         <div class='geobox' id='cvbox'>
           <span id='cvpills'></span>
           <input id='cvinput' class='geoin' autocomplete='off'
@@ -895,8 +915,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
           <input name='max_pages' type='number' value='150' min='1' max='500'
                  form='auditform'>
         </div>
-        <div class='sm hint'>Reusing a crawl re-scores the pages we already
-          have, so sitewide counts describe the site as of that crawl.</div>
+
       </div>
 
       <div class='joblet' id='consentopts'>
@@ -912,7 +931,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
               imply it.</div>
           </div>
           <div>
-            <label>Implementation <span class='note'>who owns the tags</span></label>
+            <label>Implementation<i class='tip' tabindex='0' data-tip="Who owns the tags. A pixel firing pre-consent in a container we own is our work queue; the same pixel in the client&#39;s container is a conversation.">i</i></label>
             <select name='implementation' form='auditform'>
               <option value=''>Not specified</option>
               <option value='vici_gtm'>Vici-owned GTM</option>
@@ -920,8 +939,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
               <option value='client_placement'>Client placement</option>
               <option value='hardcoded'>Hardcoded in the site</option>
             </select>
-            <div class='sm hint'>Decides whether a finding is our work queue
-              or a conversation with the client.</div>
+
           </div>
         </div>
       </div>

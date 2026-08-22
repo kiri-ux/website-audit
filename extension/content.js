@@ -187,7 +187,10 @@ chrome.runtime.onMessage.addListener((msg, _s, respond) => {
   if (!el) return;
   const btn = document.getElementById("vici-console-go");
   if (!btn) return;
-  btn.style.display = "";                  // revealed only when we are here
+  // The button is always on the page; this removes the "you need the
+  // extension" caveat beside it, because we ARE the extension.
+  const note = document.getElementById("vici-console-note");
+  if (note) note.remove();
   btn.addEventListener("click", () => {
     let prop = el.dataset.gscProperty || "";
     if (!prop) {

@@ -1,6 +1,78 @@
-# Changed files — build 2026.08.20-43
+# Changed files — build 2026.08.20-44
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## THE BROWSER: `No module named 'playwright'`
+
+Your screenshot has the answer in it, and it is not the one anyone guessed:
+
+> **The browser did not start on the worker — Playwright is not importable on
+> this worker: No module named 'playwright'** — so this fell back to a basic
+> scan of the raw HTML.
+
+Not memory. Not the sandbox. Not the deploy. **The module was never importable
+in the running container**, so the consent scan has fallen back to parsing raw
+HTML on every run since it shipped, and five checkpoints went unanswered for
+weeks.
+
+`requirements.txt` said, with a paragraph of reasoning:
+
+> *NOTE: playwright is deliberately NOT listed. The base image already ships
+> it, pinned to the browser build baked into the image.*
+
+The reasoning was sound — reinstalling can drag the package past the bundled
+Chromium and produce a confusing "executable doesn't exist". It was also, in
+production, wrong. What mattered was whether **the interpreter that runs our
+code** could import it, and nothing checked.
+
+Two changes:
+
+- **`playwright==1.42.0` is pinned**, to the same version the base image is
+  built from, so the package and the browsers at `PLAYWRIGHT_BROWSERS_PATH`
+  stay in step and the original concern does not come back.
+- **The Dockerfile asserts the import at build time.** The existing check
+  (`import app.api, app.worker`) passes with or without it, because the
+  scanner imports Playwright lazily and degrades on purpose. That fallback is
+  correct at runtime and it is exactly what made a missing module invisible at
+  build: the image built clean, the worker started clean, and every consent
+  scan quietly answered four of nine questions. One line, and it fails the
+  build instead of degrading a client report.
+
+This is the third time today a correct defensive fallback hid the thing it was
+defending against. Worth remembering as a pattern: **a graceful degradation
+needs something loud somewhere else, or it is just a silent failure with good
+manners.**
+
+---
+
+## The form's helper text is on hover now
+
+Every one of those grey lines was true and none was needed twice. Together
+they turned a nine-field form into a wall of prose and the fields stopped being
+findable. They are on a small `i` beside each label — there when wanted, gone
+when not.
+
+"Blank uses the configured firm name" is gone from the page entirely, as asked;
+it survives inside the Partner name tooltip.
+
+The bubble is **left-aligned to its marker rather than centered on it** — centering
+put half of it off the left edge of the viewport for every field in the first
+column, which is readable in the middle of the form and clipped everywhere it
+mattered.
+
+---
+
+## The capture button you could not see
+
+It was there. It shipped `display:none`, revealed only by the extension's
+content script — tidy, and useless: someone told the button exists, looking at
+a page with no button, cannot tell a missing extension from a broken build.
+
+It is always visible now, with the caveat beside it — *"Needs the Site Scanner
+extension, version 1.3 or newer — download, then reload it at
+chrome://extensions"* — and the extension removes that line when it is present.
 
 ---
 
@@ -1057,11 +1129,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-43.zip
+unzip -o vici-audit-2026.08.20-44.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-43` in the header before
+Both services redeploy. Confirm `build 2026.08.20-44` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`
