@@ -385,6 +385,70 @@ def main():
         os.environ.pop("GEMINI_MODEL", None)
         _Gem._resolved = None
 
+    print("\nA PLATFORM WE DO NOT BUY IS NOT AN ACTION ITEM")
+    # ChatGPT, Perplexity and Copilot sat under "Ours to fix — a credential we
+    # have not set". True, and never going to change: there is no intention to
+    # set one, and Microsoft publishes no consumer Copilot API to set it for.
+    # They would be on that list on every run forever, which is exactly how the
+    # analyst section and the unticked phases each broke the list before them.
+    import re as _re2
+    from engine.report import _todo_panel as _panel
+    from engine.scoring import load_catalog as _cat
+    _agg2 = {"by_platform": {}, "repeats": 1,
+             "skipped_platforms": ["chatgpt", "perplexity", "copilot"],
+             "platform_errors": {"gemini": {
+                 "errors": 24, "successes": 0,
+                 "messages": ["HTTP 404 from generativelanguage.googleapis.com:"
+                              " models/gemini-2.0-flash is not found"]}}}
+    _rows2 = _ffr(_agg2, _prof)
+    check("an unconfigured platform is tagged as absent, not as a gap",
+          _rows2["GEO-27"]["source"] == "ai_platform_absent")
+    check("and dropped to Low, because nothing about it is urgent",
+          _rows2["GEO-27"]["severity"] == "Low")
+    check("a platform we DO hold a key for keeps the normal source",
+          _rows2["GEO-29"]["source"] == "ai_visibility")
+    _c2 = {k: v for k, v in _cat("seed/checkpoints.csv").items()
+           if k.startswith("GEO-2")}
+    _txt = _re2.sub(r"\s+", " ", _re2.sub(r"<[^>]+>", " ", "".join(
+        _panel(_rows2, _c2,
+               {"extras": {"phases_run": {"run_aivis": True,
+                                          "run_consent": True}}}))))
+    for _p in ("ChatGPT", "Perplexity", "Copilot"):
+        check(f"{_p} is off the fix list", _p not in _txt)
+    check("but Gemini's real failure is still on it, with its message",
+          "Gemini" in _txt and "404" in _txt)
+    # NOT SILENT: the row itself still says it was not measured.
+    check("the checkpoint still reports itself unmeasured",
+          _rows2["GEO-27"]["status"] == "Need Access"
+          and "not configured" in _rows2["GEO-27"]["evidence"])
+
+    print("\nAND THE PANEL STOPS DROPPING REASONS ON THE FLOOR")
+    # `reasons()` ended in `most_common(4)` while the heading counted the full
+    # list — so "Ours to fix · 7" rendered four bullets and threw three away
+    # with nothing on screen saying so.
+    # One distinct reason per checkpoint in the catalog slice, so the
+    # arithmetic has nothing to hide behind.
+    _ids = sorted(_c2)
+    _many = {cid: {"status": "Need Access", "value": {},
+                   "evidence": f"distinct reason for {cid}",
+                   "affected_pages": [], "severity": "Medium",
+                   "recommendation": "", "confidence": 0.0,
+                   "source": "ai_visibility"} for cid in _ids}
+    _t2 = _re2.sub(r"\s+", " ", _re2.sub(r"<[^>]+>", " ", "".join(
+        _panel(_many, _c2, {"extras": {"phases_run": {"run_aivis": True,
+                                                      "run_consent": True}}}))))
+    _shown = len(_re2.findall(r"distinct reason for", _t2))
+    _head = int(_re2.search(r"Ours to fix &middot; (\d+)", _t2).group(1))
+    _over = _re2.search(r"and \d+ more reasons? covering (\d+) checkpoint", _t2)
+    check("more reasons than fit are summarised, never dropped",
+          bool(_over), f"{_shown} of {_head} shown")
+    # THE ARITHMETIC IS THE POINT. A reader counting bullets against the
+    # heading must be able to reach it: shown + summarised == the heading.
+    # Before, the heading said 7 and four bullets appeared.
+    check("and bullets plus overflow add up to the heading",
+          bool(_over) and _shown + int(_over.group(1)) == _head,
+          f"{_shown} + {_over.group(1) if _over else '?'} vs {_head}")
+
     print("\n" + "=" * 68)
     if FAILURES:
         print(f"  {len(FAILURES)} FAILED: {', '.join(FAILURES)}")

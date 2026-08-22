@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-53"
-BUILD_NOTES = ("Gemini 404d on a hardcoded model name, and every HTTP "
-               "error body in the AI providers was closed unread")
+BUILD = "2026.08.20-54"
+BUILD_NOTES = ("Platforms we hold no key for are off the fix list, and the "
+               "panel stopped dropping reason groups silently")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

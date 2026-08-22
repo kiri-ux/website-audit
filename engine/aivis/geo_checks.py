@@ -70,9 +70,12 @@ def findings_from_run(agg: dict, profile) -> dict:
             # messages, so a failed platform reports what failed.
             errs = (agg.get("platform_errors") or {}).get(plat) or {}
             msgs = [m for m in (errs.get("messages") or []) if m]
-            if plat in skipped:
+            absent = plat in skipped
+            if absent:
                 reason = "not configured — no API credentials supplied"
-                rec = f"Configure {label} access to measure citation share."
+                rec = (f"Nothing to do unless we start paying for {label}. "
+                       f"This deployment holds no credentials for it, so it "
+                       f"was never going to be measured.")
             elif msgs:
                 reason = ("every query failed — "
                           + "; ".join(m[:160] for m in msgs[:2]))
@@ -83,12 +86,28 @@ def findings_from_run(agg: dict, profile) -> dict:
                 reason = "no successful responses collected, and no error was recorded"
                 rec = (f"The {label} provider returned nothing and reported no "
                        f"reason — that is a bug on our side, not a setting.")
+            # A PLATFORM WE DO NOT BUY IS NOT A DEFECT.
+            #
+            # These rows were printing under "Ours to fix — a credential we
+            # have not set", which is technically true and practically a lie:
+            # there is no intention to set one. ChatGPT, Perplexity and
+            # Copilot are not on this subscription, so they will be on that
+            # list on every run forever, and a fix list that never empties is
+            # a fix list people stop reading. Same failure as the analyst
+            # section and the permanent Google-API boundary.
+            #
+            # The row still exists and still says it was not measured — that
+            # is the honest part, and it is where anyone checking coverage
+            # will look. It just stops claiming to be work.
             out[cid] = _finding(
                 "Need Access",
                 {"platform": plat, "errors": errs.get("errors"),
-                 "provider_messages": msgs or None},
+                 "provider_messages": msgs or None,
+                 "not_configured": absent or None},
                 f"{label} visibility not measured: {reason}.",
-                severity="Medium", confidence=0.0, recommendation=rec)
+                severity="Low" if absent else "Medium", confidence=0.0,
+                recommendation=rec,
+                source="ai_platform_absent" if absent else "ai_visibility")
             continue
 
         cr, mr = stats["citation_rate"], stats["mention_rate"]

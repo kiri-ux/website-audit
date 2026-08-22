@@ -410,7 +410,34 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             if rec and ev not in detail:
                 detail[ev] = rec[:180]
         return [(longest.get(why, why), n, detail.get(why, ""))
-                for why, n in c.most_common(4)]
+                for why, n in c.most_common()]
+
+    def bullets(rows, limit=6, fix=True):
+        """
+        Render grouped reasons, and NEVER drop one silently.
+
+        `reasons()` used to end in `most_common(4)` and the caller printed the
+        heading count from the full list — so a panel headed "Ours to fix · 7"
+        rendered four bullets and threw three away with nothing on screen
+        saying so. A reader counting the bullets against the heading either
+        distrusts the number or, worse, does not notice.
+
+        The cap is still right: this is a summary and a wall of forty distinct
+        one-off reasons is not one. What was wrong is that it was silent.
+        """
+        shown, rest = rows[:limit], rows[limit:]
+        out = "".join(
+            f"<li><b>{n}</b> — {e(why)}"
+            + (f"<div class='sm' style='color:var(--muted)'>{e(f_)}</div>"
+               if fix and f_ else "") + "</li>"
+            for why, n, f_ in shown)
+        if rest:
+            out += (f"<li style='color:var(--muted)'>and {len(rest)} more "
+                    f"{'reason' if len(rest) == 1 else 'reasons'} covering "
+                    f"{sum(n for _w, n, _f in rest)} "
+                    f"{'checkpoint' if sum(n for _w, n, _f in rest) == 1 else 'checkpoints'}"
+                    f" — every one is in the findings table below.</li>")
+        return out
 
     out = ["<div class='note' style='border-left-color:var(--seq);"
            "margin:0 0 22px'>"
@@ -454,12 +481,25 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
                 if (findings.get(c) or {}).get("source") in _NO_API]
     vendor = [c for c in vendor if c not in set(boundary)]
 
+    # A PLATFORM WE DO NOT SUBSCRIBE TO IS NOT AN ACTION ITEM.
+    #
+    # Three rows — ChatGPT, Perplexity, Copilot — sat under "a credential we
+    # have not set". True, and never going to change: there is no intention to
+    # set one, and Microsoft publishes no consumer Copilot API to set it for.
+    # They would be on that list on every run forever, which is exactly how the
+    # analyst section and the unticked phases each broke the list before them.
+    #
+    # NOT SILENT. The checkpoint still renders in the body of the report saying
+    # it was not measured and why — a graceful degradation needs something loud
+    # somewhere else, or it is just a silent failure with good manners. What
+    # changes is only that it stops claiming to be work. A platform we DO hold
+    # a key for that fails keeps its old source and stays on the fix list,
+    # which is the case that actually needs someone.
+    vendor = [c for c in vendor
+              if (findings.get(c) or {}).get("source") != "ai_platform_absent"]
+
     if vendor:
-        items = "".join(
-            f"<li><b>{n}</b> — {e(why)}"
-            + (f"<div class='sm' style='color:var(--muted)'>{e(fix)}</div>"
-               if fix else "") + "</li>"
-            for why, n, fix in reasons(vendor))
+        items = bullets(reasons(vendor))
         out.append(
             f"<div style='margin-top:12px'>"
             f"<b style='color:var(--critical)'>Ours to fix &middot; "
@@ -470,8 +510,7 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             f"<ul style='margin:6px 0 0 18px'>{items}</ul></div>")
 
     if boundary:
-        rows = "".join(
-            f"<li><b>{n}</b> — {e(why)}</li>" for why, n, _fix in reasons(boundary))
+        rows = bullets(reasons(boundary), fix=False)
         out.append(
             f"<div style='margin-top:12px'>"
             f"<b style='color:var(--ink2)'>Google publishes no API for this "

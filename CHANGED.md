@@ -1,7 +1,80 @@
-# Changed files — build 2026.08.20-53
+# Changed files — build 2026.08.20-54
 
-Cumulative delta since **2026.08.18-16**. Packed by `pack.py`, not by hand.
+Cumulative delta since **2026.08.18-16**. Packed by `pack.py`.
 Extension is **1.4.4** — unchanged since ‑50.
+
+---
+
+## A platform we do not buy is not an action item
+
+ChatGPT, Perplexity and Copilot were listed under *"Ours to fix — a credential
+we have not set."* True, and never going to change: there is no intention to
+set one, and Microsoft publishes no consumer Copilot API to set it for. Those
+three rows would be on that list on every run forever.
+
+That is precisely how the analyst section and the unticked phases each broke
+the list before them — a fix list that never empties is a fix list people stop
+reading, and the one real failure in it goes down with the rest.
+
+A skipped platform is now tagged `ai_platform_absent` and dropped to Low, and
+the panel filters that source out of "Ours to fix" the same way it already
+filters the permanent Google-API boundary.
+
+**It is not silent.** The checkpoint still renders in the body of the report:
+
+> ChatGPT visibility not measured: not configured — no API credentials supplied.
+> → Nothing to do unless we start paying for ChatGPT. This deployment holds no
+> credentials for it, so it was never going to be measured.
+
+A graceful degradation needs something loud somewhere else, or it is just a
+silent failure with good manners. The row is the loud part; what changed is
+only that it stopped claiming to be work.
+
+**A platform we DO hold a key for keeps the old behaviour.** Gemini's 404 is
+still on the fix list with its unwrapped message, because that one genuinely
+needs somebody. That is the distinction the source tag exists to draw.
+
+## And the panel was dropping reasons on the floor
+
+Found while checking the above. Look at your last screenshot: the heading says
+**Ours to fix · 7** and there are **four bullets**.
+
+`reasons()` ended in `most_common(4)` while the heading counted the full list.
+Three reasons were rendered nowhere, with nothing on screen saying so. A reader
+counting bullets against the heading either distrusts the number or — worse —
+does not notice.
+
+The cap itself was right; a wall of forty distinct one-off reasons is not a
+summary. What was wrong is that it was silent. It shows six now and finishes
+with:
+
+> and 4 more reasons covering 4 checkpoints — every one is in the findings
+> table below.
+
+Guarded by arithmetic rather than by a string match: bullets shown plus the
+overflow count must equal the number in the heading.
+
+```
+  PASS  more reasons than fit are summarised, never dropped  (6 of 10 shown)
+  PASS  and bullets plus overflow add up to the heading      (6 + 4 vs 10)
+```
+
+---
+
+## What your panel should look like after the next run
+
+Of the seven, three leave as not-our-problem and one is now correctly
+diagnosed:
+
+| was | now |
+|---|---|
+| ChatGPT — no credentials | off the list |
+| Perplexity — no credentials | off the list |
+| Copilot — no credentials | off the list |
+| Gemini — HTTP Error 404: Not Found | should be measured; the model is discovered rather than hardcoded |
+
+If Gemini still fails, the row names the reason, and the list is short enough
+that you will see it.
 
 ---
 
