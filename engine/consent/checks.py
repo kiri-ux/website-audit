@@ -193,11 +193,19 @@ def findings_from_scan(scan: dict | None) -> dict:
             "before any of the consent checks below can pass.")
 
     if basic:
+        # The scanner now records WHY full mode was unavailable. Printing
+        # "re-run with the browser available" without saying what stopped it
+        # is an instruction with no next step attached — the reason lived in
+        # the worker's log, which is gone by the time anyone reads the report.
+        why = " ".join(str(scan.get("full_scan_error") or "").split())
         out.update(_unanswered(
             _NEEDS_BROWSER,
             "This ran as a basic scan — raw HTML with no browser — which "
             "cannot see the banner, Consent Mode, or what fired before "
-            "consent.",
+            "consent."
+            + (f" The browser did not start: {why}" if why else ""),
+            "This is a worker deployment problem, not a client one."
+            if why else
             "Re-run with the browser available on the worker."))
 
     # ---- CONS-02 banner actually appears -----------------------------------

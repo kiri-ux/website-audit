@@ -13,8 +13,8 @@ import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
 BUILD = "2026.08.20-38"
-BUILD_NOTES = ("Markets are validated pills now, and the states the consent "
-               "scan checks are read off them instead of guessed")
+BUILD_NOTES = ("Market pills drive the state checks, AI Overviews go through "
+               "DataForSEO, and a basic scan says what stopped the browser")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

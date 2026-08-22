@@ -4,6 +4,58 @@ Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push
 
 ---
 
+## AI Overviews: you are already paying for this
+
+The panel told you to configure `SERP_ENDPOINT` / `SERP_API_KEY`. **Don't.**
+
+That adapter only spoke SerpApi's dialect — GET, `api_key=` in the query
+string — so an install with DataForSEO credentials already set reported "not
+measured" and sent the operator off to buy a second SERP provider. You have
+one. AI Overviews are part of DataForSEO's **standard SERP API**, on the same
+login already answering backlinks, rankings and Lighthouse, at **$0.0006 a
+request** ($0.0012 with async overview loading).
+
+Recommending a subscription to replace something already bought is a worse
+failure than not measuring: it costs money and it makes the tool look like it
+does not know what it is holding.
+
+`AIOverviewProvider` now falls through to `serp/google/organic/live/advanced`
+when no SerpApi endpoint is set, reading the `ai_overview` item's nested text
+and its `references` array for citations. SerpApi still wins when explicitly
+configured — setting `SERP_ENDPOINT` is a preference, and a preference beats a
+default.
+
+One call carries the AI Overview *and* the featured snippet *and* the rest of
+the SERP features, so all three GEO rows that were each waiting on "a SERP
+data provider" are answered by the same request.
+
+---
+
+## A basic scan now says what stopped the browser
+
+Your worker is already Standard 2 GB, so the memory theory was wrong — and the
+scanner has always launched with `--no-sandbox`, so it is not the usual
+container problem either.
+
+The reason full mode failed was printed to stdout and **dropped**. The report
+said "this ran as a basic scan" and stopped, leaving the WHY in a worker log
+that is gone by the time anyone reads the report — five checkpoints unanswered
+and no route to answering them.
+
+`scan_site` now records the launch failure on the result, and the five
+browser-dependent rows carry it:
+
+> **CONS-02 · Need access** — This ran as a basic scan — raw HTML with no
+> browser — which cannot see the banner, Consent Mode, or what fired before
+> consent. **The browser did not start: BrowserType.launch: Executable doesn't
+> exist at /ms-playwright/…** *This is a worker deployment problem, not a
+> client one.*
+
+Marked in the source as a Vici addition rather than upstream, so the vendored
+scanner still diffs cleanly against the standalone tool.
+
+---
+
 ## Markets are pills, and they decide which laws get checked
 
 Three things you asked for, and they turn out to be one thing.

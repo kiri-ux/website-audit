@@ -401,6 +401,27 @@ def main():
     check("with a fix that says whose problem it is",
           "deployment problem" in rows["CONS-01"]["recommendation"])
 
+    print("\nA BASIC SCAN SAYS WHAT STOPPED THE BROWSER")
+    # The scanner degrades to basic when Chromium will not start, printed the
+    # reason to stdout, and dropped it. So the report said "this ran as a
+    # basic scan" and left the WHY in a worker log that is gone by the time
+    # anyone reads the report — with five checkpoints unanswered and no way
+    # to get them answered.
+    r = F({"mode": "basic", "cmps": [],
+           "full_scan_error": "BrowserType.launch: Executable doesn't exist"})
+    check("the launch failure reaches the reader",
+          "Executable doesn't exist" in r["CONS-02"]["evidence"])
+    check("and it is named as ours, not the client's",
+          "not a client one" in r["CONS-02"]["recommendation"])
+    r2 = F({"mode": "basic", "cmps": []})
+    check("a basic scan with no recorded reason still reads cleanly",
+          "basic scan" in r2["CONS-02"]["evidence"]
+          and "did not start" not in r2["CONS-02"]["evidence"])
+    from engine.consent.scanner import scan_site as _ss
+    import inspect as _i
+    check("and the scanner is what records it",
+          "full_scan_error" in _i.getsource(_ss))
+
     print("\nSTRUCTURED EVIDENCE REACHES THE READER")
     # Every finding carries a `value` dict; the DB stored it and NOTHING
     # rendered it. The reader got one sentence where eight request URLs

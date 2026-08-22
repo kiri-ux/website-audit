@@ -1371,6 +1371,15 @@ def scan_site(raw_url, prefer_full=True, products=None, states=None,
     if _cat:
         _contexts.add(_cat)
 
+    # VICI ADDITION (not upstream): carry the fallback reason on the result.
+    #
+    # The reason full mode failed was printed to stdout and dropped. So the
+    # report said "this ran as a basic scan" and stopped there, and finding out
+    # WHY meant opening the worker's log — which nobody does, and which is
+    # gone by the time anyone thinks to look. Five checkpoints go unanswered
+    # on a basic scan; the one sentence explaining it is worth more than all
+    # five, because it is the sentence that gets them answered next time.
+    why = None
     if prefer_full:
         try:
             r = _apply_verdict(full_scan(url, products=products,
@@ -1381,10 +1390,12 @@ def scan_site(raw_url, prefer_full=True, products=None, states=None,
                     _category_checks(r, _c)
             return r
         except ImportError as e:
+            why = f"Playwright is not importable on this worker: {e}"
             print(f"[scan] POOL UNAVAILABLE (ImportError: {e}) - basic "
                   f"fallback for {url}", flush=True)
         except Exception as e:
             import traceback
+            why = f"{e.__class__.__name__}: {' '.join(str(e).split())[:300]}"
             print(f"[scan] FULL SCAN FAILED for {url}: {e!r} - basic "
                   f"fallback. Trace:", flush=True)
             traceback.print_exc()
@@ -1395,4 +1406,6 @@ def scan_site(raw_url, prefer_full=True, products=None, states=None,
                 r["error"] = f"Full scan failed: {e.__class__.__name__}"
                 # still try basic below so the buyer gets *something*
     r = basic_scan(url)
+    if why:
+        r["full_scan_error"] = why
     return _apply_verdict(r)
