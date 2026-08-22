@@ -1,6 +1,29 @@
-# Changed files — build 2026.08.20-33
+# Changed files — build 2026.08.20-34
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## "Ours to fix · 15" — now retroactive
+
+Build ‑32 taught the panel to separate *"we asked for this and got nothing"*
+from *"nobody ticked the box"*. It worked, and you still saw the old panel,
+because the worker only started stamping `extras.phases_run` in ‑32 — so every
+report that already existed fell to the conservative branch and kept printing
+fifteen unticked checkpoints as fifteen defects. The exact panel ‑32 set out to
+fix, still there on every report anyone would actually open.
+
+**It never needed a stamp.** The audit row has always stored the options it was
+submitted with, and `run_consent` / `run_aivis` are in them. `_extras()` now
+derives `phases_run` from those whenever the worker did not record it, so the
+fix applies to **every audit ever run**, with no re-run and no re-crawl.
+
+A key missing from options means the phase was not requested — true both for a
+run where the box was unticked and for one that predates the box existing.
+
+The worker's stamp still wins where present: it records what the run actually
+did, options record what was asked of it. Those agree today, and the stamp is
+the one to trust if they ever diverge.
 
 ---
 
@@ -487,11 +510,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-33.zip
+unzip -o vici-audit-2026.08.20-34.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-33` in the header before
+Both services redeploy. Confirm `build 2026.08.20-34` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`

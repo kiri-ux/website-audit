@@ -464,10 +464,41 @@ def main():
           skip2 == len(_GEO), f"{skip2} skipped")
 
     # An older audit recorded nothing. Claiming "not requested" without
-    # evidence would hide real failures, so nothing is claimed.
+    # evidence would hide real failures, so the RENDERER claims nothing...
     html3 = "".join(_todo_panel(_F, _cat, {"extras": {}}))
-    check("an audit with no record of its phases claims nothing",
+    check("the renderer claims nothing without evidence",
           "Not requested" not in html3)
+
+    # ...but there IS evidence, and it was there the whole time. Every audit
+    # row stores the options it was submitted with, and run_consent /
+    # run_aivis live in them. Deriving from those makes the fix retroactive to
+    # every audit ever run, instead of only to runs after this build — which
+    # matters because the panel people are looking at right now is on a report
+    # that already exists.
+    import json as _json
+    from app.api import _extras as _ex
+    _pre32 = {"id": "a", "extras": _json.dumps({"context": {}}),
+              "options": _json.dumps({"max_pages": 150, "run_consent": False})}
+    check("a pre-stamp audit derives its phases from its own options",
+          _ex(_pre32)["phases_run"] == {"run_consent": False,
+                                        "run_aivis": False},
+          str(_ex(_pre32).get("phases_run")))
+    _on = {"id": "a", "extras": "{}",
+           "options": _json.dumps({"run_consent": True, "run_aivis": True})}
+    check("and a run that DID ask for them is not misread as unticked",
+          _ex(_on)["phases_run"] == {"run_consent": True, "run_aivis": True})
+    # The worker's stamp records what the run actually did; options record
+    # what was asked of it. The stamp wins where both exist.
+    _both = {"id": "a", "options": _json.dumps({"run_consent": False}),
+             "extras": _json.dumps({"phases_run": {"run_consent": True,
+                                                   "run_aivis": False}})}
+    check("a recorded stamp beats the derived value",
+          _ex(_both)["phases_run"]["run_consent"] is True)
+
+    # End to end: the old report re-renders with the split.
+    html4 = "".join(_todo_panel(_F, _cat, {"extras": _ex(_pre32)}))
+    check("so an existing report stops printing unticked phases as defects",
+          "Not requested on this run" in html4)
 
     print("\n" + "=" * 68)
     print(f"  {len(FAILURES)} FAILED: {FAILURES}" if FAILURES

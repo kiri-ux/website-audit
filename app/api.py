@@ -693,6 +693,35 @@ def _extras(a: dict) -> dict:
         extras = json.loads(a.get("extras") or "{}") or {}
     except Exception:
         extras = {}
+
+    # WHICH OPTIONAL PHASES WERE ASKED FOR — DERIVED, NOT ONLY RECORDED.
+    #
+    # The worker started stamping `phases_run` in build ‑32, which lets the
+    # panel separate "we asked for this and got nothing" (a bug) from "nobody
+    # ticked the box" (a choice). Audits that ran before ‑32 carry no stamp, so
+    # they fell to the conservative branch and printed fifteen unticked
+    # checkpoints as fifteen defects — the exact panel ‑32 set out to fix,
+    # still there on every existing report.
+    #
+    # It never needed a stamp. The audit row has always stored the options it
+    # was submitted with, and `run_consent` / `run_aivis` live in there. Read
+    # them and the fix applies to every audit ever run, retroactively, with no
+    # re-run. A key missing from options means the phase was not requested —
+    # true both for a run where the box was unticked and for one that predates
+    # the box existing at all.
+    #
+    # The worker's stamp still wins where present: it records what the run
+    # actually did, and options record what was asked of it. Those agree today
+    # and the stamp is the one to trust if they ever diverge.
+    if "phases_run" not in extras:
+        try:
+            _opt = json.loads(a.get("options") or "{}")
+            _opt = _opt if isinstance(_opt, dict) else {}
+        except Exception:  # noqa: BLE001
+            _opt = {}
+        extras["phases_run"] = {"run_consent": bool(_opt.get("run_consent")),
+                                "run_aivis": bool(_opt.get("run_aivis"))}
+
     # AI visibility, if a monitor run is linked to this audit. Read at render
     # time rather than frozen into the audit, so a monitor run that happens
     # AFTER the audit still shows up in the PDF.
