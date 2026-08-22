@@ -79,6 +79,30 @@ def _plural(n, one, many=None):
     return one if n == 1 else (many or one + "s")
 
 
+def _states(scan) -> list:
+    """The states this scan was actually asked about."""
+    return [str(x).upper() for x in (scan.get("states") or []) if x]
+
+
+def _gpc_states(scan) -> list:
+    """Those of them that require honouring Global Privacy Control."""
+    try:
+        from .state_checks import STATE_CHECKS
+    except Exception:  # noqa: BLE001
+        return []
+    return [s for s in _states(scan)
+            if (STATE_CHECKS.get(s) or {}).get("gpc")]
+
+
+def _no_cmp(scan) -> bool:
+    """
+    No consent platform was found — so several rows below have nothing to
+    measure, and saying so beats reporting each as its own unmeasured gap.
+    """
+    return (str(scan.get("verdict") or "") == "no_cmp"
+            or not (scan.get("cmps") or []))
+
+
 def findings_from_scan(scan: dict | None) -> dict:
     """
     Nine checkpoints from one scan result.
@@ -228,6 +252,24 @@ def findings_from_scan(scan: dict | None) -> dict:
                 "compliance purposes.", "Critical",
                 "Check the CMP's geo-targeting and publish state — a banner "
                 "restricted to the EU does nothing for US state law.")
+        elif _no_cmp(scan):
+            # NOT AN UNMEASURED ROW — A CONSEQUENCE OF CONS-01.
+            #
+            # "The scan could not determine whether a banner appeared. Load
+            # the page and look." was printed for a site with no consent
+            # platform at all, and landed on a list headed "nothing to ask
+            # anyone for" directly above an instruction to a person. There is
+            # nothing to determine: no CMP was found, so nothing was going to
+            # show a banner. That fact is already reported once, on CONS-01,
+            # and repeating it three times as three separate gaps is how the
+            # one real finding gets lost.
+            out["CONS-02"] = _f(
+                "Need Access", {"no_cmp": True},
+                "No banner was tested because no consent platform was found "
+                "on the site — see CONS-01, which is the finding.", "Low",
+                "Fixing CONS-01 makes this measurable. Until there is a "
+                "banner there is nothing here to test.", 0.0,
+                "consent_no_cmp")
         else:
             out["CONS-02"] = _f(
                 "Need Access", {}, "The scan could not determine whether a "
@@ -328,10 +370,19 @@ def findings_from_scan(scan: dict | None) -> dict:
 
     # ---- CONS-05 reject respected ------------------------------------------
     if not basic:
-        if not scan.get("reject_tested"):
+        if not scan.get("reject_tested") and _no_cmp(scan):
+            out["CONS-05"] = _f(
+                "Need Access", {"no_cmp": True},
+                "No Reject control was tested because no consent platform was "
+                "found on the site — see CONS-01, which is the finding.",
+                "Low",
+                "Fixing CONS-01 makes this measurable. A site with no banner "
+                "has no reject button to fail.", 0.0, "consent_no_cmp")
+        elif not scan.get("reject_tested"):
             out["CONS-05"] = _f(
                 "Need Access", {},
-                "The scan could not find a Reject control to test.", "Low",
+                "A consent platform was found, but the scan could not locate "
+                "a Reject control on its banner.", "Low",
                 "If the banner offers no reject option, that is itself the "
                 "finding under several state laws.", 0.0, "consent_unknown")
         else:
@@ -352,10 +403,33 @@ def findings_from_scan(scan: dict | None) -> dict:
 
     # ---- CONS-06 Global Privacy Control ------------------------------------
     if not basic:
-        if not scan.get("gpc_tested"):
-            out["CONS-06"] = _f("Need Access", {},
-                                "Global Privacy Control was not tested on this "
-                                "scan.", "Low", "", 0.0, "consent_unknown")
+        if not scan.get("gpc_tested") and not _gpc_states(scan):
+            # NOT APPLICABLE IS NOT UNMEASURED.
+            #
+            # GPC has to be honoured in twelve states. Tennessee is not one of
+            # them, so for a Knoxville firm selling only in TN the scanner
+            # correctly skips the pass — and the row then reported the skip as
+            # a gap on our fix list. A check that does not apply to this
+            # client's markets is an answer, not an omission.
+            st = ", ".join(_states(scan)) or "the markets on this audit"
+            out["CONS-06"] = _f(
+                "N/A", {"states": _states(scan), "gpc_required_in": []},
+                f"Global Privacy Control does not apply here: none of the "
+                f"states this client sells in ({st}) require honouring it.",
+                "Low",
+                "Add a state that does — California, Colorado, Connecticut, "
+                "Delaware, Maryland, Minnesota, Montana, Nebraska, New "
+                "Hampshire, New Jersey, Oregon or Texas — and the scan will "
+                "test it.", 0.0, "consent_not_applicable")
+        elif not scan.get("gpc_tested"):
+            out["CONS-06"] = _f(
+                "Need Access", {"states": _states(scan)},
+                f"Global Privacy Control was not tested, although "
+                f"{', '.join(_gpc_states(scan))} "
+                f"{'requires' if len(_gpc_states(scan)) == 1 else 'require'} "
+                f"it. The scan should have run this pass and did not.", "Low",
+                "This is ours: the GPC load either did not run or did not "
+                "complete.", 0.0, "consent_unknown")
         else:
             fires = scan.get("gpc_fires") or []
             if fires:

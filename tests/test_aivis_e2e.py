@@ -259,6 +259,19 @@ def main():
     check("the provider's own message reaches the row",
           "40401" in _rows["GEO-23"]["evidence"],
           _rows["GEO-23"]["evidence"][:100])
+    # AND IT IS NOT CUT OFF. A 160-character cap landed on "Please update your
+    # code t." — the third time in this codebase a truncation has removed the
+    # only part of a sentence worth reading.
+    _long = ("HTTP 404 from generativelanguage.googleapis.com: This model "
+             "models/gemini-2.5-flash is no longer available to new users. "
+             "Please update your code to use a different model.")
+    _lr = _ffr({"by_platform": {}, "skipped_platforms": [], "repeats": 1,
+                "platform_errors": {"gemini": {"errors": 24, "successes": 0,
+                                               "messages": [_long]}}}, _prof)
+    check("and the end of the message survives, where the fix always is",
+          _lr["GEO-29"]["evidence"].rstrip(".").endswith(
+              "use a different model"),
+          _lr["GEO-29"]["evidence"][-46:])
     check("and it is named as ours, not a client permission",
           "our error" in _rows["GEO-23"]["recommendation"].lower())
     check("the message is kept as structured evidence too",
@@ -360,27 +373,72 @@ def main():
     # somebody reads a checkpoint.
     _g = _Gem()
     _Gem._resolved = None
+    _Gem._dead = set()
     _g._models = lambda: ["gemini-1.5-flash", "gemini-2.5-flash", "embedding-001"]
-    check("it picks the best model the key can actually call",
-          _g._model() == "gemini-2.5-flash", _g._model())
+    check("it tries the best model the key can actually call first",
+          _g._model_order()[0] == "gemini-2.5-flash", str(_g._model_order()))
+    check("and keeps the others as fallbacks rather than one guess",
+          len(_g._model_order()) > 1, str(_g._model_order()))
     _Gem._resolved = None
     _g._models = lambda: ["gemini-9.9-experimental-flash"]
     check("an unknown-but-usable model beats failing",
-          _g._model() == "gemini-9.9-experimental-flash")
+          _g._model_order() == ["gemini-9.9-experimental-flash"])
+    print("\n  A LISTED MODEL IS NOT A PROMISE")
+    # `GET /models` returned gemini-2.5-flash, the picker took it, and every
+    # call came back "no longer available to new users". Google lists models
+    # it will not serve to a project that has never called them, so resolving
+    # to ONE name turned a recoverable condition into 24 identical failures.
     _Gem._resolved = None
+    _Gem._dead = set()
+    _tried = []
+
+    def _post_stub(self, url, payload, headers, timeout=90):
+        m = url.split("/models/")[1].split(":")[0]
+        _tried.append(m)
+        if m == "gemini-2.5-flash":
+            raise RuntimeError("HTTP 404 from generativelanguage.googleapis."
+                               "com: This model models/gemini-2.5-flash is no "
+                               "longer available to new users.")
+        return {"candidates": [{"content": {"parts": [{"text": "ok"}]}}]}
+
+    _real_post = _Gem._post
+    _Gem._post = _post_stub
+    _g._models = lambda: ["gemini-2.5-flash", "gemini-2.0-flash",
+                          "gemini-1.5-flash"]
+    try:
+        _a1 = _g.ask("q1", "who")
+        check("a refused model falls through to the next one",
+              _a1.ok and _tried == ["gemini-2.5-flash", "gemini-2.0-flash"],
+              str(_tried))
+        _n = len(_tried)
+        _g.ask("q2", "who")
+        check("and the working one is remembered, not rediscovered per query",
+              len(_tried) == _n + 1 and _tried[-1] == "gemini-2.0-flash")
+    finally:
+        _Gem._post = _real_post
+        _Gem._resolved = None
+        _Gem._dead = set()
+
+    _Gem._resolved = None
+    _Gem._dead = set()
     _g._models = lambda: []
     _why = ""
     try:
-        _g._model()
+        # Nothing listed and every fallback already refused -> the honest
+        # message about the key, not a shrug.
+        _Gem._dead = set(_Gem._PREFER)
+        _g._model_order()
     except Exception as _e:
         _why = str(_e)
-    check("and a key that lists nothing says what that usually means",
-          "GEMINI_API_KEY" in _why and "not enabled" in _why, _why[:90])
+    finally:
+        _Gem._dead = set()
+    check("a key whose every model refuses names them",
+          "refused" in _why, _why[:90])
     _Gem._resolved = None
     os.environ["GEMINI_MODEL"] = "gemini-set-by-hand"
     try:
         check("an explicit GEMINI_MODEL still wins over discovery",
-              _g._model() == "gemini-set-by-hand")
+              _g._model_order() == ["gemini-set-by-hand"])
     finally:
         os.environ.pop("GEMINI_MODEL", None)
         _Gem._resolved = None

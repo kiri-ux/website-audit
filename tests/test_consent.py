@@ -485,6 +485,69 @@ def main():
     check("and the states derived from the markets, not from a guess",
           _saved.get("consent_states") == ["TN"], str(_saved.get("consent_states")))
 
+    print("\nA ROW WITH NOTHING TO MEASURE IS NOT A SECOND FINDING")
+    # Ooten's real scan: full browser mode, no CMP anywhere, Tennessee only.
+    # Three rows landed on "Ours to fix — nothing to ask anyone for", one of
+    # them carrying the instruction "Load the page and look", which is a
+    # person doing something. All three were restatements of CONS-01, which
+    # is already on the report and IS the finding.
+    _ooten = {"mode": "full", "cmps": [], "verdict": "no_cmp",
+              "states": ["TN"], "banner_visible": None,
+              "reject_tested": False, "gpc_tested": False,
+              "consent_mode_default": False, "consent_defaults": {},
+              "pre_consent": []}
+    _r = F(_ooten)
+    check("the banner row points at CONS-01 instead of asking for a human",
+          _r["CONS-02"]["source"] == "consent_no_cmp"
+          and "CONS-01" in _r["CONS-02"]["evidence"])
+    check("and no longer tells anyone to load the page and look",
+          "look" not in _r["CONS-02"]["recommendation"].lower())
+    check("the Reject row does the same",
+          _r["CONS-05"]["source"] == "consent_no_cmp")
+    check("CONS-01 itself still carries the actual finding",
+          _r["CONS-01"]["status"] == "Warning"
+          and "no recognized consent management platform"
+          in _r["CONS-01"]["evidence"].lower())
+
+    print("\nAND A CHECK THAT DOES NOT APPLY IS AN ANSWER, NOT AN OMISSION")
+    # GPC is law in twelve states. Tennessee is not one, so the scanner is
+    # RIGHT to skip the pass for a Knoxville firm — and the row was reporting
+    # that correct decision as a gap on our fix list.
+    check("Tennessee-only makes GPC not applicable, not unmeasured",
+          _r["CONS-06"]["status"] == "N/A"
+          and _r["CONS-06"]["source"] == "consent_not_applicable")
+    check("and it names the states it checked rather than shrugging",
+          "TN" in _r["CONS-06"]["evidence"])
+    # The case that IS ours must not be swept up with it.
+    _ca = F(dict(_ooten, states=["CA", "TN"]))["CONS-06"]
+    check("a GPC state in scope with no pass run is still ours to fix",
+          _ca["status"] == "Need Access" and _ca["source"] == "consent_unknown",
+          f"{_ca['status']} / {_ca['source']}")
+    check("and says which state required it",
+          "CA" in _ca["evidence"])
+    # And a site that HAS a CMP keeps the old, correct diagnosis.
+    _cmp = F(dict(_ooten, cmps=[{"name": "OneTrust"}], verdict="cmp",
+                  banner_visible=True))["CONS-05"]
+    check("a real CMP with no reject control is still a scan gap",
+          _cmp["source"] == "consent_unknown"
+          and "consent platform was found" in _cmp["evidence"])
+
+    print("\nAND NONE OF THE THREE SITS ON THE FIX LIST")
+    import re as _re3
+    from engine.report import _todo_panel as _tp
+    from engine.scoring import load_catalog as _lc
+    _cat3 = {k: v for k, v in _lc("seed/checkpoints.csv").items()
+             if k.startswith("CONS-")}
+    _txt3 = _re3.sub(r"\s+", " ", _re3.sub(r"<[^>]+>", " ", "".join(
+        _tp(_r, _cat3, {"extras": {"phases_run": {"run_consent": True,
+                                                  "run_aivis": True}}}))))
+    check("the banner row is off it", "no consent platform was found"
+          not in _txt3.lower())
+    check("the GPC row is off it",
+          "Global Privacy Control does not apply" not in _txt3)
+    check("and nothing on it tells a person to go and look",
+          "Load the page and look" not in _txt3)
+
     print("\n" + "=" * 68)
     if FAILED:
         print(f"  {len(FAILED)} FAILED: {FAILED}")

@@ -1,7 +1,98 @@
-# Changed files — build 2026.08.20-54
+# Changed files — build 2026.08.20-55
 
 Cumulative delta since **2026.08.18-16**. Packed by `pack.py`.
 Extension is **1.4.4** — unchanged since ‑50.
+
+Four items on the list. Three of them should not have been there, and the
+fourth was cut off mid-sentence.
+
+---
+
+## The truncation. Again. Third time.
+
+> ...This model models/gemini-2.5-flash is no longer available to new users.
+> Please update your code **to use a different model** ~~t.~~
+
+`geo_checks.py` joined provider messages with `m[:160]`. The diagnosis in these
+messages is at the END — it always is — so the cut landed on "update your code
+t." and removed the instruction.
+
+This is the third cap in this codebase to delete the only part of a sentence
+worth reading: `reasons()` truncated evidence at 110, then the fix line at 180,
+now provider messages at 160. All three are gone. A provider error is one line;
+print the line.
+
+---
+
+## A listed model is not a promise
+
+`GET /models` returned `gemini-2.5-flash`, the picker took it, and every one of
+the 24 queries came back with the message above. Google **lists models it will
+not serve** to a project that has never called them, so availability cannot be
+decided from the listing — it is decided by asking.
+
+Resolving to one name and failing on it turned a recoverable condition into 24
+identical failures. The provider now walks candidates in order, remembers the
+first that answers, and remembers the dead ones so twenty-four queries do not
+each rediscover them:
+
+```
+  PASS  a refused model falls through to the next one  (['gemini-2.5-flash', 'gemini-2.0-flash'])
+  PASS  and the working one is remembered, not rediscovered per query
+```
+
+If every model refuses, the row names them all rather than reporting the last
+one's status code.
+
+---
+
+## Three consent rows were CONS-01 said three more times
+
+Your scan found **no consent platform at all** (`verdict: no_cmp`, full browser
+mode). That is the finding, and CONS-01 carries it. The other three were
+restatements dressed as separate gaps:
+
+| row | said | should have said |
+|---|---|---|
+| CONS-02 | "The scan could not determine whether a banner appeared. **Load the page and look.**" | there is no CMP to show a banner — see CONS-01 |
+| CONS-05 | "The scan could not find a Reject control to test." | a site with no banner has no reject button to fail |
+| CONS-06 | "Global Privacy Control was not tested on this scan." | GPC is not law in Tennessee |
+
+Note what CONS-02 was doing: an instruction to **a person**, on a list headed
+*"Nothing to ask anyone for."* The panel contradicted itself in two adjacent
+lines.
+
+### GPC is the interesting one
+
+Global Privacy Control must be honoured in twelve states. **Tennessee is not
+one of them.** Ooten sells in thirteen Tennessee counties, so the scanner
+correctly skipped the GPC pass — and the row then reported that correct
+decision as a gap on our fix list.
+
+A check that does not apply to this client's markets is an answer, not an
+omission. It reads:
+
+> Global Privacy Control does not apply here: none of the states this client
+> sells in (TN) require honouring it.
+
+Status `N/A`, off the fix list. **And the case that IS ours is not swept up
+with it**: add California to the markets and a GPC pass that did not run goes
+straight back to "Ours to fix — this is ours: the GPC load either did not run
+or did not complete." Same for a real CMP whose banner has no reject control.
+
+---
+
+## Also confirmed from your live run
+
+`options.conversion_urls: ["https://ootenlawfirm.com/thank-you/"]` — stored on
+the audit record. The ‑49 fix works; that field is saving.
+
+---
+
+## What the panel should say next run
+
+One row, or none. Gemini resolves a model by itself now. If it cannot, it names
+every model it tried and what each said.
 
 ---
 

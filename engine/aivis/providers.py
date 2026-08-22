@@ -309,53 +309,98 @@ class GeminiProvider(Provider):
             out.append(name.split("/")[-1] if "/" in name else name)
         return out
 
-    def _model(self):
+    _dead: set = set()
+
+    def _candidates(self):
+        """
+        Every model worth trying, best first.
+
+        A LIST IS NOT A PROMISE. `GET /models` returned `gemini-2.5-flash`,
+        the picker took it, and every call came back:
+
+            This model models/gemini-2.5-flash is no longer available to new
+            users. Please update your code to use a different model.
+
+        Google lists models it will not serve to a project that has never
+        called them. So availability cannot be decided from the listing alone
+        — it is decided by asking. Resolving to ONE name and failing on it
+        turned a recoverable condition into twenty-four identical failures.
+        """
         env = os.getenv("GEMINI_MODEL", "").strip()
         if env:
-            return env
-        if GeminiProvider._resolved:
-            return GeminiProvider._resolved
+            return [env]
         have = self._models()
-        pick = next((m for m in self._PREFER if m in have), None)
-        if not pick:
-            # Anything flash-shaped beats nothing, and a plain gemini model
-            # beats guessing a name Google has never heard of.
-            pick = next((m for m in have if "flash" in m and "vision" not in m),
-                        None) or next((m for m in have
-                                       if m.startswith("gemini")), None)
-        if not pick:
+        ranked = [m for m in self._PREFER if m in have]
+        # Then anything else the key lists, newest-looking first, so a model
+        # released after this code was written is still reachable.
+        rest = sorted((m for m in have
+                       if m not in ranked and m.startswith("gemini")
+                       and "vision" not in m and "embedding" not in m),
+                      key=lambda m: ("flash" not in m, m), reverse=False)
+        out = ranked + rest
+        # A key that lists nothing is a different problem from a key whose
+        # models all refuse; the preference list is a last resort so the
+        # first case still produces a real HTTP error to read.
+        return out or list(self._PREFER)
+
+    def _model_order(self):
+        if GeminiProvider._resolved:
+            return [GeminiProvider._resolved]
+        cands = [m for m in self._candidates() if m not in GeminiProvider._dead]
+        if not cands:
             raise RuntimeError(
-                "No Gemini model on this key supports generateContent"
-                + (f" (listed: {', '.join(have[:6])})" if have else
-                   " — and the model list could not be read, which usually "
-                   "means GEMINI_API_KEY is wrong or the Generative Language "
-                   "API is not enabled on that project"))
-        GeminiProvider._resolved = pick
-        return pick
+                "No Gemini model on this key can be called: "
+                + (", ".join(f"{m} refused" for m in
+                             sorted(GeminiProvider._dead)[:4])
+                   if GeminiProvider._dead else
+                   "the model list could not be read, which usually means "
+                   "GEMINI_API_KEY is wrong or the Generative Language API "
+                   "is not enabled on that project"))
+        return cands
 
     def ask(self, query_id, prompt):
         def go():
-            model = self._model()
-            d = self._post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/"
-                f"{model}:generateContent?key={os.getenv('GEMINI_API_KEY')}",
-                {"contents": [{"parts": [{"text": prompt}]}],
-                 "tools": [{"google_search": {}}]}, {})
-            cand = (d.get("candidates") or [{}])[0]
-            body = "".join(p.get("text", "")
-                           for p in cand.get("content", {}).get("parts", []))
-            urls, titles = [], {}
-            gm = cand.get("groundingMetadata", {}) or {}
-            for ch in gm.get("groundingChunks", []) or []:
-                w = ch.get("web") or {}
-                if w.get("uri"):
-                    urls.append(w["uri"])
-                    titles[w["uri"]] = w.get("title", "")
-            if urls:
-                c, s = _mk(urls, titles, "groundingMetadata.groundingChunks")
-            else:
-                c, s = _from_text(body)
-            return body, c, s, d
+            last = None
+            for model in self._model_order():
+                try:
+                    d = self._post(
+                        f"https://generativelanguage.googleapis.com/v1beta/"
+                        f"models/{model}:generateContent"
+                        f"?key={os.getenv('GEMINI_API_KEY')}",
+                        {"contents": [{"parts": [{"text": prompt}]}],
+                         "tools": [{"google_search": {}}]}, {})
+                except RuntimeError as ex:
+                    msg = str(ex)
+                    # A model that is missing, retired or closed to new users
+                    # is dead for this whole run — remember it, so twenty-four
+                    # queries do not each rediscover it, and try the next one.
+                    if ("HTTP 404" in msg or "HTTP 403" in msg
+                            or "no longer available" in msg):
+                        GeminiProvider._dead.add(model)
+                        last = ex
+                        continue
+                    raise
+                GeminiProvider._resolved = model
+                cand = (d.get("candidates") or [{}])[0]
+                body = "".join(p.get("text", "")
+                               for p in cand.get("content", {}).get("parts", []))
+                urls, titles = [], {}
+                gm = cand.get("groundingMetadata", {}) or {}
+                for ch in gm.get("groundingChunks", []) or []:
+                    w = ch.get("web") or {}
+                    if w.get("uri"):
+                        urls.append(w["uri"])
+                        titles[w["uri"]] = w.get("title", "")
+                if urls:
+                    c, sh = _mk(urls, titles,
+                                "groundingMetadata.groundingChunks")
+                else:
+                    c, sh = _from_text(body)
+                return body, c, sh, d
+            raise RuntimeError(
+                f"every Gemini model this key lists refused "
+                f"({', '.join(sorted(GeminiProvider._dead)[:4])})"
+                + (f" — last said: {last}" if last else ""))
         return self._timed(query_id, go)
 
 

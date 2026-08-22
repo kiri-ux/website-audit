@@ -77,8 +77,14 @@ def findings_from_run(agg: dict, profile) -> dict:
                        f"This deployment holds no credentials for it, so it "
                        f"was never going to be measured.")
             elif msgs:
-                reason = ("every query failed — "
-                          + "; ".join(m[:160] for m in msgs[:2]))
+                # NOT TRUNCATED. The diagnosis is at the END of these
+                # messages — "...gemini-2.5-flash is no longer available to
+                # new users. Please update your code to use a different
+                # model" — and a 160-character cut landed on "update your
+                # code t.", which is the third time in this codebase that a
+                # cap has removed the only part of a sentence worth reading.
+                # A provider error is one line; print the line.
+                reason = "every query failed — " + "; ".join(msgs[:2])
                 rec = ("This is our error, not a missing client permission. "
                        "The message above is the provider's own; fix that "
                        "and the row answers itself.")
@@ -185,7 +191,7 @@ def findings_from_run(agg: dict, profile) -> dict:
             elif aio_errs:
                 why = "the SERP query ran and failed"
                 rec = ("This is our error, not a client permission: "
-                       + "; ".join(m[:160] for m in aio_errs[:2]))
+                       + "; ".join(aio_errs[:2]))
             else:
                 why = "no SERP query ran for this audit"
                 rec = ("Tick 'Ask the AI assistants' — the SERP query goes "

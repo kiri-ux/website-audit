@@ -408,7 +408,12 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             longest[ev] = max(longest.get(ev, ""), full, key=len)
             rec = " ".join(str(f.get("recommendation") or "").split())
             if rec and ev not in detail:
-                detail[ev] = rec[:180]
+                # NOT TRUNCATED, for the same reason the evidence is not.
+                # The fix line now carries provider messages verbatim, and a
+                # 180-character cut lands mid-sentence on exactly the clause
+                # that says what to change. Three separate caps in this file
+                # have each removed the end of the only useful sentence.
+                detail[ev] = rec
         return [(longest.get(why, why), n, detail.get(why, ""))
                 for why, n in c.most_common()]
 
@@ -495,8 +500,16 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
     # changes is only that it stops claiming to be work. A platform we DO hold
     # a key for that fails keeps its old source and stays on the fix list,
     # which is the case that actually needs someone.
+    # Same argument for two more: a consent row that cannot be measured
+    # BECAUSE there is no consent platform is not a second finding — it is
+    # CONS-01 restated, and CONS-01 is already on the report. And a check that
+    # does not apply to the states this client sells in is an answer, not an
+    # omission: Global Privacy Control is not law in Tennessee, so skipping it
+    # for a Knoxville firm is the scan being right.
+    _NOT_WORK = {"ai_platform_absent", "consent_no_cmp",
+                 "consent_not_applicable"}
     vendor = [c for c in vendor
-              if (findings.get(c) or {}).get("source") != "ai_platform_absent"]
+              if (findings.get(c) or {}).get("source") not in _NOT_WORK]
 
     if vendor:
         items = bullets(reasons(vendor))
