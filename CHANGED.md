@@ -1,6 +1,91 @@
-# Changed files — build 2026.08.20-30
+# Changed files — build 2026.08.20-31
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## A. Tag Manager on the access preflight
+
+A third pill and a third picker beside Search Console and GA4, plus
+`tagmanager.readonly` on the OAuth scope.
+
+**It matches on the container the page actually loads, not on a name.** The
+Tag Manager API says what we can *administer*; the site's HTML says what is
+*installed*. One GET of the homepage pulls the `GTM-XXXXXXX` ids out, and the
+answer is the overlap — "the site runs GTM-ABC1234 and yes, it sits in an
+account we hold" — rather than a similarity guess between a container called
+"Client - Main" and a domain called ootenlawfirm.com.
+
+Four outcomes, because they belong to four different people:
+
+| State | Pill | Whose move |
+|---|---|---|
+| The container on the page is in an account we hold | green | nobody — we can make the change ourselves |
+| Our logins have not approved the scope yet | **amber** | ours, two minutes |
+| The page runs a container nobody here can see | red | the client, and the ask names the container |
+| No GTM on the page at all | amber | nobody — that is a finding, and ANA-01 already reports it |
+
+> ### Every login must re-authorize before this can go green
+>
+> A refresh token carries the scopes granted at the moment somebody consented,
+> frozen. Every login in `GOOGLE_TOKENS` consented before this scope existed,
+> so **all of them will report "not approved yet" until they go back through
+> `/oauth/google/start`.** Search Console and GA4 keep working throughout —
+> nothing breaks, the new grant is simply absent. DEPLOY.md now says this where
+> the tokens are minted.
+
+That amber state is the whole reason `_scope_missing()` exists. Google returns
+**403 for both** "your token lacks the scope" and "this login was never invited
+to that GTM account", and they are opposite problems: the first is ours and
+takes two minutes, the second is an email to the client. Printing the first as
+the second is exactly the failure the access buckets were built to prevent.
+
+The container list is capped at 40 accounts per login and **says so when it
+caps** — a list that quietly stops at 40 looks identical to a complete one, and
+the container you were hunting is the one that fell off the end.
+
+Read-only throughout: the scope lists accounts, containers and published
+versions. It cannot create a tag or publish anything.
+
+---
+
+## B. An optional phase nobody ticked is not a defect
+
+Your panel showed **Ours to fix · 15**, and every one of those fifteen was a
+run doing exactly what it was asked:
+
+```
+9 — the consent and privacy scan produced no result for this run
+6 — the AI visibility panel produced no result for this run
+```
+
+Both phases are opt-in checkboxes. One drives a browser, the other pays several
+platforms per question, so most runs leave them off deliberately. With the
+boxes unticked, no findings are produced, the checkpoints fall through to the
+vendor bucket, and the panel called them defects.
+
+This is the analyst-list mistake wearing a different hat. A fix list that fills
+with no-action items is a list people stop reading — and the one genuine
+failure hiding among the fifteen goes with it.
+
+The worker now records which optional phases were requested
+(`extras.phases_run`), and the panel splits on it:
+
+- **Ours to fix** — things that were asked for and did not work.
+- **Not requested on this run** — muted, phrased as a choice, naming the
+  checkbox that would have covered them. *"Not a fault, and not scored against
+  the client — they are simply unmeasured."*
+
+Three cases, verified:
+
+| Run | Ours to fix | Not requested |
+|---|---|---|
+| both phases off | **1** (a real DataForSEO miss) | 17 |
+| consent ON, returned nothing | **10** — the bug stays on the list | 8 |
+| an older audit with no record | **18** — nothing is claimed without evidence | — |
+
+That middle row is the one that must never regress: ticking the box and getting
+nothing back **is** our bug, and it stays on the fix list.
 
 ---
 
@@ -233,11 +318,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-30.zip
+unzip -o vici-audit-2026.08.20-31.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-30` in the header before
+Both services redeploy. Confirm `build 2026.08.20-31` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`

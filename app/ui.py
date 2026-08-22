@@ -479,6 +479,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
             "partner": o.get("partner") or "",
             "gsc_property": o.get("gsc_property") or "",
             "ga4_property_id": o.get("ga4_property_id") or "",
+            "gtm_container": o.get("gtm_container") or "",
             "render_js": bool(o.get("render_js")),
             "browser_ua": bool(o.get("user_agent")),
         }
@@ -492,6 +493,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
                  ("Partner name", st["partner"] or "—"),
                  ("Search Console property", st["gsc_property"] or "auto"),
                  ("GA4 property", st["ga4_property_id"] or "auto"),
+                 ("Tag Manager container", st["gtm_container"] or "auto"),
                  ("Render JavaScript", "yes" if st["render_js"] else "no"),
                  ("Browser user-agent", "yes" if st["browser_ua"] else "no")]
         rows = "".join(f"<tr><td class='hw'>{e(k)}</td><td>{e(v)}</td></tr>"
@@ -651,15 +653,19 @@ banner, Consent Mode and what fires before consent. No crawl.'>
     </form>
     <div style='margin-top:12px'>
       <button type='button' class='btn ghost' id='ckbtn'
-              onclick='checkAccess()'>Check GA4 / Search Console access</button>
+              onclick='checkAccess()'>Check Google access</button>
       <!-- Own line, full width. Beside the button it inherited whatever narrow
            column the button sat in, and a sentence like "No property matching
            this site in 1 login(s)" came out one word per line. -->
       <div id='ckout' class='sm'
            style='color:var(--muted);margin-top:8px;line-height:1.6'></div>
     </div>
+    <!-- auto-fit, not 1fr 1fr. A third fixed column squeezed the GSC
+         property URLs to about eight characters on a laptop; this keeps three
+         across on a wide screen and drops to two or one rather than shrinking
+         every column past legibility. -->
     <div id='pickers' style='display:none;margin-top:10px;
-         grid-template-columns:1fr 1fr;gap:12px'>
+         grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:12px'>
       <div>
         <label>Search Console property</label>
         <input id='gscfilter' placeholder='filter…' oninput='filterSel("gsc")'
@@ -671,6 +677,12 @@ banner, Consent Mode and what fires before consent. No crawl.'>
         <input id='ga4filter' placeholder='filter…' oninput='filterSel("ga4")'
                style='margin-bottom:4px;font-size:12.5px'>
         <select name='ga4_property_id' id='ga4sel' form='auditform'></select>
+      </div>
+      <div>
+        <label>Tag Manager container</label>
+        <input id='gtmfilter' placeholder='filter…' oninput='filterSel("gtm")'
+               style='margin-bottom:4px;font-size:12.5px'>
+        <select name='gtm_container' id='gtmsel' form='auditform'></select>
       </div>
     </div>
 
@@ -772,19 +784,29 @@ banner, Consent Mode and what fires before consent. No crawl.'>
           return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
         }}
         function pill(name, st) {{
-          var cls  = st.ok ? 'good' : (st.partial ? 'warn' : 'bad');
-          var mark = st.ok ? '\u2713' : (st.partial ? '?' : '\u2717');
+          // FOUR states now, not three. `ours` marks a gap on OUR side — an
+          // env var we have not set, or a scope our logins have not approved.
+          // It renders amber rather than red on purpose: a red cross next to
+          // "Tag Manager" reads as the client withholding access, and sends
+          // someone to write an email about a problem that is two minutes of
+          // our own re-consent.
+          var cls  = st.ok ? 'good'
+                   : (st.ours || st.partial) ? 'warn' : 'bad';
+          var mark = st.ok ? '\u2713'
+                   : (st.ours || st.partial) ? '!' : '\u2717';
           var text = st.ok
             ? (st.name ? st.name + ' \u00b7 ' + st.property : st.property)
               + ' \u00b7 via ' + st.login
-            : (st.partial ? 'no quick match \u2014 the audit looks wider'
-                          : (st.detail || 'not found'));
+            : (st.detail || (st.partial
+                 ? 'no quick match \u2014 the audit looks wider'
+                 : 'not found'));
           return '<div class="vrow"><span class="vpill ' + cls + '"><b>' + mark +
                  '</b>' + esc(name) + '</span><span class="vdet">' + esc(text) +
                  '</span></div>';
         }}
         out.style.color = '';
-        out.innerHTML = pill('Search Console', d.gsc) + pill('GA4', d.ga4);
+        out.innerHTML = pill('Search Console', d.gsc) + pill('GA4', d.ga4)
+                      + pill('Tag Manager', d.gtm || {{ok: false}});
         loadProperties(d);
       }} catch (e) {{
         out.style.color = 'var(--serious)';
@@ -811,6 +833,13 @@ banner, Consent Mode and what fires before consent. No crawl.'>
       fill('ga4', ALL.ga4.map(function (r) {{
         return {{v: r.id, t: r.name + '  ·  ' + r.id + '  ·  ' + r.login}};
       }}), probe.ga4.ok ? probe.ga4.property : null);
+      // The container the PAGE loads is preselected when we hold it, because
+      // that is the only container that can be the right answer — an operator
+      // picking by name from an agency's several hundred is picking blind.
+      fill('gtm', (ALL.gtm || []).map(function (r) {{
+        return {{v: r.public_id,
+                t: r.account + '  ·  ' + r.container + '  ·  ' + r.public_id}};
+      }}), (probe.gtm && probe.gtm.ok) ? probe.gtm.property : null);
     }}
 
     function fill(which, rows, selected) {{

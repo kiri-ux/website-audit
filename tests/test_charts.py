@@ -412,6 +412,63 @@ def main():
     except ImportError:
         print("  SKIP  pdfplumber not installed")
 
+    print("\nAN OPTIONAL PHASE NOBODY TICKED IS NOT A DEFECT")
+    # Consent and AI visibility are opt-in — one drives a browser, the other
+    # pays several platforms per question — so most runs leave them off on
+    # purpose. With both off, fifteen rows produced no findings and the panel
+    # printed all fifteen under "Ours to fix — a credential we have not set".
+    # Nothing was broken. A fix list full of no-action items is a list people
+    # stop reading, which takes the one real failure down with it.
+    from engine.report import _todo_panel
+    from engine.consent.checks import CONS_IDS as _CONS
+    from engine.aivis.geo_checks import GEO_IDS as _GEO
+    import re as _re
+
+    from engine.scoring import load_catalog as _load
+    _cat = _load("seed/checkpoints.csv")
+    _F = {c: {"status": "Pass", "value": {}, "evidence": "ok",
+              "affected_pages": [], "severity": "Low", "recommendation": "",
+              "confidence": 1.0, "source": "crawl"} for c in _cat}
+    for _c in list(_CONS) + list(_GEO):
+        _F.pop(_c, None)
+    # One GENUINE vendor failure, so we can prove the split does not swallow
+    # real problems along with the phases nobody asked for.
+    _F["OFF-19"] = {"status": "Need Access", "value": {},
+                    "evidence": "DataForSEO returned no rows",
+                    "affected_pages": [], "severity": "Low",
+                    "recommendation": "", "confidence": 1.0, "source": "dfs"}
+
+    def _counts(phases):
+        html = "".join(_todo_panel(_F, _cat, {"extras": {"phases_run": phases}}))
+        def _n(label):
+            m = _re.search(label + r" &middot; (\d+)</b>", html)
+            return int(m.group(1)) if m else 0
+        return _n("Ours to fix"), _n("Not requested on this run"), html
+
+    ours, skip, html = _counts({"run_consent": False, "run_aivis": False})
+    check("both phases off leaves only the real failure to fix",
+          ours == 1, f"{ours} ours")
+    check("and the rest are listed as not requested",
+          skip == len(_CONS) + len(_GEO), f"{skip} skipped")
+    check("phrased as a choice, never as a fault",
+          "Not a fault" in html and "not scored against the client" in html)
+    check("and it names the checkbox that would have covered them",
+          "tick 'Consent &amp; privacy' on the next run" in html)
+
+    # THE CASE THAT MUST NOT REGRESS. Ticking the box and getting nothing back
+    # is a bug, and it has to stay on the fix list.
+    ours2, skip2, _ = _counts({"run_consent": True, "run_aivis": False})
+    check("a phase that WAS requested and returned nothing is still ours to fix",
+          ours2 == 1 + len(_CONS), f"{ours2} ours")
+    check("and only the unticked phase moves",
+          skip2 == len(_GEO), f"{skip2} skipped")
+
+    # An older audit recorded nothing. Claiming "not requested" without
+    # evidence would hide real failures, so nothing is claimed.
+    html3 = "".join(_todo_panel(_F, _cat, {"extras": {}}))
+    check("an audit with no record of its phases claims nothing",
+          "Not requested" not in html3)
+
     print("\n" + "=" * 68)
     print(f"  {len(FAILURES)} FAILED: {FAILURES}" if FAILURES
           else "  ALL CHECKS PASSED — charts cannot report unmeasured as zero")

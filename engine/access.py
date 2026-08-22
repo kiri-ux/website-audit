@@ -189,6 +189,54 @@ def owner(cid: str) -> str:
     return _OWNER_CACHE.get(cid, "")
 
 
+# Phases the operator TICKS ON. Off is a choice, not a defect.
+#
+# Both cost real money per run — the consent scan drives a browser, the AI
+# panel pays several platforms per question — so both are opt-in, and most
+# runs leave them off on purpose.
+#
+# The panel did not know that. With both boxes unticked, nine consent rows and
+# six GEO rows produced no findings, fell through to the vendor bucket, and got
+# printed under "Ours to fix — a credential we have not set, or a call we have
+# not written" as fifteen defects. Nothing was broken. Nobody asked for them.
+#
+# This is the analyst-list mistake wearing a different hat: a list that fills
+# up with things needing no action is a list people stop reading, and the one
+# genuine failure hiding among the fifteen goes with it.
+OPTIONAL_PHASES = (
+    ("run_consent", "engine.consent.checks", "CONS_IDS",
+     "Consent &amp; privacy", "tick 'Consent &amp; privacy' on the next run"),
+    ("run_aivis", "engine.aivis.geo_checks", "GEO_IDS",
+     "Ask the AI assistants", "tick 'Ask the AI assistants' on the next run"),
+)
+
+
+def unrequested(ids, phases_run: dict | None) -> tuple:
+    """
+    Split ids into (not-requested, everything-else).
+
+    `phases_run` is what the worker recorded about THIS run: {"run_consent":
+    bool, ...}. Absent — an older audit, or a report rendered outside a run —
+    nothing is claimed and every id stays in the normal buckets, because
+    guessing "probably not requested" would hide real failures.
+    """
+    if not phases_run:
+        return [], list(ids)
+    off = {}
+    for key, mod, attr, name, fix in OPTIONAL_PHASES:
+        if phases_run.get(key):
+            continue
+        try:
+            src = getattr(__import__(mod, fromlist=[attr]), attr)
+        except Exception:  # noqa: BLE001
+            continue
+        for cid in src:
+            off[cid] = (name, fix)
+    skipped = [(cid, off[cid]) for cid in ids if cid in off]
+    rest = [cid for cid in ids if cid not in off]
+    return skipped, rest
+
+
 def blocked_on(cid: str, finding: dict | None = None) -> str:
     """
     'client' | 'vendor' | 'manual' for a checkpoint we could not measure.

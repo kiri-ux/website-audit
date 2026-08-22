@@ -332,20 +332,56 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
            "client PDF. The first list is ours to fix; the second is the work "
            "an analyst does during the engagement.</span>"]
 
-    if b["vendor"]:
+    # SPLIT OFF THE PHASES NOBODY ASKED FOR — before counting anything.
+    #
+    # Consent and AI visibility are opt-in checkboxes, and most runs leave them
+    # off deliberately: one drives a browser, the other pays several platforms
+    # per question. With both unticked, fifteen rows produced no findings and
+    # got printed as fifteen defects under "a credential we have not set".
+    # Nothing was broken. That is the analyst-list mistake again — a list that
+    # fills with no-action items is a list people stop reading, and the one
+    # real failure hiding in the fifteen goes with it.
+    from engine.access import unrequested
+    skipped, vendor = unrequested(
+        b["vendor"], ((meta or {}).get("extras") or {}).get("phases_run"))
+
+    if vendor:
         items = "".join(
             f"<li><b>{n}</b> — {e(why)}"
             + (f"<div class='sm' style='color:var(--muted)'>{e(fix)}</div>"
                if fix else "") + "</li>"
-            for why, n, fix in reasons(b["vendor"]))
+            for why, n, fix in reasons(vendor))
         out.append(
             f"<div style='margin-top:12px'>"
             f"<b style='color:var(--critical)'>Ours to fix &middot; "
-            f"{len(b['vendor'])}</b>"
+            f"{len(vendor)}</b>"
             f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
             f"A credential we have not set, or a call we have not written. "
             f"Nothing to ask anyone for.</div>"
             f"<ul style='margin:6px 0 0 18px'>{items}</ul></div>")
+
+    if skipped:
+        # Muted, and phrased as a choice. This is not a defect list — it is
+        # "here is what this run did not cover, and here is the one click that
+        # would have covered it".
+        from collections import Counter as _C
+        per = _C()
+        fixes = {}
+        for _cid, (name, fix) in skipped:
+            per[name] += 1
+            fixes[name] = fix
+        rows = "".join(
+            f"<li><b>{n}</b> — {name} <span class='sm' "
+            f"style='color:var(--muted)'>&mdash; {fixes[name]}</span></li>"
+            for name, n in per.most_common())
+        out.append(
+            f"<div style='margin-top:12px'>"
+            f"<b style='color:var(--ink2)'>Not requested on this run &middot; "
+            f"{len(skipped)}</b>"
+            f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
+            f"Optional phases that were switched off. Not a fault, and not "
+            f"scored against the client &mdash; they are simply unmeasured."
+            f"</div><ul style='margin:6px 0 0 18px'>{rows}</ul></div>")
 
     if b["client"]:
         out.append(

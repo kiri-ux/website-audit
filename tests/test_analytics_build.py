@@ -476,12 +476,89 @@ def main():
     check("no rankings at all produces no rows rather than a guess",
           D._serp_feature_rows([]) == {})
 
+    print("\nTAG MANAGER ACCESS IS FOUR ANSWERS, NOT A YES OR A NO")
+    # A red cross beside "Tag Manager" sends someone to email the client. That
+    # is the right move for exactly one of these four cases, and the wrong move
+    # — expensively, in front of the client — for the other three.
+    import io as _io, json as _json, urllib.error as _ue
+    import engine.collectors.analytics as AA
+
+    def _403(blob):
+        return _ue.HTTPError("u", 403, "Forbidden", {},
+                             _io.BytesIO(_json.dumps(blob).encode()))
+
+    real_tok, real_api, real_ids = AA.access_token, AA._api, AA.gtm_ids_on_page
+    try:
+        AA.access_token = lambda r: "tok"
+
+        # 1. Our own tokens predate the scope. OURS, and it must never render
+        #    as the client withholding anything.
+        def _scope(url, tok, payload=None, timeout=60):
+            raise _403({"error": {"status": "PERMISSION_DENIED",
+                                  "message": "Request had insufficient "
+                                             "authentication scopes."}})
+        AA._api = _scope
+        AA.gtm_ids_on_page = lambda u, timeout=12: ["GTM-ABC1234"]
+        r = AA._gtm_probe("https://x.com", {"rz": "t"})
+        check("a missing scope is ours, not the client's",
+              r["ok"] is False and r.get("ours") and r.get("scope"))
+        check("and it says how to fix it",
+              "Re-authorize" in r["detail"] and "client" in r["detail"])
+
+        # 2. The container the PAGE runs is one we hold. The only green.
+        def _ok(url, tok, payload=None, timeout=60):
+            if url.endswith("/accounts"):
+                return {"account": [{"path": "accounts/1", "name": "Vici Media"}]}
+            return {"container": [{"publicId": "GTM-ABC1234",
+                                   "name": "Ooten - Main",
+                                   "path": "accounts/1/containers/9"}]}
+        AA._api = _ok
+        r = AA._gtm_probe("https://x.com", {"rz": "t"})
+        check("a container we hold and the site runs is a match",
+              r["ok"] and r["property"] == "GTM-ABC1234", str(r))
+        check("matched on the id in the page, not on a name resembling the domain",
+              "Ooten - Main" in (r.get("name") or ""), str(r.get("name")))
+
+        # 3. The page runs a container nobody here can see. The real ask.
+        AA.gtm_ids_on_page = lambda u, timeout=12: ["GTM-ZZZ9999"]
+        r = AA._gtm_probe("https://x.com", {"rz": "t"})
+        check("a container we do not hold is the client's to grant",
+              r["ok"] is False and not r.get("ours") and not r.get("scope"))
+        check("and it names the container so the ask is specific",
+              "GTM-ZZZ9999" in r["detail"])
+
+        # 4. No GTM at all. Not an access problem — ANA-01's job.
+        AA.gtm_ids_on_page = lambda u, timeout=12: []
+        r = AA._gtm_probe("https://x.com", {"rz": "t"})
+        check("no container on the page is a finding, not a missing grant",
+              r["ok"] is False and r.get("partial") and "ANA-01" in r["detail"])
+
+        # 5. NO SILENT CAPS. A list that stops at 40 looks exactly like a
+        #    complete one, and the container being hunted is the one cut.
+        AA.gtm_ids_on_page = lambda u, timeout=12: ["GTM-ZZZ9999"]
+        def _many(url, tok, payload=None, timeout=60):
+            if url.endswith("/accounts"):
+                return {"account": [{"path": f"accounts/{i}", "name": f"a{i}"}
+                                    for i in range(AA.GTM_ACCOUNT_CAP + 20)]}
+            return {"container": []}
+        AA._api = _many
+        r = AA._gtm_probe("https://x.com", {"rz": "t"})
+        check("a capped container list says so rather than reading as a no",
+              str(AA.GTM_ACCOUNT_CAP) in r["detail"] and "miss" in r["detail"],
+              r["detail"][-70:])
+    finally:
+        AA.access_token, AA._api, AA.gtm_ids_on_page = real_tok, real_api, real_ids
+
+    check("the tagmanager scope is actually requested at consent",
+          "tagmanager.readonly" in AA.SCOPES)
+
     print("\n" + "=" * 68)
     if FAILED:
         print(f"  {len(FAILED)} FAILED: {FAILED}")
     else:
         print("  ALL CHECKS PASSED — 27 Search Console and Analytics rows "
-              "now carry measurements")
+              "carry measurements, and Tag Manager access says whose "
+              "problem it is")
     print("=" * 68 + "\n")
     return 1 if FAILED else 0
 

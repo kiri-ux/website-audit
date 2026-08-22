@@ -165,7 +165,8 @@ def main():
     st, _, body = GET("/api/access-check?target_url=https://example.com/")
     check("preflight returns 200 even with nothing configured", st == 200, str(st))
     d = json.loads(body)
-    check("it reports both properties", {"gsc", "ga4"} <= set(d), str(list(d)))
+    check("it reports all three grants", {"gsc", "ga4", "gtm"} <= set(d),
+          str(list(d)))
     check("an unconfigured service says so, and marks it as OURS",
           d["gsc"].get("ours") is True and "not set" in d["gsc"]["detail"],
           d["gsc"].get("detail", "")[:60])
@@ -175,8 +176,14 @@ def main():
     check("a URL without a scheme is refused rather than guessed at",
           st == 400, str(st))
     _, _, dash2 = GET("/")
+    # Assert the WIRING and the coverage, not the button's copy. This pinned
+    # the literal string "Check GA4", so renaming the button to "Check Google
+    # access" — because it covers three services now, not two — failed a test
+    # about whether the check is reachable.
     check("the dashboard offers the check next to the URL field",
-          b"/api/access-check" in dash2 and b"Check GA4" in dash2)
+          b"/api/access-check" in dash2 and b"checkAccess()" in dash2)
+    check("and the check covers all three Google grants",
+          all(x in dash2 for x in (b"gscsel", b"ga4sel", b"gtmsel")))
 
     print("\nTHE EXTENSION IS DOWNLOADABLE FROM THE APP")
     # "Ask someone for the folder" is not a step that survives a Tuesday, and

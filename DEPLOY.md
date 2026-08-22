@@ -116,6 +116,15 @@ site itself. The worker still prefers PSI where it succeeds, because PSI carries
 CrUX *field* data and DataForSEO's is a lab run — the DataForSEO rows only fill
 what PSI could not answer.
 
+> **Build 2026.08.20-31 added the Tag Manager scope, and existing tokens do not
+> have it.** A refresh token carries the scopes granted at the moment somebody
+> consented, frozen. Every login already in `GOOGLE_TOKENS` consented before
+> `tagmanager.readonly` existed, so the Tag Manager pill will read *"our logins
+> have not approved Tag Manager access yet"* until each one goes back through
+> `/oauth/google/start` and approves again. Search Console and GA4 keep working
+> throughout — nothing breaks, the new grant is simply absent. **Re-mint each
+> entry below and paste the new refresh tokens back into `GOOGLE_TOKENS`.**
+
 **`GOOGLE_TOKENS` removes the per-client OAuth dance, not the access grant.** A
 token inherits exactly what its login can already see, including properties
 added tomorrow. If nobody has added a Vici login to the client's Search Console

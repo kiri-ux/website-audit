@@ -121,8 +121,32 @@ GSC_API = "https://searchconsole.googleapis.com/webmasters/v3"
 GA4_API = "https://analyticsdata.googleapis.com/v1beta"
 GA4_ADMIN = "https://analyticsadmin.googleapis.com/v1beta"
 
+GTM_API = "https://tagmanager.googleapis.com/tagmanager/v2"
+
+# READ-ONLY, DELIBERATELY. `tagmanager.readonly` lists accounts, containers and
+# published versions. It cannot create a tag, publish a version, or change a
+# workspace. That is the right power for an audit: we are answering "is the
+# container ours to edit" and "what is actually live in it", not editing.
+GTM_SCOPE = "https://www.googleapis.com/auth/tagmanager.readonly"
+
 SCOPES = ("https://www.googleapis.com/auth/webmasters.readonly "
-          "https://www.googleapis.com/auth/analytics.readonly")
+          "https://www.googleapis.com/auth/analytics.readonly "
+          + GTM_SCOPE)
+
+# ADDING A SCOPE DOES NOT UPGRADE THE TOKENS WE ALREADY HAVE.
+#
+# A refresh token carries the scopes granted at the moment someone consented,
+# frozen. Every login already in GOOGLE_TOKENS consented before this line
+# existed, so every one of them will get 403 from the Tag Manager API until it
+# goes back through /oauth/google/start and approves again.
+#
+# That distinction is the whole reason `_scope_missing` exists below. A 403 for
+# a missing scope and a 403 for "this login was never invited to that GTM
+# account" are the same status code and completely different problems: the
+# first is ours and takes two minutes, the second is an email to the client.
+# Reporting the first as the second is exactly the failure the access buckets
+# were built to stop, and it would show up here as a red pill on a container we
+# have every right to read.
 
 
 # ------------------------------------------------------------------ OAuth
@@ -844,6 +868,173 @@ def _find_ga4_property(site_url: str) -> tuple[str | None, str | None, str | Non
     return None, None, None
 
 
+# ----------------------------------------------------------------- Tag Manager
+GTM_ACCOUNT_CAP = 40          # per login; see _gtm_containers
+
+
+def _scope_missing(exc) -> bool:
+    """
+    Is this 403 "your token lacks the scope" rather than "you lack access"?
+
+    Same status code, opposite owners. Google distinguishes them only in the
+    body, with `ACCESS_TOKEN_SCOPE_INSUFFICIENT` in the error status or a
+    reason of `insufficientPermissions`/`accessNotConfigured`. Getting this
+    wrong prints our own missing consent as the client's missing invite, which
+    is the exact error the three access buckets exist to prevent.
+    """
+    import urllib.error
+    if not isinstance(exc, urllib.error.HTTPError) or exc.code not in (401, 403):
+        return False
+    try:
+        body = json.loads(exc.read() or b"{}")
+    except Exception:  # noqa: BLE001
+        return False
+    err = body.get("error") or {}
+    blob = json.dumps(err).lower()
+    return ("access_token_scope_insufficient" in blob
+            or "insufficientpermissions" in blob
+            or "accessnotconfigured" in blob
+            or "request had insufficient authentication scopes" in blob)
+
+
+def _gtm_containers(tok: str) -> list:
+    """
+    Every GTM container this login can read.
+
+    One call for the accounts, then one per account for its containers — so
+    the cost is 1 + N, and N is however many GTM accounts a Vici login has
+    been invited to. For an agency login that is not a small number, which is
+    why it is capped and why the cap is REPORTED rather than silently applied:
+    a list that quietly stops at 40 looks exactly like a list of everything,
+    and the container you were looking for is the one that got cut.
+
+    `publicId` is the GTM-XXXXXX string that appears in the site's HTML. It is
+    the only field that connects what we can administer to what is actually
+    installed, and it is what the probe matches on.
+    """
+    out, truncated = [], False
+    accounts = (_api(f"{GTM_API}/accounts", tok, timeout=30).get("account") or [])
+    if len(accounts) > GTM_ACCOUNT_CAP:
+        truncated = True
+        accounts = accounts[:GTM_ACCOUNT_CAP]
+    for a in accounts:
+        path = a.get("path") or ""
+        if not path:
+            continue
+        try:
+            cs = (_api(f"{GTM_API}/{path}/containers", tok,
+                       timeout=30).get("container") or [])
+        except Exception:  # noqa: BLE001
+            continue          # one unreadable account must not hide the rest
+        for c in cs:
+            out.append({"public_id": c.get("publicId", ""),
+                        "container": c.get("name", ""),
+                        "account": a.get("name", ""),
+                        "path": c.get("path", "")})
+    return out, truncated
+
+
+_GTM_ID_RE = None
+
+
+def gtm_ids_on_page(site_url: str, timeout: int = 12) -> list:
+    """
+    The GTM container ids the site actually loads, read off its HTML.
+
+    This is the question worth asking, and it is not one the Tag Manager API
+    can answer: the API says what we can ADMINISTER, the page says what is
+    INSTALLED. Overlap them and you get the only answer an operator wants —
+    "the site runs GTM-ABC1234 and yes, it is in an account we hold" — instead
+    of a name-similarity guess between a container called "Client - Main" and
+    a domain called ootenlawfirm.com.
+
+    One GET, short timeout, failures swallowed. This runs while somebody is
+    waiting on a form.
+    """
+    global _GTM_ID_RE
+    if _GTM_ID_RE is None:
+        import re
+        _GTM_ID_RE = re.compile(r"GTM-[A-Z0-9]{4,10}")
+    try:
+        req = urllib.request.Request(site_url, headers={
+            "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                           "AppleWebKit/537.36 (KHTML, like Gecko) "
+                           "Chrome/124.0 Safari/537.36")})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            html = r.read(600_000).decode("utf-8", "ignore")
+    except Exception:  # noqa: BLE001
+        return []
+    seen, ids = set(), []
+    for m in _GTM_ID_RE.findall(html):
+        if m not in seen:
+            seen.add(m)
+            ids.append(m)
+    return ids
+
+
+def _gtm_probe(site_url: str, idx: dict) -> dict:
+    """
+    Do we administer the container this site is actually running?
+
+    Four outcomes, and they belong to four different people:
+
+      ok         the container on the page is in an account we hold. We can
+                 make the change ourselves.
+      scope      our tokens predate the tagmanager scope. OURS, two minutes,
+                 and it must never render as the client withholding anything.
+      not ours   the page runs a container nobody here can see. A real ask,
+                 and the one case where emailing the client is the answer.
+      none       no GTM on the page at all. Not an access problem — that is a
+                 finding, and ANA-01 already reports it.
+    """
+    installed = gtm_ids_on_page(site_url)
+    mine, truncated, scope_blocked, errors = [], False, False, []
+    for label, refresh in (idx or {}).items():
+        tok = access_token(refresh)
+        if not tok:
+            continue
+        try:
+            rows, trunc = _gtm_containers(tok)
+        except Exception as exc:  # noqa: BLE001
+            if _scope_missing(exc):
+                scope_blocked = True
+            else:
+                errors.append(f"{label}: {_describe(exc)}")
+            continue
+        truncated = truncated or trunc
+        for r in rows:
+            mine.append({**r, "login": label})
+
+    if scope_blocked and not mine:
+        return {"ok": False, "ours": True, "scope": True,
+                "installed": installed,
+                "detail": ("Our Google logins have not approved Tag Manager "
+                           "access yet — the scope was added after they last "
+                           "signed in. Re-authorize each login at "
+                           "/oauth/google/start and this answers itself. "
+                           "Nothing is needed from the client.")}
+    if not installed:
+        return {"ok": False, "partial": True, "installed": [],
+                "detail": ("No GTM container loads on this page. That is a "
+                           "finding rather than an access problem — ANA-01 "
+                           "reports it.")}
+
+    for cid in installed:
+        for r in mine:
+            if r["public_id"] == cid:
+                return {"ok": True, "property": cid,
+                        "name": f"{r['account']} \u00b7 {r['container']}",
+                        "login": r["login"], "installed": installed}
+
+    note = (" The list of containers we can see was capped at "
+            f"{GTM_ACCOUNT_CAP} accounts per login, so this could be a miss "
+            "rather than a no." if truncated else "")
+    return {"ok": False, "installed": installed,
+            "detail": (f"The site runs {', '.join(installed[:3])}, and no Vici "
+                       f"login can see that container. Publishing a tag change "
+                       f"needs the client to grant access." + note)}
+
+
 _LIST_CACHE: dict = {"at": 0.0, "data": None}
 
 
@@ -869,7 +1060,7 @@ def list_properties(max_age: float = 120.0) -> dict:
     if _LIST_CACHE["data"] is not None and now - _LIST_CACHE["at"] < max_age:
         return _LIST_CACHE["data"]
 
-    out = {"gsc": [], "ga4": [], "logins": [], "errors": []}
+    out = {"gsc": [], "ga4": [], "gtm": [], "logins": [], "errors": []}
     for label, refresh in (_token_index() or {}).items():
         tok = access_token(refresh)
         if not tok:
@@ -888,9 +1079,27 @@ def list_properties(max_age: float = 120.0) -> dict:
                 out["ga4"].append({"id": pid, "name": name, "login": label})
         except Exception as exc:  # noqa: BLE001
             out["errors"].append(f"{label} GA4: {type(exc).__name__}")
+        try:
+            rows, trunc = _gtm_containers(tok)
+            for r in rows:
+                out["gtm"].append({**r, "login": label})
+            if trunc:
+                # Say it. A capped list is indistinguishable from a complete
+                # one, and the container someone is hunting for is exactly the
+                # one that fell off the end.
+                out["errors"].append(
+                    f"{label} Tag Manager: only the first {GTM_ACCOUNT_CAP} "
+                    f"accounts were listed")
+        except Exception as exc:  # noqa: BLE001
+            out["errors"].append(
+                f"{label} Tag Manager: "
+                + ("the login has not approved the Tag Manager scope yet"
+                   if _scope_missing(exc) else _describe(exc)))
 
     out["gsc"].sort(key=lambda r: r["site"].lower())
     out["ga4"].sort(key=lambda r: (r["name"] or "").lower())
+    out["gtm"].sort(key=lambda r: ((r["account"] or "").lower(),
+                                   (r["container"] or "").lower()))
     _LIST_CACHE.update({"at": now, "data": out})
     return out
 
@@ -943,16 +1152,18 @@ def probe(site_url: str, name_scan: int = 8) -> dict:
 
     Never raises. A probe that 500s teaches the operator to ignore the probe.
     """
-    out = {"gsc": {"ok": False}, "ga4": {"ok": False},
+    out = {"gsc": {"ok": False}, "ga4": {"ok": False}, "gtm": {"ok": False},
            "configured": bool(_token_index()) and oauth_configured()}
     if not _token_index():
         msg = "GOOGLE_TOKENS is not set on this service."
-        out["gsc"] = out["ga4"] = {"ok": False, "detail": msg, "ours": True}
+        out["gsc"] = out["ga4"] = out["gtm"] = {"ok": False, "detail": msg,
+                                                "ours": True}
         return out
     if not oauth_configured():
         msg = ("GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set on this "
                "service, so the refresh token cannot be exchanged.")
-        out["gsc"] = out["ga4"] = {"ok": False, "detail": msg, "ours": True}
+        out["gsc"] = out["ga4"] = out["gtm"] = {"ok": False, "detail": msg,
+                                                "ours": True}
         return out
 
     idx = _token_index()
@@ -990,6 +1201,14 @@ def probe(site_url: str, name_scan: int = 8) -> dict:
                        "can miss a property named unlike its site.")}
     except Exception as exc:  # noqa: BLE001
         out["ga4"] = {"ok": False, "detail": f"{type(exc).__name__}: {exc}"}
+
+    # Tag Manager last, because it is the only one of the three that reads the
+    # client's page as well as Google's API, and a slow site should not hold up
+    # the two answers that were already in hand.
+    try:
+        out["gtm"] = _gtm_probe(site_url, idx)
+    except Exception as exc:  # noqa: BLE001
+        out["gtm"] = {"ok": False, "detail": f"{type(exc).__name__}: {exc}"}
     return out
 
 

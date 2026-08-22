@@ -505,6 +505,15 @@ def _score_and_save(a, opts, audit_id, art, findings, extras, step):
     if opts.get("run_aivis"):
         _ai_visibility(a, audit_id, findings, extras, step)
 
+    # WHICH OPTIONAL PHASES WERE ASKED FOR.
+    #
+    # Recorded because the report cannot tell the difference otherwise. Nine
+    # consent rows with no findings look identical whether the scan crashed or
+    # nobody ticked the box, and the panel was printing both as "Ours to fix".
+    # One is a bug; the other is a run that did exactly what was asked.
+    extras["phases_run"] = {"run_consent": bool(opts.get("run_consent")),
+                            "run_aivis": bool(opts.get("run_aivis"))}
+
     step("scoring", f"{len(findings)} checkpoints evaluated; scoring")
     cat = db.catalog()
     sc = engine_scoring.score(findings, cat, a.get("vertical"))

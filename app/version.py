@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-30"
-BUILD_NOTES = ("No analyst section, a gradient PDF, and the chrome matched to "
-               "adtini pixel for pixel")
+BUILD = "2026.08.20-31"
+BUILD_NOTES = ("Tag Manager access on the preflight, and an optional phase "
+               "nobody ticked is no longer printed as a defect")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

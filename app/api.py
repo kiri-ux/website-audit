@@ -404,6 +404,7 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
                 quick: str = Form(""),
                 reuse_crawl: str = Form(""), phases: str = Form(""),
                 gsc_property: str = Form(""), ga4_property_id: str = Form(""),
+                gtm_container: str = Form(""),
                 x_api_key: str | None = Header(None)):
     p = principal(x_api_key)
     # Phases are opt-OUT in the options dict (skip_*) but opt-IN on the form,
@@ -460,6 +461,8 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
         opts["gsc_property"] = gsc_property.strip()
     if ga4_property_id.strip():
         opts["ga4_property_id"] = ga4_property_id.strip()
+    if gtm_container.strip():
+        opts["gtm_container"] = gtm_container.strip()
     for k, v in (("primary_markets", primary_markets),
                  ("primary_conversion", primary_conversion),
                  ("partner", partner)):
