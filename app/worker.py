@@ -281,6 +281,11 @@ def _after_crawl(a, opts, audit_id, art, findings, step):
         step("checking", "collecting keyword rankings")
         rk = collect_rankings(art.host, opts.get("location_name"))
         extras["rankings"] = rk
+        # GEO-24 and GEO-25 ride along. They are Google SERP features rather
+        # than AI platforms, so the visibility monitor rightly declines them —
+        # and the keyword call already carries the answer.
+        if rk.get("geo"):
+            findings.update(rk["geo"])
         # Logged loudly because this is the one collector whose success is
         # invisible from the outside: a failed call degrades to an empty table
         # and the report still renders cleanly. Without this line the only way

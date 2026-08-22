@@ -315,12 +315,107 @@ def collect_rankings(domain: str, location_name: str | None = None,
             "difficulty": kp.get("keyword_difficulty"),
             "position": se.get("rank_absolute"),
             "url": se.get("url"),
+            # WHICH KIND of SERP result this is. Already in the response and
+            # already being thrown away — it is what answers GEO-24, and it
+            # meant a checkpoint sat permanently unmeasured next to a call that
+            # had the answer in it.
+            "serp_type": (se.get("type") or "").lower(),
         })
     rows.sort(key=lambda r: (r["position"] or 999, -(r["search_volume"] or 0)))
     top10 = [r for r in rows if (r["position"] or 999) <= 10]
     return {"available": True, "rows": rows, "total": len(rows),
             "top10": len(top10),
-            "location": location_name or "United States"}
+            "location": location_name or "United States",
+            "geo": _serp_feature_rows(rows)}
+
+
+# --------------------------------------------------------- GEO-24 and GEO-25
+#
+# Neither of these is an AI chat platform, so the AI visibility monitor
+# correctly declines to answer them and they read as unmeasured on every run.
+# They are GOOGLE SERP features, and the keyword call above already returns the
+# SERP element type for every keyword the domain ranks for — the answer was
+# sitting in a response we were parsing four fields out of.
+#
+# A note on the second one, because it is a proxy and must be labeled as one.
+# Google has never exposed passage ranking as a SERP feature; there is no flag
+# to read. What passage ranking DOES is let one section of a long page rank for
+# a specific long query, so the measurable footprint is long-tail queries where
+# the site ranks with a deep page. That is evidence, not proof, and the row says
+# which of the two it is.
+
+_SNIPPET_TYPES = {"featured_snippet", "answer_box"}
+
+
+def _serp_feature_rows(rows: list) -> dict:
+    out = {}
+    if not rows:
+        return out
+    ranked = [r for r in rows if r.get("position")]
+    if not ranked:
+        return out
+
+    snips = [r for r in ranked if r.get("serp_type") in _SNIPPET_TYPES]
+    # Only count a snippet the CLIENT owns — these rows are the client's own
+    # rankings, so every one here is theirs by construction.
+    if snips:
+        top = sorted(snips, key=lambda r: -(r.get("search_volume") or 0))[:5]
+        named = ", ".join(f"\u201c{r['keyword']}\u201d" for r in top if r.get("keyword"))
+        out["GEO-24"] = _f(
+            "Pass", {"featured_snippets": len(snips),
+                     "keywords": [r["keyword"] for r in snips][:20]},
+            f"This site owns the featured snippet for {len(snips)} "
+            f"{'query' if len(snips) == 1 else 'queries'}, including {named}. "
+            f"That is the answer box above the normal results, and it is what "
+            f"assistants most often read from.",
+            "Low", "", 1.0, "dataforseo")
+    else:
+        out["GEO-24"] = _f(
+            "Warning", {"featured_snippets": 0, "keywords_ranked": len(ranked)},
+            f"This site holds no featured snippets across the "
+            f"{len(ranked):,} queries it ranks for. The snippet is the answer "
+            f"box above the normal results, and it is disproportionately what "
+            f"AI assistants quote.",
+            "Medium",
+            "Answer the question directly in the first 40-60 words under a "
+            "heading that matches how it is asked.", 1.0, "dataforseo")
+
+    # Long-tail: four words or more is the conventional line, and it is where
+    # passage ranking does its work.
+    longtail = [r for r in ranked
+                if len((r.get("keyword") or "").split()) >= 4
+                and (r["position"] or 999) <= 20]
+    deep = [r for r in longtail
+            if (r.get("url") or "").rstrip("/").count("/") > 2]
+    if longtail:
+        pct = round(100 * len(deep) / len(longtail), 1)
+        out["GEO-25"] = _f(
+            "Pass" if deep else "Warning",
+            {"longtail_ranked": len(longtail), "on_deep_pages": len(deep),
+             "pct": pct, "examples": [r["keyword"] for r in deep][:10]},
+            f"{len(longtail)} long questions rank in the top 20, "
+            f"{len(deep)} of them on interior pages ({pct}%). Google has no "
+            f"public marker for passage ranking, so this is the visible "
+            f"footprint of it rather than a direct measurement: a specific "
+            f"question answered by a section of a longer page."
+            if deep else
+            f"{len(longtail)} long questions rank in the top 20, none of them "
+            f"on an interior page. Long questions are usually answered by a "
+            f"section of a deeper page, not by the homepage.",
+            "Low" if deep else "Medium",
+            "" if deep else "Write pages that answer specific questions in "
+                            "full, with headings phrased the way people ask.",
+            0.7, "dataforseo")
+    else:
+        out["GEO-25"] = _f(
+            "Warning", {"longtail_ranked": 0},
+            f"None of the {len(ranked):,} queries this site ranks for is a "
+            f"long, question-shaped one. That is the traffic assistants draw "
+            f"on most.",
+            "Medium",
+            "Publish answers to the questions customers actually ask, one "
+            "question per section.", 0.7, "dataforseo")
+    return out
 
 
 def _keys(label: str, payload) -> None:

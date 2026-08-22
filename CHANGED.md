@@ -1,4 +1,38 @@
-# Changed files — build 2026.08.20-23
+# Changed files — build 2026.08.20-24
+
+## GEO-24 and GEO-25 — built, and it needed no new anything
+
+**Why hadn't we?** Because I had them filed as "needs a SERP source", and that
+was wrong. The `ranked_keywords` call this tool already makes — the one behind
+the Keyword Rankings table — returns `ranked_serp_element.serp_item` for every
+query the site ranks for, and that object carries a **`type`**. We were reading
+four fields off it and dropping the fifth. The answer was in a response we were
+already paying for and already parsing.
+
+**GEO-24 Featured Snippets** now reports which queries the site owns the answer
+box for, named, biggest first. Holding none is a Warning with the denominator
+stated — *"no featured snippets across the 1,240 queries it ranks for"* — because
+zero out of nothing and zero out of twelve hundred are different findings.
+
+This matters more than its own row: the snippet is disproportionately what
+assistants quote, so it is an AI-visibility lever that sits in ordinary SEO.
+
+**GEO-25 Passage Ranking is a proxy, and the row says so.** Google has never
+exposed passage ranking as a SERP feature — there is no flag to read, and
+anything claiming to measure it directly is guessing. What passage ranking *does*
+is let one section of a long page rank for one specific long question, so the
+visible footprint is long-tail queries (four words or more) ranking in the top 20
+on an **interior** page. A homepage ranking for a long question is explicitly not
+counted — that is the case the deep-page test separates.
+
+The row prints *"Google has no public marker for passage ranking, so this is the
+visible footprint of it rather than a direct measurement"* and carries a
+confidence of 0.7. A proxy presented as a measurement is the exact error this
+codebase keeps having to fix; labeling it is the whole difference.
+
+**Every GEO row now has a source.** Six from the assistants, two from the SERP.
+
+---
 
 ## "Why is the monitor separate?" — it was, and now it is not
 

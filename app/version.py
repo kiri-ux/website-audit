@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-23"
-BUILD_NOTES = ("AI visibility runs as a phase of the audit, so the analyst "
-               "work list is empty for the first time")
+BUILD = "2026.08.20-24"
+BUILD_NOTES = ("Featured snippets and passage ranking answered from the "
+               "keyword call we already make; every GEO row now has a source")
 # ---------------------------------------------------------------------------
 
 

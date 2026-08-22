@@ -387,6 +387,59 @@ def main():
     check("no doubled full stop from the optional clause",
           ".." not in o2["OFF-18"]["evidence"])
 
+    print("\nGEO-24 AND GEO-25 COME FROM THE SERP, NOT FROM AN ASSISTANT")
+    # These two are Google SERP features, not AI chat platforms, so the
+    # visibility monitor correctly declines them — and they sat permanently
+    # unmeasured next to a keyword call whose response carried the answer.
+    rows = [
+        {"keyword": "knoxville personal injury lawyer", "search_volume": 900,
+         "position": 3, "url": "https://x.com/practice-areas/injury",
+         "serp_type": "organic"},
+        {"keyword": "what is comparative fault in tennessee",
+         "search_volume": 110, "position": 1,
+         "url": "https://x.com/blog/comparative-fault",
+         "serp_type": "featured_snippet"},
+        {"keyword": "how long do i have to file a claim in tn",
+         "search_volume": 70, "position": 6,
+         "url": "https://x.com/faq/statute", "serp_type": "organic"},
+    ]
+    g = D._serp_feature_rows(rows)
+    check("an owned featured snippet is found and named",
+          g["GEO-24"]["status"] == "Pass"
+          and g["GEO-24"]["value"]["featured_snippets"] == 1,
+          str(g["GEO-24"]["value"]))
+    none = D._serp_feature_rows([r for r in rows
+                                 if r["serp_type"] != "featured_snippet"])
+    check("holding none is a Warning with the denominator stated",
+          none["GEO-24"]["status"] == "Warning"
+          and "2 queries" in none["GEO-24"]["evidence"],
+          none["GEO-24"]["evidence"][:60])
+    # All three fixtures are four words or more, which is the long-tail line,
+    # and all three rank on an interior page.
+    check("long questions on deep pages are counted",
+          g["GEO-25"]["value"]["longtail_ranked"] == 3
+          and g["GEO-25"]["value"]["on_deep_pages"] == 3,
+          str(g["GEO-25"]["value"]))
+    # A homepage ranking for a long question is NOT the passage-ranking
+    # footprint — that is the case the deep-page test exists to separate.
+    shallow = D._serp_feature_rows([
+        {"keyword": "how long do i have to file a claim in tn",
+         "search_volume": 70, "position": 6, "url": "https://x.com/",
+         "serp_type": "organic"}])
+    check("a homepage ranking for a long question is not counted as one",
+          shallow["GEO-25"]["value"]["on_deep_pages"] == 0
+          and shallow["GEO-25"]["status"] == "Warning",
+          str(shallow["GEO-25"]["value"]))
+    # THE HONESTY REQUIREMENT. Google publishes no passage-ranking marker, so
+    # this row is a proxy. A proxy printed as a measurement is the error this
+    # codebase keeps having to fix, so the row has to say which it is.
+    check("passage ranking says out loud that it is a footprint, not a marker",
+          "no public marker" in g["GEO-25"]["evidence"])
+    check("and carries a confidence below 1.0 to match",
+          g["GEO-25"]["confidence"] < 1.0, str(g["GEO-25"]["confidence"]))
+    check("no rankings at all produces no rows rather than a guess",
+          D._serp_feature_rows([]) == {})
+
     print("\n" + "=" * 68)
     if FAILED:
         print(f"  {len(FAILED)} FAILED: {FAILED}")
