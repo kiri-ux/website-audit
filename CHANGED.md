@@ -1,4 +1,47 @@
-# Changed files — build 2026.08.20-26
+# Changed files — build 2026.08.20-27
+
+## Site Scanner
+
+The page is called **Site Scanner** now — title, heading, breadcrumb, and the
+back link on the report.
+
+### Two pairs of labels that meant different things and did not say so
+
+**"E-E-A-T and AI Search" vs "AI visibility."** Both said AI; they are opposites.
+
+| Now reads | What it does |
+|---|---|
+| **Read and judge the pages** *(E-E-A-T, on-page, AI-readiness)* | An LLM reads the **client's own pages** and scores them — is the expertise visible, does the page answer its query, is the CTA clear |
+| **Ask the AI assistants** *(Claude, Gemini · paid per question)* | Asks ChatGPT, Claude, Gemini and the rest **about the brand** and records whether they mention or cite it |
+
+One is about their content. The other is about their presence in someone else's
+answer. Neither needs the word "AI" to be understood, and using it for both is
+what made them look like a duplicate.
+
+**"Re-run" vs "Start a new audit with these settings."** Both made a new audit,
+which is why the difference was invisible. They now say what they do: **Run
+again** fires immediately with the same settings; **Copy these settings into the
+form** fills the form so you can change something first.
+
+### Phase pills
+
+Five checkboxes in a grid read as a settings dialog. The same five as pressable
+pills read as a choice about *this run*, which is what they are — and the state
+is legible from across the room. Checked ones fill blue; a disabled one greys out
+with its reason still readable.
+
+### And a general lift
+
+- **Gradient top bar**, navy to a lighter navy. The one place a gradient earns
+  its keep is the bar the eye lands on first — enough to read as designed, not
+  enough to compete with the content.
+- **Stat tiles react to the cursor** and each carries an accent bar in *its own
+  status color*. Seven identical blue edges is decoration; seven that mean what
+  the dot means is a row you can scan without reading. The dot stays — color
+  alone must never be the only carrier.
+- Rounder cards, softer shadows on hover.
+
+---
 
 ## "Do I need to recrawl?" — the run tells you now
 

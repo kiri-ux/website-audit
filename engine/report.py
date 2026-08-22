@@ -460,7 +460,7 @@ def render_html(meta, sc, findings, catalog, summary=None):
          "stroke='currentColor' stroke-width='2' stroke-linecap='round' "
          "stroke-linejoin='round' aria-hidden='true'>"
          "<path d='M3 10.5 12 3l9 7.5'/><path d='M5 9.5V21h14V9.5'/></svg>"
-         "All audits</a></div>"]
+         "Site Scanner</a></div>"]
 
     # WHAT THIS RUN STILL OWES, at the top, before anything else.
     #

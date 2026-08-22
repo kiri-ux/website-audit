@@ -93,8 +93,20 @@ a:hover{text-decoration:underline}
 code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
 
 /* ---- cards ---- */
-.card{background:var(--surface);border:1px solid var(--line);border-radius:6px;
- padding:22px 26px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;
+ padding:22px 26px;
+ transition:box-shadow .15s ease, border-color .15s ease}
+.card:hover{border-color:#cfdaea;box-shadow:0 4px 16px -10px rgba(18,53,107,.3)}
+
+/* The one place a gradient earns its keep: the bar the eye lands on first.
+   Navy to a lighter navy, left to right — enough to read as designed, not
+   enough to compete with anything on the page. */
+.topbar{background:linear-gradient(96deg,var(--navy) 0%,#17417e 62%,#1a4a8f 100%);
+ border-bottom:0;box-shadow:0 1px 0 rgba(0,0,0,.06)}
+.topbar h1{color:#fff;font-weight:600;letter-spacing:-.015em}
+.topbar .burger{color:#a8c2e4}
+.topbar .right{color:#c2d5ec}
+.topbar .right .chip.build{background:rgba(255,255,255,.14);color:#e8f0fa}
 
 /* ---- forms ---- */
 form#auditform{display:grid;grid-template-columns:2fr 1.4fr 1fr .7fr auto;
@@ -135,6 +147,31 @@ table.sub{margin-top:8px;font-size:12px;border:1px solid var(--line);border-radi
 table.sub td{padding:7px 9px}
 td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 
+/* ---- phase toggles: pills you press, not boxes you tick ----
+   Five checkboxes in a grid read as a settings dialog. The same five as
+   pressable pills read as a choice you are making about this run, which is
+   what they are — and the state is legible from across the room. */
+.phases{display:flex;flex-wrap:wrap;gap:8px}
+.ph{position:relative;display:inline-flex;align-items:center;gap:8px;
+ padding:9px 16px 9px 13px;border-radius:22px;border:1px solid var(--line);
+ background:var(--surface);font-size:13.5px;font-weight:500;color:var(--ink2);
+ cursor:pointer;margin:0;transition:.14s ease;user-select:none;line-height:1.2}
+.ph:hover{border-color:var(--blue);color:var(--blue)}
+.ph input{position:absolute;opacity:0;width:0;height:0;margin:0}
+.ph .tick{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--line);
+ display:inline-flex;align-items:center;justify-content:center;flex:none;
+ transition:.14s ease}
+.ph .tick svg{width:9px;height:9px;opacity:0;transition:.14s ease;
+ stroke:#fff;stroke-width:3.4;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.ph .note{color:var(--muted);font-weight:400;font-size:12.5px}
+.ph input:checked ~ .tick{background:var(--blue);border-color:var(--blue)}
+.ph input:checked ~ .tick svg{opacity:1}
+.ph:has(input:checked){border-color:var(--blue);background:#eef5fd;color:var(--blue-dk)}
+.ph:has(input:checked) .note{color:#4a7fbe}
+.ph:has(input:focus-visible){box-shadow:0 0 0 3px rgba(22,104,193,.18)}
+.ph:has(input:disabled){opacity:.55;cursor:not-allowed;background:var(--line-2)}
+.ph:has(input:disabled):hover{border-color:var(--line);color:var(--ink2)}
+
 /* ---- pills ---- */
 .chip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;
  padding:5px 15px;border-radius:20px;background:var(--pill-grey);
@@ -158,9 +195,18 @@ td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 /* ---- stat strip ---- */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;
  margin-top:14px}
-.stat{background:var(--surface);border:1px solid var(--line);border-radius:6px;
- padding:16px 18px}
-.stat .n{font-size:26px;font-weight:700;letter-spacing:-.02em;
+/* A tile that reacts. The numbers were correct and completely inert — this is
+   a screen someone looks at twenty times a day, and a surface that answers the
+   cursor is the cheapest way to make a tool feel alive rather than printed. */
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;
+ padding:16px 18px;position:relative;overflow:hidden;
+ transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease}
+.stat::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
+ background:var(--edge,var(--seq));opacity:.9}
+.stat:hover{transform:translateY(-2px);border-color:#c9d6e8;
+ box-shadow:0 6px 18px -8px rgba(18,53,107,.28)}
+.stat:has(.n:empty){opacity:.6}
+.stat .n{font-size:28px;font-weight:700;letter-spacing:-.025em;
  font-variant-numeric:tabular-nums;line-height:1.15}
 .stat .k{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;
  color:var(--muted);margin-top:2px;font-weight:600}
@@ -268,8 +314,16 @@ def _ring(score, size=44, stroke=5):
 
 
 def _stat(n, label, dot=None):
+    """
+    A tile whose accent bar carries the same color as its status dot.
+
+    Seven tiles with an identical blue edge is decoration; seven where the edge
+    means what the dot means is a row you can scan without reading. The dot
+    stays too — color alone must never be the only carrier.
+    """
     d = f"<b style='background:{dot}'></b>" if dot else ""
-    return (f"<div class='stat'><div class='n'>{e(n)}</div>"
+    edge = f" style='--edge:{dot}'" if dot else ""
+    return (f"<div class='stat'{edge}><div class='n'>{e(n)}</div>"
             f"<div class='k'>{d}{e(label)}</div></div>")
 
 
@@ -413,7 +467,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
                 f"<table class='sub'>{rows}</table>"
                 f"<button class='btn ghost' type='button' style='margin-top:9px;"
                 f"width:100%' data-prefill=\"{blob}\" onclick='prefill(this)'>"
-                f"Start a new audit with these settings</button></details>")
+                f"Copy these settings into the form</button></details>")
 
     cards = []
     for g in groups:
@@ -432,7 +486,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
                 f"<td style='text-align:right'>"
                 f"<form method='post' action='/audits/{h['id']}/rerun' "
                 f"style='display:inline;margin-right:6px'>"
-                f"<button class='del' type='submit'>Re-run</button></form>"
+                f"<button class='del' type='submit'>Run again</button></form>"
                 f"{_del_form(h['id'], 'Delete')}</td></tr>"
                 for h in g["history"])
             hist = (
@@ -469,7 +523,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
             f"<div class='cact'>"
             f"<form method='post' action='/audits/{a['id']}/rerun' "
             f"style='display:inline'>"
-            f"<button class='btn ghost' type='submit'>Re-run</button></form>"
+            f"<button class='btn ghost' type='submit'>Run again</button></form>"
             f"<a class='btn' href='/audits/{a['id']}'>Open</a>"
             f"<a class='btn ghost' href='/audits/{a['id']}.pdf' target='_blank' "
             f"rel='noopener'>PDF</a>"
@@ -507,6 +561,11 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
     # running an audit and reading eight unanswered rows afterwards. The worker
     # publishes what it holds on startup, so the box can say up front which
     # assistants will answer — and disable itself when the answer is none.
+    # One tick mark, reused in every phase pill. Inline SVG rather than a
+    # character, for the same reason the report's lamp is drawn: a glyph is at
+    # the mercy of whatever font actually loads.
+    TICK = ("<svg viewBox='0 0 12 12' aria-hidden='true'>"
+            "<path d='M2.5 6.4 4.7 8.6 9.5 3.6'/></svg>")
     caps = caps or {}
     plats = caps.get("ai_platforms") or []
     _NICE = {"chatgpt": "ChatGPT", "claude": "Claude", "gemini": "Gemini",
@@ -602,33 +661,37 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
         <span style='color:var(--muted)'>(slower; for SPA sites)</span></label>
     </div>
 
-    <div style='margin-top:14px;padding-top:12px;border-top:1px solid var(--line)'>
-      <div style='font-size:12.5px;font-weight:640;margin-bottom:6px'>
-        What to run</div>
-      <div style='font-size:12.5px;color:var(--ink2);display:grid;
-                  grid-template-columns:1fr 1fr;gap:6px 20px'>
-        <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
+    <div style='margin-top:16px;padding-top:14px;border-top:1px solid var(--line)'>
+      <div style='font-size:12px;font-weight:700;margin-bottom:9px;
+                  text-transform:uppercase;letter-spacing:.07em;
+                  color:var(--muted)'>What to run</div>
+      <div class='phases'>
+        <label class='ph'>
           <input type='checkbox' name='run_judgment' value='1' checked
-                 form='auditform' style='width:auto'> E-E-A-T and AI Search
-          <span style='color:var(--muted)'>(needs the LLM key)</span></label>
-        <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
+                 form='auditform'>
+          <span class='tick'>{TICK}</span>
+          Read and judge the pages
+          <span class='note'>E-E-A-T, on-page, AI-readiness</span></label>
+        <label class='ph'>
           <input type='checkbox' name='run_collectors' value='1' checked
-                 form='auditform' style='width:auto'> Search Console, Analytics,
-          off-page</label>
-        <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
+                 form='auditform'>
+          <span class='tick'>{TICK}</span>
+          Search Console, Analytics, off-page</label>
+        <label class='ph'>
           <input type='checkbox' name='run_screenshots' value='1' checked
-                 form='auditform' style='width:auto'> Evidence screenshots
-          <span style='color:var(--muted)'>(~30s)</span></label>
-        <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
+                 form='auditform'>
+          <span class='tick'>{TICK}</span>
+          Evidence screenshots <span class='note'>~30s</span></label>
+        <label class='ph'>
           <input type='checkbox' name='run_aivis' value='1' {AIVIS_ATTR}
-                 form='auditform' style='width:auto'> AI visibility
-          <span style='color:var(--muted)'>{AIVIS_NOTE}</span></label>
-        <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
-          <input type='checkbox' name='reuse_crawl' value='1'
-                 form='auditform' style='width:auto'> Reuse the last crawl of
-          this URL
-          <span style='color:var(--muted)'>(no new requests to their site)</span>
-        </label>
+                 form='auditform'>
+          <span class='tick'>{TICK}</span>
+          Ask the AI assistants <span class='note'>{AIVIS_NOTE}</span></label>
+        <label class='ph'>
+          <input type='checkbox' name='reuse_crawl' value='1' form='auditform'>
+          <span class='tick'>{TICK}</span>
+          Reuse the last crawl
+          <span class='note'>no new requests to their site</span></label>
       </div>
       <div class='sm' style='color:var(--muted);margin-top:6px'>
         Reusing a crawl re-scores the pages we already have. Sitewide counts
@@ -760,9 +823,9 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
     }}
     </script>
     """
-    return _shell("Vici Audit Engine", body, refresh=8 if running else None,
-                  heading="SEO & AI Search Audit Engine",
-                  crumbs=[("Audits", None)])
+    return _shell("Site Scanner", body, refresh=8 if running else None,
+                  heading="Site Scanner",
+                  crumbs=[("Site Scanner", None)])
 
 
 def audit_html(a):
@@ -901,4 +964,4 @@ def audit_html(a):
             f"audit <code>{e(a['id'])}</code></div>{inner}")
     return _shell(f"{a['client_name']} — running", body, refresh=refresh,
                   heading=a["client_name"],
-                  crumbs=[("Audits", "/"), (a["client_name"], None)])
+                  crumbs=[("Site Scanner", "/"), (a["client_name"], None)])

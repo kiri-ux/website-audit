@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-26"
-BUILD_NOTES = ("A reused crawl says when it is too old for the current "
-               "checks, during the run and in the panel afterwards")
+BUILD = "2026.08.20-27"
+BUILD_NOTES = ("Site Scanner: phase pills, a livelier page, and two pairs "
+               "of labels that no longer look like duplicates")
 # ---------------------------------------------------------------------------
 
 
