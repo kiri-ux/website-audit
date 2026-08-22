@@ -161,6 +161,46 @@ def main():
             ok, detail = False, f"{type(e).__name__}: {e}"
         check(f"import {target}", ok, detail)
 
+    print("\nAND EVERY SOURCE FILE CAN ACTUALLY REACH A DEPLOY")
+    # THE MOST EXPENSIVE BUG IN THIS PROJECT SO FAR.
+    #
+    # The delta zips were packed from a hand-written file list, and
+    # `engine/aivis/providers.py` was never on it. The AI Overview provider
+    # learned to speak DataForSEO in build ‑38, was tested, and was written up
+    # in three changelogs — and the file never went in a zip, never reached the
+    # repo, and never ran on the worker. Thirteen builds of fixes were made
+    # against code the deployed worker did not have, and the symptom looked
+    # like a missing credential the whole time.
+    #
+    # A file you forget to list reports no error. `pack.py` generates the list
+    # from the filesystem now; this guards its filters, so a future exclusion
+    # rule cannot quietly start eating source again.
+    import pack as _pack
+    import datetime as _dt2
+    _since = _dt2.datetime.fromisoformat(_pack.DEFAULT_SINCE).timestamp()
+    _packed = set(_pack.tracked(_since))
+    _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _missed = []
+    for _base, _dirs, _files in os.walk(_root):
+        _dirs[:] = [d for d in _dirs if d not in _pack.SKIP_DIRS]
+        for _fn in _files:
+            if not _fn.endswith((".py", ".js", ".json")):
+                continue
+            _rel = os.path.relpath(os.path.join(_base, _fn),
+                                   _root).replace(os.sep, "/")
+            if _rel.startswith(".") or "/." in _rel:
+                continue
+            if os.path.getmtime(os.path.join(_base, _fn)) < _since:
+                continue
+            if _rel not in _packed:
+                _missed.append(_rel)
+    check("no changed source file is excluded from the delta", not _missed,
+          ", ".join(sorted(_missed)[:6]))
+    # And the file that started it all, by name, because a general rule that
+    # happens to cover a specific past failure is worth naming the failure.
+    check("engine/aivis/providers.py is in the delta",
+          "engine/aivis/providers.py" in _packed)
+
     print("\n" + "=" * 68)
     print(f"  {len(FAILURES)} FAILED: {FAILURES}" if FAILURES
           else "  ALL CHECKS PASSED — nothing imports a package the image lacks")

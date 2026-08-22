@@ -493,6 +493,7 @@ def _ai_visibility(a, audit_id, findings, extras, step):
         # run-to-run variance has to be averaged out; for a first reading it
         # triples the spend to sharpen a number the report rounds anyway.
         run = run_panel(profile, queries=queries, providers=providers,
+                        skipped=skipped,
                         repeats=int(os.getenv("AIVIS_AUDIT_REPEATS", "1")),
                         progress=lambda d, t: db.update_audit(
                             audit_id, progress=f"AI visibility {d}/{t}",

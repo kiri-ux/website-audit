@@ -1,7 +1,138 @@
-# Changed files — build 2026.08.20-51
+# Changed files — build 2026.08.20-52
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
-Extension is **1.4.4** — unchanged since ‑50, reload it if you have not.
+Extension is **1.4.4** — unchanged since ‑50.
+
+**This zip has 26 files the previous ones did not.** Read the first section
+before you deploy; one of those files is why AI Overviews has never worked.
+
+---
+
+## `engine/aivis/providers.py` has never been in a delta zip
+
+The delta zips were packed from a file list I maintained by hand. That file was
+not on it. Not once.
+
+So: the AI Overview provider learned to speak DataForSEO in build ‑38. It was
+tested. It was written up in three changelogs, including mine two replies ago
+where I told you *"the provider was fixed in ‑38."* The code was fixed. **The
+file never went in a zip, never reached your repo, and has never run on your
+worker.** Every fix since was made against code your deployed worker does not
+have, and the symptom — AI Overviews measuring nothing — read as a credential
+problem the entire time.
+
+Your own API gave it away:
+
+```
+/api/capabilities   dataforseo: true
+                    ai_missing: ["ai_overview", "chatgpt", "copilot", "perplexity"]
+```
+
+DataForSEO configured and working — your backlink rows (GSC-20/21/22) come from
+it — while the provider that was taught to use it reports itself unavailable.
+That combination is impossible in the code I have been editing. It is exactly
+what you get when the file on the server is the one from before ‑38.
+
+I said in the last two replies that the SERP fix had shipped. It had not. I was
+reading my own source instead of yours.
+
+### The packaging is generated now
+
+`pack.py` builds the list off the filesystem — every tracked source file newer
+than the baseline — and prints what it packed:
+
+```
+python3 pack.py --list      # see the list, pack nothing
+python3 pack.py             # -> vici-audit-<BUILD>.zip
+```
+
+A hand-maintained manifest is a silent-failure machine: a file you forget
+reports no error at all. Every other quiet truncation in this codebase got a
+loud replacement; this one gets a generated list and a test in
+`tests/test_deps.py` that walks the tree and fails if any changed source file
+falls outside the delta — plus a second one naming `providers.py` specifically,
+because a general rule that happens to cover a past failure is worth naming the
+failure.
+
+The 26 files that were never shipping:
+
+```
+DESIGN.md  ENGINE.md  VOICE.md  google-setup-runbook.html  make_ai_fixture.py
+app/capture.py  app/schedule.py  app/ui_aivis.py
+engine/aivis/__init__.py  engine/aivis/monitor.py  engine/aivis/providers.py
+engine/checks/geo_schema.py  engine/checks/security.py
+engine/collectors/__init__.py  engine/collectors/backlinks.py
+tests/__init__.py  tests/_fixture.py  verify_ai.py
+tests/test_blocked_crawl.py  tests/test_capture.py  tests/test_deps.py
+tests/test_e2e.py  tests/test_sampling.py  tests/test_unreachable.py
+tests/test_waf_shell.py
+```
+
+Nothing was dropped from the old list — the generated one is a strict superset.
+
+---
+
+## A skipped platform was reported as a failed one
+
+Second fault, independent of the first, and visible in the run you just did.
+
+`run_panel` computed the `skipped` list **only when it had to build the provider
+list itself**. The audit worker calls `active_providers()` first so it can log
+the platform names, then passes the providers in — so `skipped` stayed empty.
+The aggregate said nothing was skipped, and four checkpoints for four
+unconfigured platforms reported *"no successful responses collected, and no
+error was recorded — that is a bug on our side."*
+
+It was not a bug on our side. It was four platforms with no credentials, which
+is what your extras said all along:
+
+```
+"platforms": "claude, gemini",
+"skipped": ["perplexity", "chatgpt", "ai_overview", "copilot"]
+```
+
+The worker computed that list, stored it, and never handed it to the thing that
+writes the rows. Fixed at both ends, with a test asserting the worker actually
+passes it rather than just that the parameter exists.
+
+---
+
+## The SERP rows have now been wrong in both directions
+
+First they said *"Configure SERP_ENDPOINT / SERP_API_KEY"* long after DataForSEO
+could answer them — telling you to buy a second SERP subscription to replace one
+you already pay for. Then I fixed that by asserting the opposite: *"DataForSEO
+is already configured here, so nothing else is needed"* — which printed on a run
+where you HAD ticked the box and the provider was skipped as unavailable.
+
+Same mistake, sign flipped. A row that guesses is worse than a row that asks.
+Three states, three sentences:
+
+| state | what the row says |
+|---|---|
+| provider not configured | *the SERP provider that answers it is not configured on this worker* → set `DFS_LOGIN` / `DFS_PASSWORD` |
+| query ran and failed | *the SERP query ran and failed* → and the provider's own message |
+| phase not run | *no SERP query ran for this audit* → tick the box |
+
+---
+
+## What to expect after deploying this
+
+Once `providers.py` is actually on the worker, `ai_overview` should move from
+`ai_missing` into `ai_platforms` on `/api/capabilities`, because DataForSEO is
+already configured there. Check that first — it is a one-line confirmation that
+this deploy did what the last three could not:
+
+```
+curl -s https://vici-audit-api.onrender.com/api/capabilities | grep ai_
+```
+
+If it still lists `ai_overview` under `ai_missing` after the worker restarts,
+the provider is reaching DataForSEO and refusing it for a reason of its own, and
+the row will now print that reason instead of a shrug.
+
+`copilot` stays missing and that is correct — Microsoft publishes no consumer
+API for it, and the provider says so rather than returning zeros.
 
 ---
 

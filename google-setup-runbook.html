@@ -1,0 +1,743 @@
+<title>Google Access Runbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Public+Sans:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+
+<style>
+:root{
+  --ground:#f2f5f8;
+  --surface:#ffffff;
+  --surface-2:#e9eef4;
+  --ink:#0b1d33;
+  --ink-2:#41566e;
+  --muted:#78899e;
+  --line:#d7dfe8;
+  --line-2:#e7ecf2;
+  --primary:#1c5ba6;
+  --primary-ink:#14498f;
+  --deep:#0c284c;
+  --gold:#e8ac3e;
+  --gold-bg:#fdf4e2;
+  --gold-line:#efd3a0;
+  --good:#177245;
+  --good-bg:#e7f3ec;
+  --alert:#b3402f;
+  --alert-bg:#fbecea;
+  --code-bg:#eef2f7;
+  --shadow:0 1px 2px rgba(11,29,51,.06), 0 8px 24px -12px rgba(11,29,51,.14);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#070d15;
+    --surface:#0f1926;
+    --surface-2:#16222f;
+    --ink:#e6edf5;
+    --ink-2:#a8bacd;
+    --muted:#7d8fa3;
+    --line:#22303f;
+    --line-2:#1a2735;
+    --primary:#4d92dd;
+    --primary-ink:#7db2ec;
+    --deep:#9fc4ec;
+    --gold:#e8ac3e;
+    --gold-bg:#241c0c;
+    --gold-line:#4a3a19;
+    --good:#4cb87e;
+    --good-bg:#0e2419;
+    --alert:#e8796a;
+    --alert-bg:#2a1512;
+    --code-bg:#16222f;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#070d15;
+  --surface:#0f1926;
+  --surface-2:#16222f;
+  --ink:#e6edf5;
+  --ink-2:#a8bacd;
+  --muted:#7d8fa3;
+  --line:#22303f;
+  --line-2:#1a2735;
+  --primary:#4d92dd;
+  --primary-ink:#7db2ec;
+  --deep:#9fc4ec;
+  --gold:#e8ac3e;
+  --gold-bg:#241c0c;
+  --gold-line:#4a3a19;
+  --good:#4cb87e;
+  --good-bg:#0e2419;
+  --alert:#e8796a;
+  --alert-bg:#2a1512;
+  --code-bg:#16222f;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--ground);
+  color:var(--ink);
+  font:400 16.5px/1.62 "Public Sans","Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:860px;margin:0 auto;padding:0 24px 96px}
+
+/* ---------- masthead ---------- */
+.mast{
+  border-bottom:1px solid var(--line);
+  padding:52px 0 30px;
+  margin-bottom:8px;
+}
+.eyebrow{
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--primary);font-weight:600;
+}
+h1{
+  font-family:Archivo,"Helvetica Neue",Arial,sans-serif;
+  font-weight:700;font-size:clamp(30px,5.2vw,44px);line-height:1.08;
+  letter-spacing:-.022em;margin:12px 0 0;text-wrap:balance;
+}
+.dek{
+  color:var(--ink-2);font-size:17.5px;margin:14px 0 0;max-width:62ch;
+}
+.mast .meta{
+  display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:22px;
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:12px;color:var(--muted);
+}
+
+/* ---------- progress ---------- */
+.progress{
+  position:sticky;top:0;z-index:30;background:var(--ground);
+  border-bottom:1px solid var(--line);
+  padding:11px 0;margin-bottom:34px;
+}
+.progress .inner{
+  max-width:860px;margin:0 auto;padding:0 24px;
+  display:flex;align-items:center;gap:14px;
+}
+.ptrack{
+  flex:1;height:5px;background:var(--surface-2);border-radius:3px;overflow:hidden;
+}
+.pfill{
+  display:block;height:100%;width:0;border-radius:3px;
+  background:linear-gradient(90deg,var(--primary),var(--gold));
+  transition:width .28s ease;
+}
+.pnum{
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.preset{
+  font:inherit;font-size:12px;font-family:"JetBrains Mono",ui-monospace,monospace;
+  background:none;border:0;color:var(--muted);cursor:pointer;padding:2px 4px;
+  border-radius:4px;text-decoration:underline;text-underline-offset:3px;
+}
+.preset:hover{color:var(--primary)}
+.preset:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+
+/* ---------- phases ---------- */
+.phase{margin:44px 0 0}
+.phase-head{
+  display:flex;align-items:baseline;gap:14px;
+  padding-bottom:10px;border-bottom:2px solid var(--deep);margin-bottom:4px;
+}
+.phase-head .pk{
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:12px;font-weight:600;color:var(--gold);
+  letter-spacing:.1em;text-transform:uppercase;
+}
+.phase-head h2{
+  font-family:Archivo,sans-serif;font-weight:600;font-size:23px;
+  letter-spacing:-.015em;margin:0;flex:1;
+}
+.phase-note{color:var(--muted);font-size:14.5px;margin:12px 0 0}
+
+/* ---------- step cards ---------- */
+.step{
+  background:var(--surface);border:1px solid var(--line);
+  border-radius:10px;box-shadow:var(--shadow);
+  margin-top:18px;overflow:hidden;
+  display:grid;grid-template-columns:58px 1fr;
+}
+.step.done{opacity:.62}
+.rail{
+  background:var(--surface-2);border-right:1px solid var(--line-2);
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+  padding:18px 0;
+}
+.rail .n{
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:15px;font-weight:600;color:var(--deep);
+  font-variant-numeric:tabular-nums;
+}
+.rail input{
+  width:19px;height:19px;accent-color:var(--primary);cursor:pointer;margin:0;
+}
+.rail input:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.body{padding:18px 22px 22px}
+.step h3{
+  font-family:Archivo,sans-serif;font-weight:600;font-size:18.5px;
+  letter-spacing:-.01em;margin:0;text-wrap:balance;
+}
+.step h3 s{color:var(--muted)}
+.where{
+  display:inline-flex;align-items:center;gap:6px;
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;
+  padding:3px 9px;border-radius:20px;margin-bottom:9px;
+  border:1px solid transparent;
+}
+.where.gcp{background:var(--surface-2);color:var(--primary-ink);border-color:var(--line)}
+.where.api{background:#e4edf8;color:#14498f;border-color:#c6dbf2}
+.where.wrk{background:#e8f0e9;color:#1c6640;border-color:#c9e0d1}
+.where.both{background:var(--gold-bg);color:#8a6212;border-color:var(--gold-line)}
+.where.you{background:var(--surface-2);color:var(--ink-2);border-color:var(--line)}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .where.api{background:#152435;color:#7db2ec;border-color:#23374d}
+  :root:not([data-theme="light"]) .where.wrk{background:#132a1f;color:#5cbf88;border-color:#20402f}
+}
+:root[data-theme="dark"] .where.api{background:#152435;color:#7db2ec;border-color:#23374d}
+:root[data-theme="dark"] .where.wrk{background:#132a1f;color:#5cbf88;border-color:#20402f}
+.step p{margin:11px 0 0;color:var(--ink-2)}
+.step p strong{color:var(--ink)}
+.step ol,.step ul{margin:11px 0 0;padding-left:22px;color:var(--ink-2)}
+.step li{margin-bottom:7px}
+.step li::marker{color:var(--muted)}
+
+/* ---------- code + keys ---------- */
+code{
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.87em;
+  background:var(--code-bg);border-radius:4px;padding:1.5px 5px;
+  color:var(--ink);word-break:break-word;
+}
+pre{
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:13px;line-height:1.6;
+  background:var(--code-bg);border:1px solid var(--line-2);border-radius:8px;
+  padding:13px 15px;margin:13px 0 0;overflow-x:auto;color:var(--ink);
+}
+pre code{background:none;padding:0;font-size:inherit}
+.kv{
+  margin:13px 0 0;border:1px solid var(--line);border-radius:8px;overflow:hidden;
+}
+.kv div{
+  display:grid;grid-template-columns:minmax(150px,auto) 1fr;
+  border-bottom:1px solid var(--line-2);
+}
+.kv div:last-child{border-bottom:0}
+.kv dt,.kv dd{margin:0;padding:9px 13px;font-size:14px}
+.kv dt{
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12.5px;
+  font-weight:600;background:var(--surface-2);color:var(--ink);
+  border-right:1px solid var(--line-2);word-break:break-all;
+}
+.kv dd{color:var(--ink-2)}
+
+/* ---------- verify + trap ---------- */
+.verify,.trap{
+  margin:15px 0 0;padding:12px 15px;border-radius:8px;font-size:14.5px;
+  border-left:3px solid;
+}
+.verify{background:var(--good-bg);border-color:var(--good);color:var(--ink-2)}
+.trap{background:var(--alert-bg);border-color:var(--alert);color:var(--ink-2)}
+.gotcha{background:var(--gold-bg);border-color:var(--gold);color:var(--ink-2);
+  margin:15px 0 0;padding:12px 15px;border-radius:8px;font-size:14.5px;
+  border-left:3px solid}
+.verify b,.trap b,.gotcha b{
+  display:block;font-family:Archivo,sans-serif;font-size:11.5px;
+  letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px;
+}
+.verify b{color:var(--good)}
+.trap b{color:var(--alert)}
+.gotcha b{color:#8a6212}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .gotcha b{color:var(--gold)}
+}
+:root[data-theme="dark"] .gotcha b{color:var(--gold)}
+.verify p,.trap p,.gotcha p{margin:7px 0 0;color:inherit}
+.verify code,.trap code,.gotcha code{background:rgba(127,127,127,.16)}
+
+/* ---------- tables ---------- */
+.tw{overflow-x:auto;margin:16px 0 0;border:1px solid var(--line);border-radius:9px}
+table{border-collapse:collapse;width:100%;font-size:14.5px;background:var(--surface)}
+th{
+  text-align:left;font-family:Archivo,sans-serif;font-weight:600;font-size:11.5px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+  padding:11px 14px;border-bottom:1px solid var(--line);background:var(--surface-2);
+  white-space:nowrap;
+}
+td{padding:11px 14px;border-bottom:1px solid var(--line-2);
+  vertical-align:top;color:var(--ink-2)}
+tr:last-child td{border-bottom:0}
+td:first-child{color:var(--ink)}
+
+/* ---------- misc ---------- */
+.callout{
+  background:var(--surface);border:1px solid var(--line);border-radius:10px;
+  padding:20px 22px;margin-top:22px;box-shadow:var(--shadow);
+}
+.callout h3{
+  font-family:Archivo,sans-serif;font-weight:600;font-size:17px;margin:0 0 4px;
+}
+.callout p{margin:10px 0 0;color:var(--ink-2)}
+a{color:var(--primary);text-decoration:underline;text-underline-offset:2px;
+  text-decoration-thickness:1px}
+a:hover{color:var(--gold)}
+a:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:2px}
+hr{border:0;border-top:1px solid var(--line);margin:44px 0 0}
+.foot{margin-top:38px;color:var(--muted);font-size:13.5px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (max-width:560px){
+  .step{grid-template-columns:44px 1fr}
+  .body{padding:16px 15px 18px}
+  .kv div{grid-template-columns:1fr}
+  .kv dt{border-right:0;border-bottom:1px solid var(--line-2)}
+}
+</style>
+
+<div class="progress">
+  <div class="inner">
+    <span class="pnum" id="pnum">0 / 13</span>
+    <span class="ptrack"><i class="pfill" id="pfill"></i></span>
+    <button class="preset" id="preset" type="button">reset</button>
+  </div>
+</div>
+
+<div class="wrap">
+
+<header class="mast">
+  <div class="eyebrow">Vici Audit · Site Scanner</div>
+  <h1>Wiring up Google access, end to end</h1>
+  <p class="dek">Three environment variables, two Render services, four Google APIs, and one ordering trap that costs an afternoon if you hit it. Work down the list — every step says where it happens and how to tell it worked.</p>
+  <div class="meta">
+    <span>build 2026.08.20-33</span>
+    <span>~30 minutes</span>
+    <span>progress saves in this browser</span>
+  </div>
+</header>
+
+<p class="phase-note" style="margin-top:26px">
+  <strong style="color:var(--ink)">The end state:</strong> the audit form's <em>Check Google access</em> button
+  returns three green pills — Search Console, GA4, Tag Manager — and audits fill
+  the 38 Search Console and Analytics rows instead of reporting them as
+  unmeasured.
+</p>
+
+<!-- ══════════════════ PHASE 0 ══════════════════ -->
+<section class="phase">
+  <div class="phase-head">
+    <span class="pk">Phase 0</span>
+    <h2>Get the code live first</h2>
+  </div>
+  <p class="phase-note">This one is genuinely first, not housekeeping. A refresh token freezes the scopes it was granted at the moment of consent — so a token minted against the old code carries Search Console and Analytics only, and no amount of configuration adds Tag Manager to it later.</p>
+
+  <article class="step" data-step="1">
+    <div class="rail"><span class="n">01</span><input type="checkbox" aria-label="Step 1 done"></div>
+    <div class="body">
+      <span class="where you">Browser</span>
+      <h3>Get build 2026.08.20-33 live</h3>
+      <div class="verify" style="margin-top:11px">
+        <b>Already done — check and move on</b>
+        <p>Open <code>https://vici-audit-api.onrender.com/healthz</code>. If <code>"build"</code> reads <code>"2026.08.20-33"</code>, this step is finished. Tick it and go to step 02.</p>
+      </div>
+      <p style="margin-top:16px">The rest of this card is here for the next build. <strong>Nothing below needs a terminal</strong> — it is the same upload you have been doing.</p>
+
+      <p><strong>What the zip is.</strong> A partial copy of the project: only the files that changed, each already sitting at the path it belongs at. Expanding it gives you folders named <code>app</code>, <code>engine</code>, <code>seed</code>, <code>tests</code> — the same names GitHub already has. Uploading them replaces those files and leaves the rest of the repo alone.</p>
+
+      <ol>
+        <li><strong>Expand it.</strong> Double-click the zip in Downloads. Note that the browser strips the hyphens from the name — <code>viciaudit2026.08.2033.zip</code> is the right file.</li>
+        <li><strong>Open the repo</strong> at <a href="https://github.com/kiri-ux/website-audit">github.com/kiri-ux/website-audit</a>.</li>
+        <li><strong>Add file → Upload files</strong>, then drag in the expanded folders and any loose files beside them. GitHub matches each one to its existing path.</li>
+        <li><strong>Commit changes.</strong> That commit is what Render is watching.</li>
+        <li><strong>Wait for both services.</strong> <code>vici-audit-api</code> and <code>vici-audit-worker</code> rebuild independently — two to four minutes each. Both must read <em>Live</em>. The worker is the one that runs the audits and the easy one to forget.</li>
+      </ol>
+
+      <div class="gotcha">
+        <b>Why check the build number at all</b>
+        <p>Running against code that did not actually land produces a report that looks completely normal and is quietly wrong. The number in <code>/healthz</code> is the only way to tell from the outside, which is why every build gets a new one.</p>
+      </div>
+      </div>
+  </article>
+</section>
+
+<!-- ══════════════════ PHASE 1 ══════════════════ -->
+<section class="phase">
+  <div class="phase-head">
+    <span class="pk">Phase 1</span>
+    <h2>Google Cloud Console</h2>
+  </div>
+  <p class="phase-note">Reuse the project Site Scanner already uses. The Tag Manager API is enabled there and the consent screen is configured — reusing it skips a whole failure state. Google reorganized this area into <strong>Google Auth Platform</strong>, with four sections: Branding, Audience, Data Access, Clients.</p>
+
+  <article class="step" data-step="2">
+    <div class="rail"><span class="n">02</span><input type="checkbox" aria-label="Step 2 done"></div>
+    <div class="body">
+      <span class="where gcp">Google Cloud</span>
+      <h3>Find the project Site Scanner authenticates against</h3>
+      <p>On the Site Scanner service in Render, open the <code>GTM_OAUTH_CLIENT</code> environment variable. It holds a whole OAuth client JSON. Two fields matter:</p>
+      <div class="kv">
+        <div><dt>project_id</dt><dd>The Google Cloud project to reuse. Switch to it with the project picker at the top of the console.</dd></div>
+        <div><dt>installed <span style="font-weight:400">or</span> web</dt><dd>The top-level key. This is the client <em>type</em>, and it decides step 03.</dd></div>
+      </div>
+      <div class="gotcha">
+        <b>Expect "installed"</b>
+        <p>Site Scanner mints tokens with <code>InstalledAppFlow.run_local_server()</code>, which is a <strong>Desktop</strong> client. Desktop clients authenticate over a loopback address and have no redirect URI registered for a server. Ours needs one.</p>
+      </div>
+    </div>
+  </article>
+
+  <article class="step" data-step="3">
+    <div class="rail"><span class="n">03</span><input type="checkbox" aria-label="Step 3 done"></div>
+    <div class="body">
+      <span class="where gcp">Google Cloud</span>
+      <h3>Create a Web application client in that same project</h3>
+      <p>Skip this only if step 02 showed <code>"web"</code> <em>and</em> our callback is already among its redirect URIs.</p>
+      <ol>
+        <li>Go to <a href="https://console.cloud.google.com/auth/clients">console.cloud.google.com/auth/clients</a> — the <strong>Clients</strong> section of Google Auth Platform.</li>
+        <li><strong>Create client</strong> → Application type: <strong>Web application</strong>.</li>
+        <li>Name it something you'll recognize next year — <code>vici-audit-web</code>.</li>
+        <li>Under <strong>Authorized redirect URIs</strong>, add exactly:</li>
+      </ol>
+      <pre><code>https://vici-audit-api.onrender.com/oauth/google/callback</code></pre>
+      <p>Then copy the <strong>Client ID</strong> and <strong>Client secret</strong> off the panel that appears. You'll paste both in step 07.</p>
+      <div class="trap">
+        <b>This string must match character for character</b>
+        <p><code>https</code>, not <code>http</code>. No trailing slash. Render terminates TLS in front of the app, so the app itself sees <code>http://</code> — our code rewrites it back to <code>https://</code> before handing it to Google precisely because Google would otherwise reject the mismatch. If your API is on a custom domain, register that host instead.</p>
+      </div>
+      <div class="verify">
+        <b>Why the same project</b>
+        <p>API enablement, the consent screen, and its verification status all live at the <em>project</em> level, not the client level. A new client in the same project inherits all of it. A new project inherits none of it.</p>
+      </div>
+    </div>
+  </article>
+
+  <article class="step" data-step="4">
+    <div class="rail"><span class="n">04</span><input type="checkbox" aria-label="Step 4 done"></div>
+    <div class="body">
+      <span class="where gcp">Google Cloud</span>
+      <h3>Enable all four APIs</h3>
+      <p>Site Scanner only ever needed one of these. Under <strong>APIs &amp; Services → Library</strong>, search for each and confirm it's enabled:</p>
+      <div class="kv">
+        <div><dt>Google Search Console API</dt><dd>Impressions, clicks, index coverage, sitemap status — most of the 22 GSC rows</dd></div>
+        <div><dt>Google Analytics Data API</dt><dd>Sessions, conversions, engagement — the GA4 reporting rows</dd></div>
+        <div><dt>Google Analytics Admin API</dt><dd>Property configuration, enhanced measurement settings</dd></div>
+        <div><dt>Tag Manager API</dt><dd>Container and tag reads. Already on if you reused the project.</dd></div>
+      </div>
+      <div class="trap">
+        <b>A disabled API and a missing scope both return 403</b>
+        <p>They are different problems with different fixes, and until this build they produced the same message — "re-authorize each login" — which on a disabled API is half an hour that changes nothing. Build ‑33 tells them apart: an unenabled API now says <em>"the Tag Manager API is not enabled on the Google Cloud project this OAuth client belongs to."</em></p>
+      </div>
+    </div>
+  </article>
+
+  <article class="step" data-step="5">
+    <div class="rail"><span class="n">05</span><input type="checkbox" aria-label="Step 5 done"></div>
+    <div class="body">
+      <span class="where gcp">Google Cloud</span>
+      <h3>Check the publishing status before you mint anything</h3>
+      <p>Open <a href="https://console.cloud.google.com/auth/audience">console.cloud.google.com/auth/audience</a> and read the publishing status.</p>
+      <div class="trap">
+        <b>Testing mode expires your refresh tokens in seven days</b>
+        <p>Google is explicit about it: an authorization by a test user expires seven days from consent, and if the client requested offline access, <strong>the refresh token expires with it</strong>. Everything would work perfectly for a week and then every Google row would go blank at once — which is a miserable thing to debug, because nothing changed.</p>
+        <p>You need <strong>In production</strong>, or <strong>Internal</strong> if the project sits in a Workspace org and every login is in it. Internal is the cleaner answer for six agency logins and needs no verification review.</p>
+      </div>
+      <div class="verify">
+        <b>Verify</b>
+        <p>The Audience page reads <em>In production</em> or the app type reads <em>Internal</em>. If Site Scanner has run for months on these credentials, this is almost certainly already fine — confirm rather than assume.</p>
+      </div>
+    </div>
+  </article>
+</section>
+
+<!-- ══════════════════ PHASE 2 ══════════════════ -->
+<section class="phase">
+  <div class="phase-head">
+    <span class="pk">Phase 2</span>
+    <h2>Render environment variables</h2>
+  </div>
+  <p class="phase-note">All three values go on <strong>both</strong> services. Not redundancy — they do different jobs. The worker calls Google during a run; the API runs the access check on the audit form, in its own container with its own environment.</p>
+
+  <article class="step" data-step="6">
+    <div class="rail"><span class="n">06</span><input type="checkbox" aria-label="Step 6 done"></div>
+    <div class="body">
+      <span class="where both">Both services</span>
+      <h3>Understand what you're setting, before you set it</h3>
+      <div class="kv">
+        <div><dt>GOOGLE_CLIENT_ID</dt><dd>Your OAuth app's public identifier, from step 03</dd></div>
+        <div><dt>GOOGLE_CLIENT_SECRET</dt><dd>That app's password, from step 03</dd></div>
+        <div><dt>GOOGLE_TOKENS</dt><dd>JSON <code>{"label": "refresh_token"}</code>, one entry per Vici login. Minted in step 09.</dd></div>
+      </div>
+      <p><strong>A refresh token is not a credential on its own.</strong> It's a coupon that only the client ID and secret pair can redeem: our code posts all three to Google and gets back a short-lived access token. Miss any one and that exchange returns nothing — which is why setting <code>GOOGLE_TOKENS</code> by itself did nothing at all.</p>
+    </div>
+  </article>
+
+  <article class="step" data-step="7">
+    <div class="rail"><span class="n">07</span><input type="checkbox" aria-label="Step 7 done"></div>
+    <div class="body">
+      <span class="where both">Both services</span>
+      <h3>Set the client pair on <code>vici-audit-api</code> and <code>vici-audit-worker</code></h3>
+      <p>Identical values on both. Let both redeploy.</p>
+      <pre><code>GOOGLE_CLIENT_ID      = &lt;from step 03&gt;
+GOOGLE_CLIENT_SECRET  = &lt;from step 03&gt;</code></pre>
+      <div class="verify">
+        <b>Verify</b>
+        <p>Open <code>https://vici-audit-api.onrender.com/healthz</code> and the worker's equivalent. Both should now report <code>"client_id": true, "client_secret": true</code> inside the <code>"google"</code> block. Tokens will still be <code>false</code> — that's step 09.</p>
+      </div>
+    </div>
+  </article>
+
+  <article class="step" data-step="8">
+    <div class="rail"><span class="n">08</span><input type="checkbox" aria-label="Step 8 done"></div>
+    <div class="body">
+      <span class="where api">API only</span>
+      <h3>Invent a password and set it as <code>OAUTH_SETUP_TOKEN</code></h3>
+      <p><strong>This value is yours to make up.</strong> It is not issued by Google and it is not looked up anywhere — it is a password that unlocks the two minting routes, which return 404 without it. They stay off unless you are actively using them, and you turn them back off in step 11.</p>
+      <p>On <code>vici-audit-api</code> → <strong>Environment</strong>, add a variable with any long random string as its value:</p>
+      <div class="kv">
+        <div><dt>OAUTH_SETUP_TOKEN</dt><dd>e.g. <code>akxrntlyt0q050y77k7wff08hxx4</code> — or anything else long and random. Keep it where you can copy it; step 09 needs the exact string.</dd></div>
+      </div>
+      <div class="verify">
+        <b>Verify</b>
+        <p><code>https://vici-audit-api.onrender.com/healthz</code> reports <code>"oauth_setup": true</code>. If it reads <code>false</code>, the variable did not save or the redeploy has not finished — and step 09 will return <code>{"detail":"not found"}</code> until it does.</p>
+      </div>
+    </div>
+  </article>
+</section>
+
+<!-- ══════════════════ PHASE 3 ══════════════════ -->
+<section class="phase">
+  <div class="phase-head">
+    <span class="pk">Phase 3</span>
+    <h2>Mint the tokens</h2>
+  </div>
+  <p class="phase-note">Once per Vici login that holds client properties. Google caps how many properties one login can hold, which is why this is a JSON object of several rather than a single token.</p>
+
+  <article class="step" data-step="9">
+    <div class="rail"><span class="n">09</span><input type="checkbox" aria-label="Step 9 done"></div>
+    <div class="body">
+      <span class="where you">Browser</span>
+      <h3>Walk each login through the consent screen</h3>
+      <p>In a browser signed in <strong>as that Google login</strong> — not as you, unless it's yours — open a URL built from two things you already have:</p>
+      <div class="kv">
+        <div><dt>t=</dt><dd>The exact string you invented in step 08. Not the words <code>OAUTH_SETUP_TOKEN</code> — the value.</dd></div>
+        <div><dt>label=</dt><dd>A name for this login, chosen by you. Use the labels already in <code>GOOGLE_TOKENS</code> so the new token <em>replaces</em> the old entry rather than adding a duplicate. Open that variable on Render — the labels are the left-hand keys.</dd></div>
+      </div>
+      <p>So if your token were <code>akxrntlyt0q050y77k7wff08hxx4</code> and the login were <code>reporting-zone</code>, the whole URL is:</p>
+      <pre><code>https://vici-audit-api.onrender.com/oauth/google/start?t=akxrntlyt0q050y77k7wff08hxx4&amp;label=reporting-zone</code></pre>
+      <p>You should land on a Google sign-in screen. Approve it. The page that comes back prints the <strong>complete merged JSON</strong> for every login the service knows about — not just the one you added.</p>
+      <p>Repeat per login, changing <code>label=</code> each time, and take the newly merged value from the last one.</p>
+      <div class="trap">
+        <b>If you get <code>{"detail":"not found"}</code></b>
+        <p>The route is 404ing, which means one of two things: <code>OAUTH_SETUP_TOKEN</code> is not set on the API (check <code>/healthz</code> for <code>"oauth_setup": true</code>), or the <code>t=</code> in your URL does not match its value exactly. A placeholder left in the URL bar looks identical to a wrong password from the server's side.</p>
+      </div>
+      <div class="gotcha">
+        <b>"Google did not return a refresh token"</b>
+        <p>Google issues one only on the <em>first</em> consent for a given client-and-login pair. If you hit this, remove the app at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a> for that login and try again.</p>
+      </div>
+    </div>
+  </article>
+
+  <article class="step" data-step="10">
+    <div class="rail"><span class="n">10</span><input type="checkbox" aria-label="Step 10 done"></div>
+    <div class="body">
+      <span class="where both">Both services</span>
+      <h3>Paste the merged JSON as <code>GOOGLE_TOKENS</code> on both services</h3>
+      <p>Replace the whole value — it already contains every login. It looks like this:</p>
+      <pre><code>{
+  "seo-main": "1//0abc...",
+  "reporting-zone": "1//0def..."
+}</code></pre>
+      <div class="trap">
+        <b>Both, not just the worker</b>
+        <p>The success page used to say "paste this on vici-audit-worker". Following that exactly leaves the access preflight broken on the API and produces the confusing state where audits fill their Google rows but the form's check button insists nothing is configured. Fixed in ‑33; mentioned here because the habit is easy to keep.</p>
+      </div>
+    </div>
+  </article>
+
+  <article class="step" data-step="11">
+    <div class="rail"><span class="n">11</span><input type="checkbox" aria-label="Step 11 done"></div>
+    <div class="body">
+      <span class="where api">API only</span>
+      <h3>Unset <code>OAUTH_SETUP_TOKEN</code></h3>
+      <p>Both minting routes disappear with it. Leave it set and anyone who guesses the value can start an OAuth flow against your client.</p>
+      <div class="verify">
+        <b>Verify</b>
+        <p><code>https://vici-audit-api.onrender.com/oauth/google/start</code> now returns a 404 page, and <code>/healthz</code> reports <code>"oauth_setup": false</code>.</p>
+      </div>
+    </div>
+  </article>
+</section>
+
+<!-- ══════════════════ PHASE 4 ══════════════════ -->
+<section class="phase">
+  <div class="phase-head">
+    <span class="pk">Phase 4</span>
+    <h2>Confirm it actually works</h2>
+  </div>
+  <p class="phase-note">In this order. Each step rules out a whole class of cause, so a failure at step 13 means something quite specific once 12 has passed.</p>
+
+  <article class="step" data-step="12">
+    <div class="rail"><span class="n">12</span><input type="checkbox" aria-label="Step 12 done"></div>
+    <div class="body">
+      <span class="where both">Both services</span>
+      <h3>Check <code>/healthz</code> on each service</h3>
+      <p>Open each service's health URL in a browser tab — <code>https://vici-audit-api.onrender.com/healthz</code>, and the worker's own URL from its page in the Render dashboard. It used to report only <code>google_client</code> — one of three required values, all producing the identical symptom when missing. A health check confirming the part that's fine is worse than none, so ‑33 reports the whole picture:</p>
+      <pre><code>"google": {
+  "client_id":     true,
+  "client_secret": true,
+  "tokens":        true,
+  "logins":        2,
+  "ready":         true
+}</code></pre>
+      <p>Counts only — never labels, and obviously never the tokens themselves.</p>
+      <div class="verify">
+        <b>Verify</b>
+        <p><code>"ready": true</code> on <strong>both</strong> services before going further. <code>logins</code> should match the number of times you ran step 09.</p>
+      </div>
+      <div class="gotcha">
+        <b>What healthz deliberately won't tell you</b>
+        <p>Whether those tokens carry the Tag Manager scope. Answering that means calling Google, and a health check that touches a dependency is what once made <code>/healthz</code> unanswerable under load and got the instance pulled by Render. The next step answers it instead.</p>
+      </div>
+    </div>
+  </article>
+
+  <article class="step" data-step="13">
+    <div class="rail"><span class="n">13</span><input type="checkbox" aria-label="Step 13 done"></div>
+    <div class="body">
+      <span class="where you">Browser</span>
+      <h3>Run the access check on a real client</h3>
+      <p>Open Site Scanner, enter a client URL, and press <strong>Check Google access</strong>. Three pills come back, and their colors mean different things:</p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Pill</th><th>Means</th><th>Whose move</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Green</strong></td><td>Found, and it names the property and which login saw it</td><td>Nobody — you're done</td></tr>
+            <tr><td><strong>Amber</strong></td><td>A gap on our side: an unset variable, an unapproved scope, a disabled API</td><td>Ours. The pill says which.</td></tr>
+            <tr><td><strong>Red</strong></td><td>The grant genuinely isn't there</td><td>The client — ask them to add the login to the property</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="verify">
+        <b>Verify</b>
+        <p>Three green pills is the finish line. <code>ready: true</code> plus a <em>red</em> Search Console pill is also a success for this runbook — it means the configuration is right and that particular client hasn't added your login yet.</p>
+      </div>
+      <p>Then run one real audit with <em>Search Console, Analytics, off-page</em> ticked and confirm the GSC and GA4 rows carry numbers rather than "Need access".</p>
+    </div>
+  </article>
+</section>
+
+<hr>
+
+<!-- ══════════════════ TROUBLESHOOTING ══════════════════ -->
+<section class="phase">
+  <div class="phase-head">
+    <span class="pk">Reference</span>
+    <h2>When something says no</h2>
+  </div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>What you see</th><th>What it actually is</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>redirect_uri_mismatch</td>
+          <td>The registered URI differs from what we sent, usually by a scheme or a trailing slash</td>
+          <td>Re-check step 03 character by character</td>
+        </tr>
+        <tr>
+          <td>"GOOGLE_TOKENS is not set on this service"</td>
+          <td>Accurate about <em>this</em> service and silent about the other</td>
+          <td><code>/healthz</code> on both — one is usually missing a value</td>
+        </tr>
+        <tr>
+          <td>Tag Manager amber, GSC and GA4 green</td>
+          <td>Tokens minted before ‑31 was live. Scopes are frozen at consent.</td>
+          <td>Re-run step 09 per login</td>
+        </tr>
+        <tr>
+          <td>"the Tag Manager API is not enabled"</td>
+          <td>Wrong project, or the API was never turned on there</td>
+          <td>Step 04. <strong>Do not</strong> re-consent — it won't help</td>
+        </tr>
+        <tr>
+          <td>Everything works, then dies after a week</td>
+          <td>Consent screen left in Testing</td>
+          <td>Step 05, then re-mint every token</td>
+        </tr>
+        <tr>
+          <td>"Google did not return a refresh token"</td>
+          <td>A grant already exists for this client-and-login pair</td>
+          <td>Revoke at myaccount.google.com/permissions, retry</td>
+        </tr>
+        <tr>
+          <td>Audits fill Google rows, form check says not configured</td>
+          <td>Variables on the worker but not the API</td>
+          <td>Step 07 and step 10, on both</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="callout">
+  <h3>Can Site Scanner keep running through all this?</h3>
+  <p>Yes, and the tokens flow one direction. Site Scanner's tokens carry <code>tagmanager.readonly</code> only, so they can't answer Search Console or GA4. Ours, minted at ‑31 or later, carry all three <em>including</em> Tag Manager — and the JSON shape is identical.</p>
+  <p>So during the transition you can paste our <code>GOOGLE_TOKENS</code> value straight into Site Scanner's <code>GTM_TOKENS</code> and run both tools from one set. The catch: a refresh token is bound to the client that issued it, so point Site Scanner's <code>GTM_OAUTH_CLIENT</code> at the new Web client too, or keep its own tokens until you retire it.</p>
+</div>
+
+<p class="foot">
+  Sources for the Google Cloud specifics:
+  <a href="https://support.google.com/cloud/answer/15549945?hl=en">Manage App Audience</a> (the seven-day testing expiry) and
+  <a href="https://var.gg/en/blog/gcp-oauth-consent-client-id">Google Auth Platform navigation, 2026 UI</a>.
+  Everything about our own services comes from the code in build 2026.08.20-33.
+</p>
+
+</div>
+
+<script>
+(function () {
+  var KEY = "vici-google-runbook-v1";
+  var boxes = Array.prototype.slice.call(
+    document.querySelectorAll('.step input[type="checkbox"]'));
+  var fill = document.getElementById("pfill");
+  var num = document.getElementById("pnum");
+
+  function read() {
+    try { return JSON.parse(localStorage.getItem(KEY) || "{}") || {}; }
+    catch (e) { return {}; }
+  }
+  function write(state) {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+  }
+  function paint() {
+    var done = 0;
+    boxes.forEach(function (b) {
+      var card = b.closest(".step");
+      if (b.checked) { done++; card.classList.add("done"); }
+      else { card.classList.remove("done"); }
+    });
+    num.textContent = done + " / " + boxes.length;
+    fill.style.width = (done / boxes.length * 100) + "%";
+  }
+
+  var state = read();
+  boxes.forEach(function (b) {
+    var id = b.closest(".step").dataset.step;
+    b.checked = !!state[id];
+    b.addEventListener("change", function () {
+      var s = read();
+      s[id] = b.checked;
+      write(s);
+      paint();
+    });
+  });
+  paint();
+
+  document.getElementById("preset").addEventListener("click", function () {
+    write({});
+    boxes.forEach(function (b) { b.checked = false; });
+    paint();
+  });
+})();
+</script>

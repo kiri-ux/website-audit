@@ -189,6 +189,35 @@ def main():
     check("re-running the job does not duplicate findings",
           len(f2["findings"]) == before, f"{before} -> {len(f2['findings'])}")
 
+    print("\nEVERY PHASE'S FINDINGS SURVIVE TO THE DATABASE")
+    # The bug this guards: `_score_and_save` wrote the findings table BEFORE
+    # running the two optional phases, and never wrote it again. The consent
+    # and AI rows were added to the in-memory dict, scored (so coverage read
+    # 322/322), and dropped. `extras` was saved afterwards, so both phases left
+    # evidence they had run — which is why every symptom pointed at the scanner
+    # instead of at the write order.
+    #
+    # Asserted structurally rather than by running a worker: the last write to
+    # the findings table must come after the last phase that adds to it.
+    import inspect as _insp
+    from app import worker as _wk
+    src = _insp.getsource(_wk._score_and_save)
+    saves = [i for i, ln in enumerate(src.splitlines())
+             if "db.save_findings(" in ln]
+    phases = [i for i, ln in enumerate(src.splitlines())
+              if "_consent(" in ln or "_ai_visibility(" in ln]
+    check("findings are written at least twice", len(saves) >= 2, str(saves))
+    check("and the last write comes after the last phase that adds rows",
+          saves and phases and max(saves) > max(phases),
+          f"last save line {max(saves) if saves else None}, "
+          f"last phase line {max(phases) if phases else None}")
+    check("an early save is kept, so a crash mid-phase still leaves a report",
+          saves and phases and min(saves) < min(phases))
+    # And the rewrite has to be idempotent for a second call to be safe.
+    from app import db as _db
+    check("save_findings replaces rather than appends",
+          "DELETE FROM findings" in _insp.getsource(_db.save_findings))
+
     print("\n" + "=" * 66)
     if FAILURES:
         print(f"  {len(FAILURES)} FAILED: {', '.join(FAILURES)}")

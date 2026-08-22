@@ -269,19 +269,107 @@ class GeminiProvider(Provider):
 # ------------------------------------------------------- Google AI Overviews
 class AIOverviewProvider(Provider):
     """
-    Google AI Overviews has no official API. This goes through a SERP provider
-    (SerpApi, DataForSEO, etc.) — configure the endpoint and key.
+    Google AI Overviews has no official API, so this goes through a SERP
+    provider. Two transports, and the order matters.
 
-    Treat this as the least stable adapter in the set and the one most likely to
-    need maintenance; it is also the one clients ask about most.
+    DATAFORSEO FIRST, BECAUSE IT IS ALREADY PAID FOR.
+    -------------------------------------------------
+    This adapter only spoke SerpApi's dialect — GET, `api_key=` in the query
+    string — so an install with DataForSEO credentials already set reported
+    "not measured" and told the operator to go and configure a SERP provider.
+    They had one. AI Overviews are part of DataForSEO's standard SERP API at
+    $0.0006 a request, on the same login already answering backlinks,
+    rankings and Lighthouse.
+
+    Recommending a second subscription to replace something already bought is
+    a worse failure than not measuring at all: it costs money and it makes the
+    tool look like it does not know what it is holding.
+
+    SerpApi stays supported and stays FIRST when explicitly configured — an
+    operator who sets SERP_ENDPOINT has expressed a preference, and a
+    preference beats a default.
     """
     name = "ai_overview"
 
     @property
     def available(self):
-        return bool(os.getenv("SERP_API_KEY") and os.getenv("SERP_ENDPOINT"))
+        if os.getenv("SERP_API_KEY") and os.getenv("SERP_ENDPOINT"):
+            return True
+        try:
+            from engine.collectors.dataforseo import configured
+            return configured()
+        except Exception:  # noqa: BLE001
+            return False
+
+    # ---------------------------------------------------------- DataForSEO
+    def _ask_dataforseo(self, prompt):
+        """
+        One `serp/google/organic/live/advanced` call, read for three things.
+
+        The same response carries the AI Overview, the featured snippet and
+        the other SERP features, so the three GEO rows that were each waiting
+        on "a SERP data provider" are all answered by this one request.
+        """
+        from engine.collectors.dataforseo import dfs_post, _result
+        # THE FAILURE HAS TO NAME ITSELF.
+        #
+        # "no successful responses collected" is what the GEO row says when
+        # every ask returned nothing, and it is the third message today that
+        # describes an absence without naming a cause. DataForSEO reports its
+        # own errors INSIDE a 200 — a bad keyword, an unpaid balance and a
+        # wrong location code all arrive as status_code fields in the
+        # envelope — so an exception is not raised and nothing is logged.
+        raw = dfs_post("/serp/google/organic/live/advanced",
+                               [{"keyword": prompt,
+                                 "location_code": int(
+                                     os.getenv("SERP_LOCATION_CODE", "2840")),
+                                 "language_code": os.getenv("SERP_LANGUAGE",
+                                                            "en"),
+                                 "device": "desktop",
+                                 "load_async_ai_overview": True}],
+                               timeout=90)
+        env = raw if isinstance(raw, dict) else {}
+        task = ((env.get("tasks") or [{}])[0]) or {}
+        code = int(task.get("status_code") or env.get("status_code") or 0)
+        if code and code != 20000:
+            raise RuntimeError(
+                f"DataForSEO SERP returned {code}: "
+                f"{task.get('status_message') or env.get('status_message') or ''}"
+                .strip())
+        res = _result(env)
+        items = (res[0].get("items") or []) if res else []
+        body, urls, titles = "", [], {}
+        features = set()
+        for it in items:
+            t = (it.get("type") or "").lower()
+            if t:
+                features.add(t)
+            if t != "ai_overview":
+                continue
+            # The overview's prose lives in nested elements, and the citations
+            # in a references array carrying domain, url and title.
+            for el in (it.get("items") or it.get("elements") or []):
+                txt = el.get("text") or el.get("snippet") or ""
+                if txt:
+                    body += ("\n" if body else "") + txt
+            for ref in (it.get("references") or []):
+                u = ref.get("url") or ref.get("link")
+                if u:
+                    urls.append(u)
+                    titles[u] = ref.get("title") or ref.get("source") or ""
+        return body, urls, titles, {"items": items, "features": sorted(features)}
 
     def ask(self, query_id, prompt):
+        if not (os.getenv("SERP_API_KEY") and os.getenv("SERP_ENDPOINT")):
+            def go_dfs():
+                body, urls, titles, raw = self._ask_dataforseo(prompt)
+                if urls:
+                    c, s = _mk(urls, titles, "ai_overview.references")
+                else:
+                    c, s = _from_text(body)
+                return body, c, s, raw
+            return self._timed(query_id, go_dfs)
+
         def go():
             import urllib.request, urllib.parse
             url = (os.getenv("SERP_ENDPOINT") + "?" + urllib.parse.urlencode({

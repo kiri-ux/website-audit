@@ -23,18 +23,29 @@ from .analyze import analyse_answer, aggregate, headline
 
 
 def run_panel(profile: ClientProfile, queries=None, providers=None,
-              repeats: int = 3, max_workers: int = 6, progress=None) -> dict:
+              repeats: int = 3, max_workers: int = 6, progress=None,
+              skipped=None) -> dict:
     """
     Execute the panel. Returns the full result set plus aggregates.
 
     `providers` is a list of Provider instances. If omitted, every platform with
     credentials configured is used, and platforms without credentials are
     reported as skipped — never silently counted as zero visibility.
+
+    `skipped` MATTERS EVEN WHEN THE CALLER SUPPLIES THE PROVIDERS.
+
+    It used to be computed here and only here, so a caller that had already
+    called `active_providers()` itself — which the audit worker does, to log
+    the platform list before it starts — passed the providers in and the
+    skipped list stayed empty. The aggregate then said nothing was skipped,
+    and four checkpoints for four unconfigured platforms reported "no
+    successful responses collected" instead of "no credentials configured".
+    Two entirely different problems, printed identically, for months.
     """
     queries = queries or build_panel(profile)
     qmap = {q.id: q for q in queries}
 
-    skipped = []
+    skipped = list(skipped or [])
     if providers is None:
         providers, skipped = active_providers()
 

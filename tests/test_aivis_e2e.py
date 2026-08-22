@@ -274,6 +274,50 @@ def main():
     check("silence with no error recorded is reported as a bug on our side",
           "bug on our side" in _silent["GEO-23"]["recommendation"])
 
+    print("\nA SKIPPED PLATFORM IS NOT A FAILED ONE")
+    # THE BUG: `run_panel` computed `skipped` only when it had to build the
+    # provider list itself. The audit worker calls `active_providers()` first
+    # so it can log the platform names, then passes the providers in — so
+    # `skipped` stayed empty, the aggregate said nothing was skipped, and four
+    # checkpoints for four UNCONFIGURED platforms reported "no successful
+    # responses collected". Not configured and configured-but-broken are
+    # different problems, and they were printing the same sentence.
+    import inspect as _i3
+    from engine.aivis.monitor import run_panel as _rp
+    check("run_panel accepts a skipped list from its caller",
+          "skipped" in _i3.signature(_rp).parameters)
+    _wsrc = _i3.getsource(__import__("app.worker", fromlist=["x"])._ai_visibility)
+    check("and the audit worker actually hands over the one it computed",
+          "skipped=skipped" in _wsrc)
+    _sk = _ffr({"by_platform": {}, "skipped_platforms": ["ai_overview"],
+                "repeats": 1, "platform_errors": {}}, _prof)
+    check("an unconfigured platform reads as a credential, not a failure",
+          "no API credentials" in _sk["GEO-23"]["evidence"])
+
+    print("\nAND THE SERP ROWS STOP GUESSING WHICH IT WAS")
+    # This row has now been wrong in both directions: first "Configure
+    # SERP_ENDPOINT / SERP_API_KEY" long after DataForSEO could answer it,
+    # then "DataForSEO is already configured here, so nothing else is needed"
+    # printed on a run where the box HAD been ticked and the provider was
+    # skipped as unavailable. Three states, three sentences.
+    check("a skipped SERP provider names the credential to set",
+          "not configured on this worker" in _sk["GEO-24"]["evidence"]
+          and "DFS_LOGIN" in _sk["GEO-24"]["recommendation"])
+    check("and does not claim DataForSEO is ready when it is not",
+          "already configured" not in _sk["GEO-24"]["recommendation"])
+    _fail = _ffr({"by_platform": {}, "skipped_platforms": [], "repeats": 1,
+                  "platform_errors": {"ai_overview": {
+                      "errors": 4, "successes": 0,
+                      "messages": ["DataForSEO SERP returned 40402: balance"]}}},
+                 _prof)
+    check("a SERP query that ran and failed says so, with the message",
+          "ran and failed" in _fail["GEO-25"]["evidence"]
+          and "40402" in _fail["GEO-25"]["recommendation"])
+    _off = _ffr({"by_platform": {}, "skipped_platforms": [], "repeats": 1,
+                 "platform_errors": {}}, _prof)
+    check("and a phase nobody asked for still says to tick the box",
+          "no SERP query ran" in _off["GEO-24"]["evidence"])
+
     print("\n" + "=" * 68)
     if FAILURES:
         print(f"  {len(FAILURES)} FAILED: {', '.join(FAILURES)}")

@@ -133,33 +133,56 @@ def findings_from_run(agg: dict, profile) -> dict:
                 recommendation="Add a dedicated SERP-feature check to measure this "
                                "directly rather than inferring it.")
         else:
-            # STOP NAMING ENV VARS WE NO LONGER NEED.
+            # SAY WHICH OF THE THREE THINGS ACTUALLY HAPPENED.
             #
-            # This has said "Configure SERP_ENDPOINT / SERP_API_KEY" since
-            # before the AI Overview provider learned to speak DataForSEO —
-            # which is a provider already configured on this worker. So the
-            # row was telling an operator to go and buy a second SERP
-            # subscription to replace one they already pay for, which is the
-            # same mistake the provider itself was making two builds ago and
-            # is arguably worse here: it survived the fix because nothing
-            # connected this text to it.
+            # This row said "Configure SERP_ENDPOINT / SERP_API_KEY" for
+            # builds after the AI Overview provider learned to speak
+            # DataForSEO, telling an operator to buy a second SERP
+            # subscription to replace one they already pay for. Fixing that
+            # by asserting the opposite — "DataForSEO is already configured
+            # here, so nothing else is needed" — was the same mistake with
+            # the sign flipped: it was printed on a run where the box HAD
+            # been ticked and the provider was skipped as unavailable.
+            #
+            # A row that guesses is worse than a row that asks. There are
+            # three distinct states and they get three distinct sentences.
+            aio_skipped = "ai_overview" in skipped
+            aio_errs = [m for m in ((agg.get("platform_errors") or {})
+                                    .get("ai_overview", {})
+                                    .get("messages") or []) if m]
             try:
                 from engine.collectors.dataforseo import configured as _dfs_ok
                 have_dfs = _dfs_ok()
             except Exception:  # noqa: BLE001
                 have_dfs = False
+
+            if aio_skipped:
+                why = ("the SERP provider that answers it is not configured "
+                       "on this worker")
+                rec = ("Set DFS_LOGIN / DFS_PASSWORD on vici-audit-worker "
+                       "(DataForSEO answers this from the same subscription "
+                       "the backlink rows use), or SERP_ENDPOINT / "
+                       "SERP_API_KEY for a different provider.")
+            elif aio_errs:
+                why = "the SERP query ran and failed"
+                rec = ("This is our error, not a client permission: "
+                       + "; ".join(m[:160] for m in aio_errs[:2]))
+            else:
+                why = "no SERP query ran for this audit"
+                rec = ("Tick 'Ask the AI assistants' — the SERP query goes "
+                       "through DataForSEO, which is already configured "
+                       "here, so nothing else is needed."
+                       if have_dfs else
+                       "Set DFS_LOGIN / DFS_PASSWORD on the worker, or "
+                       "SERP_ENDPOINT / SERP_API_KEY for a different "
+                       "provider.")
             out[cid] = _finding(
-                "Need Access", {},
+                "Need Access",
+                {"serp_provider_skipped": aio_skipped,
+                 "dataforseo_configured": have_dfs},
                 f"{label} is a Google SERP feature, not an AI chat platform, "
-                f"and no SERP query ran for this audit.",
-                severity="Medium", confidence=0.0,
-                recommendation=(
-                    "Tick 'Ask the AI assistants' — the SERP query goes "
-                    "through DataForSEO, which is already configured here, so "
-                    "nothing else is needed."
-                    if have_dfs else
-                    "Set DFS_LOGIN / DFS_PASSWORD on the worker, or "
-                    "SERP_ENDPOINT / SERP_API_KEY for a different provider."))
+                f"and {why}.",
+                severity="Medium", confidence=0.0, recommendation=rec)
     return out
 
 
