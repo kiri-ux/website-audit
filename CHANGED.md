@@ -1,10 +1,93 @@
-# Changed files — build 2026.08.20-52
+# Changed files — build 2026.08.20-53
 
-Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+Cumulative delta since **2026.08.18-16**. Packed by `pack.py`, not by hand.
 Extension is **1.4.4** — unchanged since ‑50.
 
-**This zip has 26 files the previous ones did not.** Read the first section
-before you deploy; one of those files is why AI Overviews has never worked.
+---
+
+## ‑52 worked. Your capabilities now read:
+
+```json
+"build": "2026.08.20-52",
+"ai_platforms": ["ai_overview", "claude", "gemini"],
+"ai_missing":   ["chatgpt", "copilot", "perplexity"]
+```
+
+`ai_overview` moved. The provider that was written in ‑38 and never shipped is
+on the worker, it found DataForSEO on its own, and the panel went from 10 rows
+to 7 — AI Overviews and both SERP-feature rows are answered and gone from the
+list. The three that remain are honest: no keys for ChatGPT or Perplexity, and
+Microsoft publishes no consumer Copilot API at all.
+
+---
+
+## And the new diagnostic immediately earned its keep
+
+> **Google Gemini visibility not measured: every query failed — HTTPError: HTTP
+> Error 404: Not Found.**
+
+That row could not have said this last build. It is also two bugs at once.
+
+### 1. The error body was being closed unread
+
+`HTTP Error 404: Not Found` is urllib's status line and nothing else. Google
+answers that 404 with a JSON body naming the exact problem:
+
+```
+models/gemini-2.0-flash is not found for API version v1beta,
+or is not supported for generateContent.
+```
+
+`_post` opened the connection, hit the error, and let the body go without
+reading it. Every provider shares that helper, so **every** AI platform error
+has been arriving as a bare status code. Same shape as the DataForSEO envelope
+and the save-ordering bug: the cause exists, it is one layer down, and nothing
+unwraps it.
+
+It now reads the body, pulls `error.message` out of the JSON, and keeps the
+status and host so a 404 from a wrong base URL stays distinguishable from a 404
+for a model name:
+
+```
+HTTP 404 from generativelanguage.googleapis.com: models/gemini-2.0-flash is
+not found for API version v1beta, or is not supported for generateContent.
+```
+
+### 2. The model name was hardcoded
+
+`GEMINI_MODEL` defaulted to `gemini-2.0-flash`. Which Gemini models are served
+changes on Google's schedule, not ours, so a hardcoded name is a time bomb with
+their hand on the timer: the row dies silently the day they retire it and stays
+dead until somebody reads a checkpoint. That is exactly what happened.
+
+The provider asks the key what it can actually call — `GET /v1beta/models`,
+filtered to those supporting `generateContent` — and picks from that against a
+preference order, caching the answer for the run. An explicit `GEMINI_MODEL`
+still wins, because an operator who sets one has expressed a preference and a
+preference beats a default. A flash-shaped model you have never heard of beats
+failing. And a key that lists nothing says what that usually means:
+
+> No Gemini model on this key supports generateContent — and the model list
+> could not be read, which usually means `GEMINI_API_KEY` is wrong or the
+> Generative Language API is not enabled on that project.
+
+**You may not need to set anything.** Deploy this and Gemini should resolve a
+current model by itself. If it still fails, the row will now name the reason
+rather than the status code.
+
+---
+
+## What to run
+
+Nothing new since the last reply — this changes what a run *reports*, and the
+rows are written at scan time, so:
+
+1. Deploy, let the worker restart.
+2. **Scan site** with *Reuse the last crawl* and *Ask the AI assistants* ticked.
+3. Then the capture, on the audit that scan produces.
+
+Same order as before: the scan makes a new audit, so a capture run before it is
+thrown away.
 
 ---
 

@@ -92,12 +92,48 @@ class Provider:
 
     # shared HTTP helper — stdlib only, so the engine has no new hard deps
     def _post(self, url, payload, headers, timeout=90):
+        import urllib.error
         import urllib.request
         req = urllib.request.Request(
             url, data=json.dumps(payload).encode(),
             headers={"Content-Type": "application/json", **headers}, method="POST")
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read().decode())
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            # AN ERROR BODY THAT NOBODY READS IS NOT AN ERROR MESSAGE.
+            #
+            # `HTTPError: HTTP Error 404: Not Found` is what this used to raise
+            # and what the checkpoint printed — a status line and nothing else.
+            # Every one of these APIs answers a 4xx with a JSON body that says
+            # exactly what is wrong ("models/gemini-2.0-flash is not found for
+            # API version v1beta"), and the body was being closed unread.
+            #
+            # The same shape as every other bug here: the cause exists, it is
+            # one layer down, and nothing unwraps it.
+            body = ""
+            try:
+                body = (e.read() or b"").decode("utf-8", "replace").strip()
+            except Exception:  # noqa: BLE001
+                body = ""
+            detail = ""
+            if body:
+                try:
+                    j = json.loads(body)
+                    err = j.get("error") if isinstance(j, dict) else None
+                    if isinstance(err, dict):
+                        detail = str(err.get("message") or "").strip()
+                    elif isinstance(err, str):
+                        detail = err.strip()
+                except Exception:  # noqa: BLE001
+                    pass
+                detail = detail or body[:300]
+            # The host, so a 404 from the wrong base URL is distinguishable
+            # from a 404 for a model name.
+            host = url.split("//", 1)[-1].split("/", 1)[0]
+            raise RuntimeError(
+                f"HTTP {e.code} from {host}"
+                + (f": {detail}" if detail else "")) from None
 
     def _timed(self, query_id, fn):
         t0 = time.time()
@@ -240,9 +276,66 @@ class GeminiProvider(Provider):
     def available(self):
         return bool(os.getenv("GEMINI_API_KEY"))
 
+    # A HARDCODED MODEL NAME IS A TIME BOMB WITH GOOGLE'S HAND ON THE TIMER.
+    #
+    # The default was `gemini-2.0-flash` on `v1beta`, and every query came back
+    # `HTTP Error 404: Not Found` — a model name that is not served to this key
+    # on this API version. Which model is current changes on Google's schedule,
+    # not ours, and hardcoding one means the row silently dies the day they
+    # retire it and stays dead until somebody reads a checkpoint.
+    #
+    # So: ask what this key can actually call, and pick from that. An explicit
+    # GEMINI_MODEL still wins — an operator who sets one has expressed a
+    # preference, and a preference beats a default.
+    _PREFER = ("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash",
+               "gemini-2.0-flash-001", "gemini-1.5-flash", "gemini-1.5-pro")
+    _resolved = None
+
+    def _models(self):
+        """Model ids this key may call generateContent on. [] if unlistable."""
+        import urllib.request
+        url = ("https://generativelanguage.googleapis.com/v1beta/models"
+               f"?key={os.getenv('GEMINI_API_KEY')}&pageSize=200")
+        try:
+            with urllib.request.urlopen(url, timeout=30) as r:
+                d = json.loads(r.read().decode())
+        except Exception:  # noqa: BLE001
+            return []
+        out = []
+        for m in (d.get("models") or []):
+            if "generateContent" not in (m.get("supportedGenerationMethods") or []):
+                continue
+            name = str(m.get("name") or "")
+            out.append(name.split("/")[-1] if "/" in name else name)
+        return out
+
+    def _model(self):
+        env = os.getenv("GEMINI_MODEL", "").strip()
+        if env:
+            return env
+        if GeminiProvider._resolved:
+            return GeminiProvider._resolved
+        have = self._models()
+        pick = next((m for m in self._PREFER if m in have), None)
+        if not pick:
+            # Anything flash-shaped beats nothing, and a plain gemini model
+            # beats guessing a name Google has never heard of.
+            pick = next((m for m in have if "flash" in m and "vision" not in m),
+                        None) or next((m for m in have
+                                       if m.startswith("gemini")), None)
+        if not pick:
+            raise RuntimeError(
+                "No Gemini model on this key supports generateContent"
+                + (f" (listed: {', '.join(have[:6])})" if have else
+                   " — and the model list could not be read, which usually "
+                   "means GEMINI_API_KEY is wrong or the Generative Language "
+                   "API is not enabled on that project"))
+        GeminiProvider._resolved = pick
+        return pick
+
     def ask(self, query_id, prompt):
         def go():
-            model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+            model = self._model()
             d = self._post(
                 f"https://generativelanguage.googleapis.com/v1beta/models/"
                 f"{model}:generateContent?key={os.getenv('GEMINI_API_KEY')}",

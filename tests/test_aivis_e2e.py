@@ -318,6 +318,73 @@ def main():
     check("and a phase nobody asked for still says to tick the box",
           "no SERP query ran" in _off["GEO-24"]["evidence"])
 
+    print("\nAN HTTP ERROR BODY IS READ, NOT CLOSED UNREAD")
+    # `HTTPError: HTTP Error 404: Not Found` is what the Gemini row printed:
+    # a status line and nothing else. Google answers that 404 with a JSON body
+    # naming the exact problem — "models/gemini-2.0-flash is not found for API
+    # version v1beta" — and `_post` was closing it unread. Same shape as every
+    # other bug here: the cause exists one layer down and nothing unwraps it.
+    import io as _io, json as _js, urllib.error as _ue, urllib.request as _ur
+    from engine.aivis.providers import Provider as _Prov, GeminiProvider as _Gem
+    _real_open = _ur.urlopen
+
+    class _Err(_ue.HTTPError):
+        def __init__(self):
+            _body = _js.dumps({"error": {"code": 404, "message":
+                "models/gemini-2.0-flash is not found for API version "
+                "v1beta, or is not supported for generateContent."}}).encode()
+            super().__init__("https://generativelanguage.googleapis.com/v1beta/"
+                             "models/x:generateContent", 404, "Not Found", {},
+                             _io.BytesIO(_body))
+
+    _ur.urlopen = lambda *a, **k: (_ for _ in ()).throw(_Err())
+    try:
+        _msg = ""
+        try:
+            _Prov()._post("https://generativelanguage.googleapis.com/v1beta/"
+                          "models/x:generateContent", {}, {})
+        except Exception as _e:
+            _msg = str(_e)
+    finally:
+        _ur.urlopen = _real_open
+    check("the provider's real message survives the exception",
+          "not found for API version" in _msg, _msg[:110])
+    check("and the status and host are still there to place it",
+          "404" in _msg and "generativelanguage.googleapis.com" in _msg)
+    check("the bare urllib status line is gone",
+          "HTTP Error 404: Not Found" not in _msg)
+
+    print("\nAND THE GEMINI MODEL IS DISCOVERED, NOT HARDCODED")
+    # A hardcoded model name is a time bomb with Google's hand on the timer:
+    # the row dies silently the day they retire it and stays dead until
+    # somebody reads a checkpoint.
+    _g = _Gem()
+    _Gem._resolved = None
+    _g._models = lambda: ["gemini-1.5-flash", "gemini-2.5-flash", "embedding-001"]
+    check("it picks the best model the key can actually call",
+          _g._model() == "gemini-2.5-flash", _g._model())
+    _Gem._resolved = None
+    _g._models = lambda: ["gemini-9.9-experimental-flash"]
+    check("an unknown-but-usable model beats failing",
+          _g._model() == "gemini-9.9-experimental-flash")
+    _Gem._resolved = None
+    _g._models = lambda: []
+    _why = ""
+    try:
+        _g._model()
+    except Exception as _e:
+        _why = str(_e)
+    check("and a key that lists nothing says what that usually means",
+          "GEMINI_API_KEY" in _why and "not enabled" in _why, _why[:90])
+    _Gem._resolved = None
+    os.environ["GEMINI_MODEL"] = "gemini-set-by-hand"
+    try:
+        check("an explicit GEMINI_MODEL still wins over discovery",
+              _g._model() == "gemini-set-by-hand")
+    finally:
+        os.environ.pop("GEMINI_MODEL", None)
+        _Gem._resolved = None
+
     print("\n" + "=" * 68)
     if FAILURES:
         print(f"  {len(FAILURES)} FAILED: {', '.join(FAILURES)}")
