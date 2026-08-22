@@ -1,6 +1,56 @@
-# Changed files — build 2026.08.20-35
+# Changed files — build 2026.08.20-36
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## Why nine consent rows have been empty on every Ooten run
+
+Not the consent scanner. **The "Run again" button.**
+
+It copies the previous audit's options, which is correct — "run it again"
+means the same settings. But a key that is **absent** is not a decision to
+leave that phase off; it is a run from before the phase existed. Replaying it
+forever means a newly-shipped phase can never turn on.
+
+Every Ooten audit — all twelve — carries the identical options blob:
+
+```json
+{"max_pages": 150, "skip_psi": false, "render_js": false,
+ "primary_conversion": "call, contact us"}
+```
+
+No `run_consent`. No `run_aivis`. No `phases`. They all descend from one audit
+created before those checkboxes were added, and each re-run faithfully
+propagated a stale snapshot forward. The form has had **Consent & privacy
+ticked by default the entire time** — nobody had opened the form since the
+first run, so the default never applied.
+
+`rerun_audit()` now fills an absent key with today's default and leaves a
+present key alone. Absent is a gap; present is a decision, and decisions
+survive:
+
+| Stored options | Carried forward |
+|---|---|
+| no `run_consent` key (legacy audit) | `run_consent: true` — today's default |
+| `run_consent: false` | `false` — someone chose that |
+| `run_consent: true` | `true` |
+| no `run_aivis` key | still absent — that phase is off by default |
+
+### The second cause, which is not code
+
+The panel *also* kept showing "Ours to fix" because the running API container
+was serving `engine/report.py` from **before build ‑32** — the `.vbox` and
+`vlist` CSS classes added then are absent from the live page, while
+`/healthz` (which reads `app/version.py`) reported ‑35.
+
+GitHub is fine: `main` has the current file, and so does the very commit
+`/healthz` names. So the repo is right and the **container is stale** — either
+an instance that never rebuilt, or an old instance still taking traffic
+alongside a new one.
+
+**Fix: Manual Deploy → Clear build cache & deploy, on both services.** Nothing
+in this zip changes that; it has to be forced from the Render dashboard.
 
 ---
 
@@ -547,11 +597,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-35.zip
+unzip -o vici-audit-2026.08.20-36.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-35` in the header before
+Both services redeploy. Confirm `build 2026.08.20-36` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`

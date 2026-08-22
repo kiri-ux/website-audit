@@ -264,6 +264,46 @@ def main():
     st, body = req("POST", "/api/audits/nope/rerun")
     check("rerunning an unknown audit 404s", st == 404, str(st))
 
+    print("\nRE-RUN MUST NOT REPLAY A PHASE THAT DID NOT EXIST YET")
+    # "Run again" copies the previous audit's options, which is right — same
+    # settings. But an ABSENT key is not a decision to leave a phase off; it
+    # is a run from before that phase existed. Replaying it forever means a
+    # newly-shipped phase can never turn on.
+    #
+    # Twelve consecutive re-runs of one client all descended from an audit
+    # created before the consent and AI checkboxes were added. `run_consent`
+    # was never in the options, the phase never ran, and nine checkpoints came
+    # back empty every single time — while the form had the box ticked by
+    # default the whole way, because nobody had opened the form since run one.
+    import json as _j
+    from app import api as _api
+
+    def _carried(stored):
+        """What rerun() would enqueue, given a stored options blob."""
+        opts = _j.loads(_j.dumps(stored))
+        for key, default_on in (("run_consent", True), ("run_aivis", False)):
+            if key not in opts and default_on:
+                opts[key] = True
+        return opts
+
+    legacy = {"max_pages": 150, "skip_psi": False, "render_js": False}
+    out = _carried(legacy)
+    check("a phase absent from an old audit picks up today's default",
+          out.get("run_consent") is True, str(out))
+    check("and a phase that is off by default stays off",
+          "run_aivis" not in out, str(out))
+    off_on_purpose = {"max_pages": 150, "run_consent": False}
+    check("but an explicit off is a decision, and decisions survive",
+          _carried(off_on_purpose)["run_consent"] is False)
+    on_on_purpose = {"max_pages": 150, "run_consent": True, "run_aivis": True}
+    check("and an explicit on is carried through untouched",
+          _carried(on_on_purpose)["run_aivis"] is True)
+    # The real handler must contain the same rule, not just this test.
+    import inspect as _insp
+    _src = _insp.getsource(_api.rerun_audit)
+    check("the rule lives in rerun_audit, not only in this test",
+          "run_consent" in _src and "did not exist" in _src.lower())
+
     print("\n" + "=" * 68)
     print(f"  {len(FAILURES)} FAILED: {FAILURES}" if FAILURES
           else "  ALL CHECKS PASSED — delete is complete and scoped; grouping is safe")

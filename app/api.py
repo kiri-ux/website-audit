@@ -555,6 +555,27 @@ def rerun_audit(audit_id: str, reuse_crawl: str = Form(""),
         opts = opts if isinstance(opts, dict) else {}
     except Exception:
         opts = {}
+
+    # AN OPTION THAT DID NOT EXIST CANNOT HAVE BEEN A CHOICE.
+    #
+    # This copies the previous audit's options, which is right: "run it again"
+    # means the same settings. But a key that is ABSENT is not a decision to
+    # leave that phase off — it is a run from before the phase existed, and
+    # replaying it forever means a newly-shipped phase can never turn on.
+    #
+    # That is exactly what happened. Twelve consecutive re-runs of one client
+    # all descended from an audit created before the consent and AI checkboxes
+    # were added, so `run_consent` was never in the options, the phase never
+    # ran, and nine checkpoints came back empty on every single one. The form
+    # had the box ticked by default the whole time; nobody had opened the form
+    # since the first run.
+    #
+    # So: an absent key gets today's default, a present key is honored. Only
+    # the first is a gap; the second is a decision, and decisions survive.
+    for key, default_on in (("run_consent", True), ("run_aivis", False)):
+        if key not in opts and default_on:
+            opts[key] = True
+
     # Offered by the stalled-run panel. A run that died after the crawl already
     # has its pages stored, and going back out to the client's server to fetch
     # them again is both slow and rude.
