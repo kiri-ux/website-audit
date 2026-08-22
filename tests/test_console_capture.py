@@ -123,6 +123,10 @@ def main():
           "already" in open(os.path.join(root, "extension", "popup.html")).read())
     check("the scrape scrolls, because the exclusion table is below the fold",
           "scrollHeight" in bg and "scrollTo" in bg)
+    check("one press covers every report, Enhancements included",
+          "enhancements" in bg and bg.count("scUrl(") >= 4)
+    check("and a partial capture reports the labels it DID see",
+          "Labels seen on the page" in bg)
 
     print("\nTHE AUDIT ID IS NEVER TYPED BY HAND")
     # "Paste the audit id" was asking someone to copy a sixteen-character hex

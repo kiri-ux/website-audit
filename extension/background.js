@@ -623,7 +623,8 @@ async function consoleCapture(auditId, property, returnTabId) {
   // back to it rather than leaving them in a Search Console tab wondering
   // whether anything happened.
   state.consoleReturnTab = returnTabId || null;
-  state.running = true; state.done = 0; state.total = 2; keepAlive(true);
+  let lastSeen = [];
+  state.running = true; state.done = 0; state.total = 3; keepAlive(true);
   const draft = { property, captured_at: new Date().toISOString(), reasons: {} };
   let tab;
   try {
@@ -648,6 +649,7 @@ async function consoleCapture(auditId, property, returnTabId) {
         target: { tabId: tab.id }, func: _scScrape, args: [SC_REASONS]
       });
       if (result) {
+        lastSeen = result.seen || [];
         if (result.indexed) draft.indexed = result.indexed;
         if (result.not_indexed) draft.not_indexed = result.not_indexed;
         Object.assign(draft.reasons, result.reasons || {});
@@ -672,8 +674,35 @@ async function consoleCapture(auditId, property, returnTabId) {
       }
     }
     state.done = 2;
+
+    // ENHANCEMENTS TOO — one press, every report we can read.
+    // Rich results, breadcrumbs, FAQ and video each get their own row in
+    // Search Console, and each answers a checkpoint. Leaving them out meant
+    // "capture these" quietly meant "capture some of these".
+    say("Opening Enhancements…");
+    if (await scOpen(tab.id, scUrl("enhancements", property, auth))) {
+      const [{ result } = {}] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, func: _scScrape, args: [SC_REASONS]
+      });
+      if (result?.seen?.length) {
+        draft.enhancements_seen = result.seen;
+        say(`Enhancements: read ${result.seen.length} labels.`);
+      }
+    }
+    state.total = 3; state.done = 3;
   } catch (e) {
     say(`Console capture failed: ${e.message}`);
+  }
+
+  // WHEN THE EXCLUSION TABLE DID NOT RESOLVE, SAY WHAT WAS ON THE PAGE.
+  //
+  // Without this a partial capture reports two numbers and no reason, and the
+  // only way to find out why is to guess at Google's markup from a thousand
+  // miles away. The labels it DID read are the thing that makes the next fix
+  // one edit rather than one deploy.
+  if (!Object.keys(draft.reasons).length) {
+    say("No exclusion reasons found. Labels seen on the page: " +
+        (lastSeen.slice(0, 18).join(" | ") || "none"));
   }
 
   const found = Object.keys(draft.reasons).length +

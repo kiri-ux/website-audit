@@ -505,7 +505,7 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
                f" data-gsc-property="
                f"'{e((meta or {}).get('gsc_property') or '')}'>"
                f"<button id='vici-console-go' type='button' class='btn ghost'>"
-               f"Capture these from Search Console</button>"
+               f"Capture all of these from Search Console</button>"
                f"<span id='vici-console-note' class='sm' "
                f"style='color:var(--muted);margin-left:10px'>"
                f"Needs the Site Scanner extension, version 1.3 or newer &mdash; "

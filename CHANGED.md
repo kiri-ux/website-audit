@@ -1,6 +1,45 @@
-# Changed files — build 2026.08.20-46
+# Changed files — build 2026.08.20-47
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## One press, every report — and the SERP failure names itself
+
+**No, you should not have to press it repeatedly.** One press has always
+opened more than one report; it was filling two rows because the exclusion
+table never resolved, not because it only does one thing at a time.
+
+Three changes:
+
+**Enhancements is in the run now.** It read Indexing and Core Web Vitals and
+stopped. Rich results, breadcrumbs, FAQ and video each get their own row in
+Search Console and each answers a checkpoint, so *"capture these"* quietly
+meant *"capture some of these"*. The button says **Capture all of these** and
+now means it.
+
+**A partial capture reports what it saw.** When the exclusion table does not
+resolve, the log prints the labels that WERE on the page:
+
+> No exclusion reasons found. Labels seen on the page: Indexed | Not indexed |
+> Page indexing | Why pages aren't indexed | …
+
+Without that, the only way to find out why is to guess at Google's markup from
+a thousand miles away. Those labels turn the next fix into one edit instead of
+one deploy — the same move that finally cracked the `domain_pages` endpoint.
+
+**And the AI Overviews row stops saying "no successful responses collected."**
+DataForSEO reports its own errors **inside a 200** — a bad location code, an
+unpaid balance and an unknown keyword all arrive as a `status_code` in the
+envelope rather than as an HTTP failure. So nothing raised, nothing logged, and
+the row reported an absence with no cause. The provider now reads that envelope
+and fails loudly:
+
+> DataForSEO SERP returned 40401: Payment Required.
+
+That is the third silent failure today with the same shape, and the same fix:
+**an error carried inside a success needs unwrapping, or it is not an error to
+anyone downstream.**
 
 ---
 
@@ -1235,11 +1274,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-46.zip
+unzip -o vici-audit-2026.08.20-47.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-46` in the header before
+Both services redeploy. Confirm `build 2026.08.20-47` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`
