@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Site Scanner",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Runs the audit, the consent scan and the Search Console capture from your own signed-in browser.",
   "permissions": [
     "activeTab",

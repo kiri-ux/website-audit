@@ -160,6 +160,35 @@ def main():
     check("so the field no longer says 'paste from the dashboard'",
           "paste from the dashboard" not in html)
 
+    print("\nTHE RIGHT GOOGLE ACCOUNT, WITHOUT SIGNING OUT OF THE OTHERS")
+    # Chrome signs you into several at once and Search Console opens under
+    # whichever is default, so a capture run by someone signed in as one
+    # account lands on "Oops, you don't have access to this property" even
+    # though another account in the same browser can see it fine.
+    bg2 = open(os.path.join(root, "extension", "background.js")).read()
+    pop2 = open(os.path.join(root, "extension", "popup.js")).read()
+    html2 = open(os.path.join(root, "extension", "popup.html")).read()
+    check("the report URL carries an authuser", "authuser" in bg2)
+    check("built through one helper, so both reports get it",
+          bg2.count("scUrl(") >= 3)
+    check("an EMAIL, because an index moves when an account is added",
+          "index is a position in the sign-in list" in bg2)
+    check("the account is a saved setting, not a per-run prompt",
+          "googleAccount" in bg2 and "googleAccount" in pop2
+          and "googleAccount" in html2)
+    check("blank still means the default account",
+          'googleAccount: ""' in bg2)
+
+    print("\nAND THE WRONG-ACCOUNT SCREEN IS RECOGNISED")
+    # Without this the scrape finds nothing and reports "nothing recognised",
+    # which points at the parser when the truth is a sign-in.
+    check("Google's denial page is detected",
+          "you don't have access to this property" in bg2)
+    check("the account it actually used is read off the page",
+          "Signed in as" in bg2 and "signed_in_as" in bg2)
+    check("and the run stops there rather than reporting an empty capture",
+          "cannot see this property" in bg2)
+
     print("\n" + "=" * 68)
     if FAILED:
         print(f"  {len(FAILED)} FAILED: {FAILED}")

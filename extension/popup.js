@@ -1,7 +1,7 @@
 // apiBase and token are gone from the UI. The API is one fixed deployment, and
 // partner mode is not in use — two fields that were never changed and always
 // had to be filled in.
-const F = ["auditId", "maxPages", "dwellMs"];
+const F = ["auditId", "maxPages", "dwellMs", "googleAccount"];
 const $ = id => document.getElementById(id);
 
 chrome.storage.local.get(null).then(s => F.forEach(k => { if (s[k] != null) $(k).value = s[k]; }));
@@ -26,7 +26,8 @@ chrome.storage.local.get(null).then(s => F.forEach(k => { if (s[k] != null) $(k)
   } catch (e) { /* a tab we cannot read is not an error worth showing */ }
 })();
 F.forEach(k => $(k).addEventListener("change", () => {
-  const v = ["maxPages", "dwellMs"].includes(k) ? parseInt($(k).value, 10) : $(k).value.trim();
+  const v = ["maxPages", "dwellMs"].includes(k)
+    ? parseInt($(k).value, 10) : $(k).value.trim();
   chrome.storage.local.set({ [k]: v });
 }));
 

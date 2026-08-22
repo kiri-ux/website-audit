@@ -1,6 +1,41 @@
-# Changed files — build 2026.08.20-44
+# Changed files — build 2026.08.20-45
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## Multiple Google accounts, without signing out of any of them
+
+Chrome signs you into several at once and Search Console opens under whichever
+is default — so a capture run while signed in as `kiri@vicimediainc.com` hits
+*"Oops, you don't have access to this property"* even though
+`digital@reporting.zone`, in the same browser, can see it fine.
+
+**Site Scanner 1.3.1** takes a **Google account** in the popup and appends
+`authuser` to every Search Console URL. Set it once; it is remembered.
+
+> **Put the email, not an index.** `/u/1/` and `authuser=1` both address an
+> account by its *position in the sign-in list*, and that position changes the
+> moment an account is added or removed — so a saved index quietly starts
+> pointing at a different person, which is a worse failure than the one it
+> fixes. An email addresses the account itself.
+
+Blank still means the default account, which is right for anyone signed into
+one.
+
+### And the wrong-account screen is recognised
+
+Without this the scrape simply finds nothing and reports *"nothing recognised
+— Google may have renamed a label"*, which points at the parser when the truth
+is a sign-in. The capture now detects Google's denial page, **reads the account
+it actually used off it**, and stops:
+
+> Search Console opened as **kiri@vicimediainc.com**, which cannot see this
+> property. Set the Google account in the popup to the one that can — an
+> email, not an index — and run it again.
+
+Same rule as the rest of this build: a failure that names itself, rather than
+an empty result that sends someone looking in the wrong place.
 
 ---
 
@@ -1129,11 +1164,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-44.zip
+unzip -o vici-audit-2026.08.20-45.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-44` in the header before
+Both services redeploy. Confirm `build 2026.08.20-45` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`

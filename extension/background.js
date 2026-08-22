@@ -24,7 +24,12 @@ const DEFAULTS = {
   dwellMs: 2500,        // time on page after load before capture
   jitterMs: 900,        // randomised so the cadence is not metronomic
   maxPages: 30,         // template sampling: 83% of checks need no more
-  scroll: true
+  scroll: true,
+  // The Google account Search Console should open under. An EMAIL, because an
+  // index is a position in the sign-in list and moves when an account is
+  // added. Empty means whichever account is default, which is right for
+  // anyone signed into one.
+  googleAccount: ""
 };
 
 let state = { running: false, done: 0, total: 0, log: [], pages: [], extras: {} };
@@ -544,6 +549,37 @@ function _scScrape(reasons) {
   return out;
 }
 
+// WHICH GOOGLE ACCOUNT.
+//
+// Chrome signs you into several at once and Search Console opens under
+// whichever is default — so a capture run by someone signed in as
+// kiri@vicimediainc.com lands on "Oops, you don't have access to this
+// property" even though another account in the same browser can see it fine.
+//
+// `authuser` takes an EMAIL as well as an index, and the email is the one to
+// use: the index is a position in the sign-in list that changes whenever an
+// account is added or removed, so a saved index quietly starts pointing at a
+// different person.
+function scUrl(path, property, authuser) {
+  const q = new URLSearchParams({ resource_id: property || "" });
+  if (authuser) q.set("authuser", authuser);
+  return `${SC_BASE}/${path}?${q.toString()}`;
+}
+
+/** Did Google serve the wrong-account screen instead of the report? */
+function _scDenied() {
+  const t = (document.body.innerText || "").toLowerCase();
+  if (t.includes("you don't have access to this property")
+      || t.includes("you do not have access to this property")
+      || t.includes("verify your ownership")) {
+    // The page names the account it used, which is the single most useful
+    // fact for fixing it.
+    const m = (document.body.innerText || "").match(/Signed in as:?\s*(\S+@\S+)/i);
+    return { denied: true, signed_in_as: m ? m[1] : null };
+  }
+  return { denied: false };
+}
+
 async function scOpen(tabId, url) {
   await chrome.tabs.update(tabId, { url });
   // Search Console is a single-page app that renders well after load fires, so
@@ -564,15 +600,28 @@ async function scOpen(tabId, url) {
  */
 async function consoleCapture(auditId, property) {
   const c = await cfg();
+  const auth = (c.googleAccount || "").trim();
   state.running = true; state.done = 0; state.total = 2; keepAlive(true);
-  const enc = encodeURIComponent(property || "");
   const draft = { property, captured_at: new Date().toISOString(), reasons: {} };
   let tab;
   try {
     tab = await chrome.tabs.create({ url: "about:blank", active: true });
 
-    say("Opening Indexing → Pages…");
-    if (await scOpen(tab.id, `${SC_BASE}/index?resource_id=${enc}`)) {
+    say(auth ? `Opening Indexing → Pages as ${auth}…`
+             : "Opening Indexing → Pages…");
+    if (await scOpen(tab.id, scUrl("index", property, auth))) {
+      const [{ result: denied } = {}] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, func: _scDenied
+      });
+      if (denied?.denied) {
+        say(`Search Console opened as ${denied.signed_in_as || "the default " +
+            "account"}, which cannot see this property. Set the Google ` +
+            `account in the popup to the one that can — an email, not an ` +
+            `index — and run it again.`);
+        state.running = false; keepAlive(false);
+        chrome.runtime.sendMessage({ type: "VICI_STATE", state }).catch(() => {});
+        return;
+      }
       const [{ result } = {}] = await chrome.scripting.executeScript({
         target: { tabId: tab.id }, func: _scScrape, args: [SC_REASONS]
       });
@@ -589,7 +638,7 @@ async function consoleCapture(auditId, property) {
     state.done = 1;
 
     say("Opening Core Web Vitals…");
-    if (await scOpen(tab.id, `${SC_BASE}/core-web-vitals?resource_id=${enc}`)) {
+    if (await scOpen(tab.id, scUrl("core-web-vitals", property, auth))) {
       const [{ result } = {}] = await chrome.scripting.executeScript({
         target: { tabId: tab.id }, func: _scScrape, args: [SC_REASONS]
       });
