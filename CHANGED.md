@@ -1,6 +1,77 @@
-# Changed files — build 2026.08.20-45
+# Changed files — build 2026.08.20-46
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## The capture sends itself and puts you back
+
+**Site Scanner 1.4.0.** No popup trip.
+
+You pressed a button on the audit page, so the audit page is where the answer
+belongs. A capture that ends by telling you to go and find another window and
+press a second button is a capture most people abandon — the confirmation was
+the right instinct in the wrong place.
+
+It now reads the reports, posts them, closes the Search Console tab, switches
+you back to the audit and reloads it. The captured rows are simply there.
+
+**Nothing is hidden by that.** Every captured row renders in the report with
+its value and a `captured_from: Search Console UI` marker, and running the
+capture again overwrites it — so a wrong number is one click from being right,
+rather than one click from being sent. The popup keeps the figures as a
+**correction** path: change one and press *Re-send corrected*.
+
+### And it scrolls now
+
+Your first live run found the summary — 56 indexed, 115 not indexed — and none
+of the exclusion reasons. That is the shape of a page read before it finished:
+Search Console renders the *"Why pages aren't indexed"* table below the fold
+and builds it lazily, so a read without scrolling gets the two numbers at the
+top and stops. The capture now walks the page down and back before reading.
+
+---
+
+## "Run again" fills the form
+
+You are right that it was clunky, and it was worse than clunky.
+
+**Run again** used to POST straight to `/rerun`, which copied the previous
+audit's stored options verbatim and queued it. So the settings you were about
+to change were invisible, and an option added *after* the first run could never
+turn on — that is exactly what left twelve consecutive Ooten runs with no
+consent phase, inheriting an options blob written before the checkbox existed.
+
+And there was a second button under the settings table already doing what
+people actually wanted: *put these back in the form so I can change one thing*.
+That is what "run again" means. So that is what the button does, and the other
+one is gone.
+
+It now loads every setting into the form, scrolls you to it, and says so:
+
+> *Settings loaded from The Ooten Law Firm — change anything, then Scan site.*
+
+The `/rerun` endpoint stays for the JSON API and the stalled-run panel, where
+"same settings, no questions" is the right behaviour. It is no longer what a
+button on the dashboard does.
+
+---
+
+## Three settings that never saved
+
+Implementation, Products and Conversion URLs shipped on the form in ‑39 and
+were never added to the settings dict — so they were stored on the audit,
+missing from "Settings used", and dropped by the prefill. **The same omission
+that cost states and industries five builds, repeated on three more fields two
+builds later.**
+
+All three are now stored, displayed and restored, and `test_manage` asserts
+each one is in the prefill payload rather than trusting that I remembered.
+
+Vertical and Primary conversion have come off that panel too. They left the
+form in ‑41, and listing them as settings "used" implied they could be changed
+— on a panel whose entire job is to be loaded back into a form that no longer
+has them.
 
 ---
 
@@ -1164,11 +1235,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-45.zip
+unzip -o vici-audit-2026.08.20-46.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-45` in the header before
+Both services redeploy. Confirm `build 2026.08.20-46` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`

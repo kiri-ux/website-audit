@@ -102,12 +102,27 @@ def main():
     pop = open(os.path.join(root, "extension", "popup.js")).read()
     check("the scrape anchors on Google's visible labels",
           "crawled - currently not indexed" in bg and "soft 404" in bg)
-    check("capture and send are separate steps",
-          "VICI_CONSOLE_SEND" in bg and "consoleDraft" in bg)
-    check("nothing posts straight off the scrape",
-          bg.index("state.consoleDraft =") < bg.index("async function consoleSend"))
-    check("and the draft is editable in the popup, not read-only",
+    # WAS: asserted nothing posted without a trip to the popup. The
+    # confirmation was the right instinct in the wrong place — the operator
+    # pressed a button on the audit page, so a capture that ends by telling
+    # them to go and find another window is a capture most people abandon.
+    #
+    # It sends, then puts them back on the audit. The numbers are not lost to
+    # sight by that: every captured row renders in the report with its value
+    # and a `captured_from` marker, and running the capture again overwrites
+    # it — so a wrong number is one click from being right.
+    check("the capture sends without a detour through the popup",
+          "await consoleSend()" in bg)
+    check("and returns the operator to the page they started on",
+          "consoleReturnTab" in bg and "tabs.reload" in bg)
+    check("the Search Console tab is closed behind them",
+          "tabs.remove" in bg)
+    check("the popup stays as a CORRECTION path",
           "collectDraft" in pop and "data-k=" in pop)
+    check("and says so rather than implying it is required",
+          "already" in open(os.path.join(root, "extension", "popup.html")).read())
+    check("the scrape scrolls, because the exclusion table is below the fold",
+          "scrollHeight" in bg and "scrollTo" in bg)
 
     print("\nTHE AUDIT ID IS NEVER TYPED BY HAND")
     # "Paste the audit id" was asking someone to copy a sixteen-character hex

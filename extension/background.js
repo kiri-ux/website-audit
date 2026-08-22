@@ -589,7 +589,24 @@ async function scOpen(tabId, url) {
     const [{ result } = {}] = await chrome.scripting.executeScript({
       target: { tabId }, func: () => document.body.innerText.length
     });
-    if ((result || 0) > 400) { await settle(1500); return true; }
+    if ((result || 0) > 400) {
+      // The exclusion table renders below the fold and Search Console builds
+      // it lazily, so a read without scrolling gets the summary and nothing
+      // else — which is exactly the half-capture the first live run produced.
+      await chrome.scripting.executeScript({
+        target: { tabId }, func: () => new Promise(res => {
+          let y = 0;
+          const step = () => {
+            y += 700; window.scrollTo(0, y);
+            if (y < document.body.scrollHeight && y < 6000) setTimeout(step, 250);
+            else { window.scrollTo(0, 0); setTimeout(res, 600); }
+          };
+          step();
+        })
+      });
+      await settle(1200);
+      return true;
+    }
   }
   return false;
 }
@@ -598,9 +615,14 @@ async function scOpen(tabId, url) {
  * Walk the two reports for one property and return a draft capture.
  * `property` is the Search Console resource id, e.g. https://example.com/
  */
-async function consoleCapture(auditId, property) {
+async function consoleCapture(auditId, property, returnTabId) {
   const c = await cfg();
   const auth = (c.googleAccount || "").trim();
+  // Where the operator was standing when they pressed the button. They came
+  // from the audit page and that is where the answer belongs, so we send them
+  // back to it rather than leaving them in a Search Console tab wondering
+  // whether anything happened.
+  state.consoleReturnTab = returnTabId || null;
   state.running = true; state.done = 0; state.total = 2; keepAlive(true);
   const draft = { property, captured_at: new Date().toISOString(), reasons: {} };
   let tab;
@@ -664,10 +686,31 @@ async function consoleCapture(auditId, property) {
     return;
   }
 
-  // CONFIRM BEFORE SENDING. There is a person at the keyboard and the cost of
-  // a wrong number here is a wrong number in a client report.
+  // SEND IT, THEN PUT THEM BACK ON THE AUDIT.
+  //
+  // This used to stop here and ask the operator to open the popup and press
+  // Send. The confirmation was the right instinct and the wrong place: they
+  // pressed a button on the audit page, so the audit page is where the answer
+  // belongs, and a capture that ends by telling you to go and find another
+  // window is a capture most people abandon.
+  //
+  // The numbers are not lost to sight by sending them — every captured row
+  // renders in the report with its value, marked `captured_from: Search
+  // Console UI`. Running the capture again overwrites them, so a wrong number
+  // is one click from being right rather than one click from being sent.
   state.consoleDraft = { auditId, draft, found };
-  say(`Found ${found} figures. Review them in the popup and press Send.`);
+  say(`Read ${found} figures. Sending…`);
+  await consoleSend();
+  try {
+    if (tab?.id) await chrome.tabs.remove(tab.id);
+  } catch (e) { /* already closed */ }
+  if (state.consoleReturnTab) {
+    try {
+      await chrome.tabs.update(state.consoleReturnTab, { active: true });
+      await chrome.tabs.reload(state.consoleReturnTab);
+      say("Back on the audit — the captured rows are in it now.");
+    } catch (e) { say("Sent. Reopen the audit to see the filled rows."); }
+  }
   state.running = false; keepAlive(false);
   chrome.runtime.sendMessage({ type: "VICI_STATE", state }).catch(() => {});
 }
@@ -694,7 +737,7 @@ async function consoleSend() {
 
 chrome.runtime.onMessage.addListener((msg, _s, respond) => {
   if (msg?.type === "VICI_CONSOLE") {
-    consoleCapture(msg.auditId, msg.property); respond({ ok: true });
+    consoleCapture(msg.auditId, msg.property, _s?.tab?.id); respond({ ok: true });
   }
   if (msg?.type === "VICI_CONSOLE_SEND") { consoleSend(); respond({ ok: true }); }
   if (msg?.type === "VICI_CONSOLE_EDIT" && state.consoleDraft) {

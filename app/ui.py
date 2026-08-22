@@ -587,32 +587,42 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
             # visible gap.
             "consent_states": " ".join(o.get("consent_states") or []),
             "consent_industries": ", ".join(o.get("consent_industries") or []),
+            # Added to the form in ‑39 and never added here — so they were
+            # stored on the audit, invisible in "Settings used", and lost by
+            # the prefill. The same omission that cost states and industries
+            # five builds, repeated on three more fields two builds later.
+            "consent_products": ", ".join(o.get("consent_products") or []),
+            "conversion_urls": " ".join(o.get("conversion_urls") or []),
+            "implementation": o.get("implementation") or "",
             "render_js": bool(o.get("render_js")),
             "browser_ua": bool(o.get("user_agent")),
         }
 
     def _settings_panel(a):
         st = _settings(a)
-        shown = [("Vertical", st["vertical"] or "generic"),
-                 ("Max pages", st["max_pages"]),
+        # Vertical and Primary conversion came off the form in ‑41. Listing
+        # them here as settings "used" implied they could be changed, on a
+        # panel whose whole job is to be copied back into a form that no
+        # longer has them.
+        shown = [("Max pages", st["max_pages"]),
                  ("Primary markets", st["primary_markets"] or "—"),
-                 ("Primary conversion", st["primary_conversion"] or "—"),
                  ("Partner name", st["partner"] or "—"),
+                 ("Industry", st["consent_industries"] or "—"),
+                 ("Products", st["consent_products"] or "—"),
+                 ("Conversion URLs", st["conversion_urls"] or "—"),
+                 ("Implementation", st["implementation"] or "not specified"),
                  ("Search Console property", st["gsc_property"] or "auto"),
                  ("GA4 property", st["ga4_property_id"] or "auto"),
                  ("Tag Manager container", st["gtm_container"] or "auto"),
                  ("Consent states", st["consent_states"] or "none checked"),
-                 ("Industry", st["consent_industries"] or "—"),
                  ("Render JavaScript", "yes" if st["render_js"] else "no"),
                  ("Browser user-agent", "yes" if st["browser_ua"] else "no")]
         rows = "".join(f"<tr><td class='hw'>{e(k)}</td><td>{e(v)}</td></tr>"
                        for k, v in shown)
         blob = _h.escape(_json.dumps(st), quote=True)
+        # The copy button is gone. "Run again" does this now — see below.
         return (f"<details class='hist'><summary>Settings used</summary>"
-                f"<table class='sub'>{rows}</table>"
-                f"<button class='btn ghost' type='button' style='margin-top:9px;"
-                f"width:100%' data-prefill=\"{blob}\" onclick='prefill(this)'>"
-                f"Copy these settings into the form</button></details>")
+                f"<table class='sub'>{rows}</table></details>")
 
     cards = []
     for g in groups:
@@ -629,9 +639,9 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
                 f"<td class='num'>{e(h.get('coverage') or '—')}</td>"
                 f"<td class='num'>{h.get('pages_crawled') or '—'}</td>"
                 f"<td style='text-align:right'>"
-                f"<form method='post' action='/audits/{h['id']}/rerun' "
-                f"style='display:inline;margin-right:6px'>"
-                f"<button class='del' type='submit'>Run again</button></form>"
+                f"<button class='del' type='button' style='margin-right:6px' "
+                f"data-prefill=\"{_h.escape(_json.dumps(_settings(h)), quote=True)}\" "
+                f"onclick='prefill(this)'>Run again</button>"
                 f"{_del_form(h['id'], 'Delete')}</td></tr>"
                 for h in g["history"])
             hist = (
@@ -666,9 +676,21 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
             + hist
             + f"</div>"
             f"<div class='cact'>"
-            f"<form method='post' action='/audits/{a['id']}/rerun' "
-            f"style='display:inline'>"
-            f"<button class='btn ghost' type='submit'>Run again</button></form>"
+            # RUN AGAIN FILLS THE FORM. It does not launch anything.
+            #
+            # It used to POST straight to /rerun, which copied the previous
+            # audit's stored options verbatim and queued it — so the settings
+            # you were about to change were invisible, and an option added
+            # after the first run could never turn on. That is the bug that
+            # left twelve consecutive Ooten runs with no consent phase.
+            #
+            # There was a second button underneath the settings table doing
+            # exactly what people actually wanted: put these back in the form
+            # so I can change one thing. That is what "Run again" means, so
+            # that is what it does, and the other button is gone.
+            f"<button class='btn ghost' type='button' "
+            f"data-prefill=\"{_h.escape(_json.dumps(_settings(a)), quote=True)}\" "
+            f"onclick='prefill(this)'>Run again</button>"
             f"<a class='btn' href='/audits/{a['id']}'>Open</a>"
             f"<a class='btn ghost' href='/audits/{a['id']}.pdf' target='_blank' "
             f"rel='noopener'>PDF</a>"
@@ -1347,7 +1369,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
       var f = document.getElementById('auditform');
       ['target_url', 'client_name', 'vertical', 'max_pages',
        'primary_conversion', 'partner',
-       'consent_industries'].forEach(function (k) {{
+       'consent_industries', 'implementation'].forEach(function (k) {{
         var el = f.querySelector('[name=' + k + ']')
               || document.querySelector('[name=' + k + ']');
         if (el && st[k] !== undefined && st[k] !== '') el.value = st[k];
@@ -1360,6 +1382,17 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
       if (st.primary_markets) geoAdd(st.primary_markets);
       // States last: restoring a saved list counts as a hand edit, so the
       // markets do not immediately overwrite what was chosen last time.
+      // Products and conversion URLs are toggles and pills, so they are
+      // rebuilt rather than assigned.
+      var want = (st.consent_products || '').split(',')
+                   .map(function (x) {{ return x.trim(); }}).filter(Boolean);
+      document.querySelectorAll('#prrow .tg').forEach(function (b) {{
+        b.classList.toggle('on', want.indexOf(b.dataset.pr) >= 0);
+      }});
+      var ph = document.getElementById('consent_products');
+      if (ph) ph.value = want.join(',');
+      CONVS = [];
+      if (st.conversion_urls) cvAdd(st.conversion_urls);
       if (st.consent_states) {{
         var cs = document.getElementById('cstates');
         if (cs) {{ cs.value = st.consent_states; STATES_TOUCHED = true; }}
@@ -1373,9 +1406,19 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
       // The chosen properties need the dropdowns populated first, so run the
       // access check and apply them when it returns.
       window._pendingProps = {{ gsc: st.gsc_property, ga4: st.ga4_property_id }};
-      document.getElementById('turl').scrollIntoView(
-        {{ behavior: 'smooth', block: 'center' }});
-      document.getElementById('turl').focus();
+      // Land on the form with the client's name in view, and say what
+      // happened — a button that silently changes a form 800px up the page
+      // reads as a button that did nothing.
+      var f2 = document.getElementById('auditform');
+      if (f2) f2.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+      var nm = f2 && f2.querySelector('[name=client_name]');
+      if (nm) nm.focus();
+      var gn = document.getElementById('gonote');
+      if (gn) {{
+        gn.textContent = 'Settings loaded from ' + (st.client_name || 'that run')
+          + ' — change anything, then Scan site.';
+        gn.style.color = 'var(--blue)';
+      }}
       if (st.gsc_property || st.ga4_property_id) checkAccess();
     }}
 

@@ -229,7 +229,12 @@ def main():
           str(_newest_artifact_for("https://phase.test/")))
     check("a URL we have never crawled resolves to nothing",
           _newest_artifact_for("https://never-audited.test/") is None)
-    check("dashboard offers a re-run", b"/rerun" in body)
+    # WAS: asserted the dashboard contains a POST to /rerun. It does not any
+    # more, and that is the point — "Run again" fills the form instead of
+    # launching, so the settings can be seen and changed before anything runs.
+    # The /rerun ENDPOINT stays, for the API and the stalled-run panel.
+    check("dashboard offers a re-run", b"Run again" in body
+          and b"data-prefill" in body)
 
     print("\nRE-RUN MAKES A NEW AUDIT, IT DOES NOT OVERWRITE")
     # The reason anyone re-runs is to see whether a fix worked. Re-queuing the
@@ -263,6 +268,47 @@ def main():
     check("it is queued for the worker", nw["status"] == "queued", nw["status"])
     st, body = req("POST", "/api/audits/nope/rerun")
     check("rerunning an unknown audit 404s", st == 404, str(st))
+
+    print("\nRUN AGAIN FILLS THE FORM, IT DOES NOT LAUNCH")
+    # It used to POST straight to /rerun, copying the previous audit's stored
+    # options verbatim and queueing it — so the settings you were about to
+    # change were invisible, and an option added after the first run could
+    # never turn on. That is what left twelve consecutive runs of one client
+    # with no consent phase at all.
+    #
+    # A second button under the settings table already did what people
+    # actually wanted. That IS what "run again" means, so there is one button.
+    import json as _json2, time as _t
+    from types import SimpleNamespace as _N
+    import app.ui as _ui
+    _a = [{"id": "abc", "client_name": "Ooten", "target_url": "http://o.com/",
+           "status": "ready", "overall_score": 71, "overall_rating": "Weak",
+           "coverage": "321/322", "pages_crawled": 1, "vertical": "",
+           "completed_at": _t.time(), "created_at": _t.time(),
+           "options": _json2.dumps({
+               "max_pages": 150, "consent_products": ["Meta", "PPC"],
+               "conversion_urls": ["https://o.com/thanks"],
+               "implementation": "vici_gtm",
+               "consent_industries": ["Legal - Defense"],
+               "consent_states": ["TN"]})}]
+    _h = _ui.dashboard_html(_a, _N(name="V", email="e"), 0,
+                            caps={"consent": True, "aivis": True})
+    check("no button posts to /rerun any more", "/rerun" not in _h)
+    check("and the duplicate copy button is gone",
+          "Copy these settings" not in _h)
+    check("Run again carries the settings to prefill with",
+          "Run again" in _h and "data-prefill" in _h)
+
+    print("\nAND EVERY SETTING IS ACTUALLY IN THAT PAYLOAD")
+    # Three fields shipped on the form in -39 and were never added to the
+    # settings dict, so they were stored on the audit, missing from "Settings
+    # used", and dropped by the prefill. The same omission that cost states
+    # and industries five builds, on three more fields two builds later.
+    for k in ("consent_products", "conversion_urls", "implementation",
+              "consent_states", "consent_industries", "primary_markets"):
+        check(f"{k} is carried", f'\\"{k}\\"' in _h or f'&quot;{k}&quot;' in _h)
+    check("and the two fields the form no longer has are not shown as used",
+          ">Vertical<" not in _h and ">Primary conversion<" not in _h)
 
     print("\nRE-RUN MUST NOT REPLAY A PHASE THAT DID NOT EXIST YET")
     # "Run again" copies the previous audit's options, which is right — same
