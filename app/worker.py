@@ -336,6 +336,59 @@ def _after_crawl(a, opts, audit_id, art, findings, step):
     return _score_and_save(a, opts, audit_id, art, findings, extras, step)
 
 
+def _consent(a, audit_id, findings, extras, opts, step):
+    """
+    One consent scan of the homepage, turned into nine checkpoints.
+
+    ONE page, not the whole crawl. A consent banner and its pre-consent network
+    traffic are a property of the site's tag setup, not of any particular URL,
+    and loading 150 pages in a browser to click Accept 150 times would cost
+    twenty minutes to learn the same thing.
+
+    The scanner is vendored rather than reimplemented, so this function is
+    almost entirely error handling — which is the point. A consent scan that
+    fails must leave nine rows honestly unanswered and the audit otherwise
+    intact.
+    """
+    try:
+        from engine.consent import scan_site
+        from engine.consent.checks import findings_from_scan
+    except Exception as exc:  # noqa: BLE001
+        print(f"[worker] {audit_id} consent scanner unavailable: "
+              f"{type(exc).__name__}: {exc}", flush=True)
+        return
+    step("checking", "checking consent, cookie banner and pre-consent tags")
+    try:
+        scan = scan_site(a["target_url"],
+                         prefer_full=not opts.get("skip_consent_browser"),
+                         states=opts.get("consent_states") or None,
+                         industries=opts.get("consent_industries") or None)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[worker] {audit_id} consent scan errored: "
+              f"{type(exc).__name__}: {exc}", flush=True)
+        scan = None
+    rows = findings_from_scan(scan)
+    findings.update(rows)
+    if scan:
+        mode = scan.get("mode")
+        answered = sum(1 for f in rows.values() if f.get("status") != "Need Access")
+        # A basic-mode scan answers four of nine and cannot answer the rest.
+        # Say which happened, because "4/9" alone reads as a partial failure
+        # when it is the correct and complete result for that mode.
+        print(f"[worker] {audit_id} consent scan ({mode}) answered "
+              f"{answered}/{len(rows)} rows"
+              + ("; browser unavailable, so banner, Consent Mode and "
+                 "pre-consent could not be tested" if mode != "full" else ""),
+              flush=True)
+        extras["consent"] = {
+            "mode": mode,
+            "cmps": [c.get("name") for c in (scan.get("cmps") or [])],
+            "verdict": scan.get("verdict"),
+            "verdict_detail": scan.get("verdict_detail"),
+            "scanned_at": scan.get("scanned_at"),
+        }
+
+
 def _ai_visibility(a, audit_id, findings, extras, step):
     """
     Ask the assistants, in line, and record what they said.
@@ -431,6 +484,10 @@ def _score_and_save(a, opts, audit_id, art, findings, extras, step):
             extras["screenshots"] = shots
             print(f"[worker] {audit_id} captured {len(shots)} evidence shots",
                   flush=True)
+
+    # ---- consent and privacy ------------------------------------------
+    if opts.get("run_consent"):
+        _consent(a, audit_id, findings, extras, opts, step)
 
     # ---- AI visibility, as a phase of the audit rather than a separate errand
     #

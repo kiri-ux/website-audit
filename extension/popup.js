@@ -37,6 +37,19 @@ $("go").addEventListener("click", async () => {
   chrome.runtime.sendMessage({ type: "VICI_START", url: tab.url });
 });
 
+// Consent capture is a DIFFERENT job from the crawl capture: one page, watched
+// closely, rather than many pages read once. Same settings, same upload target,
+// separate button — because doing both from one button would mean guessing
+// which one the operator meant.
+$("consent").addEventListener("click", async () => {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.url || !/^https?:/.test(tab.url)) {
+    alert("Open the site you want to check in this tab first.");
+    return;
+  }
+  chrome.runtime.sendMessage({ type: "VICI_CONSENT", url: tab.url });
+});
+
 chrome.runtime.onMessage.addListener(m => { if (m?.type === "VICI_STATE") render(m.state); });
 chrome.runtime.sendMessage({ type: "VICI_GET_STATE" }).then(r => render(r?.state));
 setInterval(() => chrome.runtime.sendMessage({ type: "VICI_GET_STATE" })

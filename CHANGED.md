@@ -1,4 +1,90 @@
-# Changed files — build 2026.08.20-27
+# Changed files — build 2026.08.20-28
+
+## The consent scanner, folded in
+
+`engine/consent/` is the standalone scanner — `scanner.py`, `signatures.py`,
+`state_checks.py`, `industries.py` — vendored with its imports made relative and
+nothing else changed. **The only new code is `checks.py`**, an adapter that turns
+one scan result into nine checkpoints.
+
+Vendored rather than rewritten on purpose. The hard part of consent scanning is
+not the idea; it is fourteen CMP signatures, an accept-click that survives
+iframe banners, and knowing that a Google endpoint carrying a denied-state
+`gcs=` parameter before consent is an **expected cookieless ping rather than a
+violation**. That knowledge accumulated over many versions in one place. A
+second implementation would be a second thing to keep correct, and the two would
+drift on exactly the cases that matter.
+
+### Nine checkpoints, in a new section
+
+| | |
+|---|---|
+| **CONS-01** | CMP installed |
+| **CONS-02** | Banner actually appears |
+| **CONS-03** | Consent Mode defaults set |
+| **CONS-04** | No tracking before consent |
+| **CONS-05** | Reject is respected |
+| **CONS-06** | Global Privacy Control respected |
+| **CONS-07** | Do Not Sell / opt-out link |
+| **CONS-08** | State privacy law requirements |
+| **CONS-09** | Tag Manager consent trigger available |
+
+**The rule that shapes every one of them:** a basic scan — raw HTML, no browser
+— detects most CMPs and nothing else. Five rows report **Need Access** in that
+mode and say why. "No tracking before consent: Pass" off an HTML fetch would be
+a clean bill of health for a question that was never asked.
+
+Severities here are higher than an SEO reader expects, and that is correct. A
+pixel firing before consent in a state with a private right of action is a
+different kind of problem from a missing meta description. Banner installed but
+never shown, reject that changes nothing, GPC ignored — all Critical.
+
+### Two ways to run it
+
+**As a phase of the audit** — a pill on the form, on by default. One page, not
+the whole crawl: a consent banner is a property of the tag setup, not of any
+URL, and clicking Accept 150 times would cost twenty minutes to learn the same
+thing.
+
+**As a standalone check** — a *Consent check* button beside *Run audit*. It is
+an **audit with one page and one phase**, which means it inherits the queue, the
+status page, the report, client grouping and the rerun button for free. A
+separate record type would have been a second copy of all five.
+
+---
+
+## The extension does consent capture
+
+The scanner's dead end is bot protection: `_looks_challenged` fires, Playwright
+falls back to raw HTML, and the scan loses the banner, Consent Mode, pre-consent
+fires **and** the reject test — three and a half of the four questions it
+exists to answer. On a challenged site it reports almost nothing.
+
+The extension runs in your own Chrome, on your IP, with your cookies, which
+challenge pages let through because it is a person. **Consent check** in the
+popup does four things on the open tab:
+
+1. Loads and watches every request, touching nothing.
+2. Reads the page for a visible banner and for `dataLayer` Consent Mode
+   defaults. *Visible* means on screen and painted — a banner rendered
+   off-canvas or at zero opacity is exactly the failure CONS-02 looks for.
+3. Clicks Accept, watches again.
+4. Reloads **fresh** and clicks Reject. Fresh matters: after Accept the CMP has
+   written its cookie, so a Reject click then tests a different state from the
+   one a first-time visitor sees.
+
+**The extension classifies nothing.** It records what happened and posts it;
+`POST /api/audits/{id}/consent-capture` runs the same signature tables, the same
+`gcs=` parsing and the same endpoint lists as the Playwright path, then rescores
+the audit. Two classifiers would eventually disagree about the same site with no
+way to tell which was right — the tests assert both paths reach the same verdict
+on the same evidence.
+
+One more distinction it keeps: a capture that could not read the dataLayer
+reports Consent Mode as **unknown**, not absent. "No defaults set" and "we could
+not look" are opposite findings.
+
+---
 
 ## Site Scanner
 

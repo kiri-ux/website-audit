@@ -28,10 +28,10 @@ SECTION_NAMES = {
     "CANON": "Canonicalization", "PERF": "Performance & CWV", "ONP": "On-Page SEO",
     "MOB": "Mobile SEO", "SCHEMA": "Structured Data", "INTL": "International SEO",
     "HTML": "HTML & Code Quality", "EEAT": "E-E-A-T", "GEO": "AI Search (GEO)",
-    "OFF": "Off-Page & Authority",
+    "OFF": "Off-Page & Authority", "CONS": "Consent & Privacy",
 }
 ORDER = ["ANA", "GSC", "GA4", "TECH", "URL", "SEC", "CANON", "PERF", "ONP",
-         "MOB", "SCHEMA", "INTL", "HTML", "EEAT", "GEO", "OFF"]
+         "MOB", "SCHEMA", "INTL", "HTML", "EEAT", "GEO", "OFF", "CONS"]
 
 
 def e(x):

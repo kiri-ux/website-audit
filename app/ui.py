@@ -119,6 +119,13 @@ input:focus,select:focus{outline:none;border-color:var(--blue);
 button{padding:10px 24px;border:0;border-radius:20px;background:var(--blue);color:#fff;
  font:inherit;font-weight:500;font-size:14px;cursor:pointer;white-space:nowrap}
 button:hover{filter:brightness(1.07)}
+/* The secondary action on the form. Same shape as the primary so it reads as a
+   sibling rather than a downgrade — they do different jobs, not the same job
+   at different strengths. */
+button.alt{background:var(--surface);color:var(--navy);
+ border:1px solid var(--line);font-weight:600}
+button.alt:hover{border-color:var(--navy);color:var(--navy);filter:none;
+ background:#f2f6fb}
 
 /* Action buttons, adtini's rounded pill family. */
 .btn{display:inline-block;padding:8px 20px;border-radius:20px;background:var(--blue);
@@ -606,7 +613,16 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
         <option value='finance_ymyl'>finance / YMYL</option>
         <option value='local_service'>local service</option></select></div>
       <div><label>Max pages</label><input name='max_pages' type='number' value='150'></div>
-      <div><button type='submit'>Run audit</button></div>
+      <div style='display:flex;gap:8px'>
+        <button type='submit'>Run audit</button>
+        <!-- Same form, one page, consent only. `quick` is what the API reads;
+             formnovalidate is deliberate — this path needs the URL and nothing
+             else, and a required Client name should not block a spot check. -->
+        <button type='submit' name='quick' value='consent' class='alt'
+                title='Load the homepage in a browser and check the cookie
+banner, Consent Mode and what fires before consent. No crawl.'>
+          Consent check</button>
+      </div>
     </form>
     <div style='margin-top:12px'>
       <button type='button' class='btn ghost' id='ckbtn'
@@ -687,6 +703,12 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
                  form='auditform'>
           <span class='tick'>{TICK}</span>
           Ask the AI assistants <span class='note'>{AIVIS_NOTE}</span></label>
+        <label class='ph'>
+          <input type='checkbox' name='run_consent' value='1' checked
+                 form='auditform'>
+          <span class='tick'>{TICK}</span>
+          Consent &amp; privacy
+          <span class='note'>cookie banner, pre-consent tags</span></label>
         <label class='ph'>
           <input type='checkbox' name='reuse_crawl' value='1' form='auditform'>
           <span class='tick'>{TICK}</span>

@@ -91,6 +91,13 @@ def _vendor_ids() -> set:
         ids |= set(GEO_IDS)
     except Exception:  # noqa: BLE001
         pass
+    # Consent and privacy. The scanner answers all nine; an empty row means the
+    # phase was not run or the browser was unavailable, both of which are ours.
+    try:
+        from engine.consent.checks import CONS_IDS
+        ids |= set(CONS_IDS)
+    except Exception:  # noqa: BLE001
+        pass
     return ids
 
 

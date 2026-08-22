@@ -24,6 +24,9 @@ button.stop{background:#d03b3b}
  color:#52514e;white-space:pre-wrap}
 @media(prefers-color-scheme:dark){#log{color:#c3c2b7}}
 .hint{font-size:11px;color:#898781;margin-top:8px;line-height:1.45}
+  button.alt{background:#fff;color:#12356b;border:1px solid #dfe4ec;
+              font-weight:600;margin-top:6px}
+  button.alt:hover{border-color:#12356b}
 </style></head><body>
 <h1>Vici Audit Capture</h1>
 <div class="sub">Captures the real browser render from sites that block server crawlers.</div>
@@ -35,6 +38,7 @@ button.stop{background:#d03b3b}
   <div><label>Dwell (ms)</label><input id="dwellMs" type="number" value="2500"></div>
 </div>
 <button id="go">Start capture</button>
+  <button id="consent" class="alt">Consent check</button>
 <div class="bar"><i id="bar"></i></div>
 <div id="status" class="sub" style="margin:0">idle</div>
 <div id="log"></div>

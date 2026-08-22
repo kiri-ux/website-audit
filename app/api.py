@@ -400,6 +400,8 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
                 run_collectors: str = Form(""),
                 run_screenshots: str = Form(""),
                 run_aivis: str = Form(""),
+                run_consent: str = Form(""),
+                quick: str = Form(""),
                 reuse_crawl: str = Form(""), phases: str = Form(""),
                 gsc_property: str = Form(""), ga4_property_id: str = Form(""),
                 x_api_key: str | None = Header(None)):
@@ -424,6 +426,24 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
     # does a script that has never heard of it.
     if run_aivis:
         opts["run_aivis"] = True
+    if run_consent:
+        opts["run_consent"] = True
+
+    # A CONSENT CHECK IS A ONE-PAGE AUDIT.
+    #
+    # It could have been a separate record type with its own queue job, its own
+    # status page and its own history — and every one of those would be a
+    # second copy of something that already works here. A consent scan needs
+    # exactly what an audit needs: a worker with a browser, a place to put the
+    # answer, and a page that shows progress. So it is an audit with one page
+    # and one phase, and it inherits the queue, the status page, the report,
+    # the client grouping and the rerun button for free.
+    if quick == "consent":
+        opts.update({"max_pages": 1, "skip_judgment": True,
+                     "skip_collectors": True, "skip_screenshots": True,
+                     "skip_dataforseo": True, "skip_psi": True,
+                     "run_consent": True, "run_aivis": False,
+                     "quick": "consent"})
     # Reuse the newest crawl we still hold for this exact URL. The client's
     # server is not asked for another 150 pages just because our LLM key was
     # missing last time.
@@ -718,6 +738,53 @@ def audit_summary(audit_id: str, polish: bool = False,
 
 
 # ==================================================================== BROWSER CAPTURE
+@app.post("/api/audits/{audit_id}/consent-capture")
+def ingest_consent_capture(audit_id: str, payload: dict,
+                           x_api_key: str | None = Header(None)):
+    """
+    Accept a consent capture from the extension and score it.
+
+    The escape hatch for the scanner's dead end. Bot protection means Playwright
+    falls back to raw HTML, which cannot see the banner, Consent Mode,
+    pre-consent fires or the reject test — three and a half of the four
+    questions the scan exists to answer. The extension runs in the operator's
+    own Chrome, which challenge pages let through because it is a person.
+
+    THE EXTENSION CLASSIFIES NOTHING. It sends what happened; the same
+    signature tables, `gcs=` parsing and endpoint lists that the Playwright
+    path uses run here. Two classifiers would eventually disagree about the
+    same site with no way to tell which was right.
+    """
+    p = principal(x_api_key)
+    a = db.get_audit(audit_id, p.scope)
+    if not a:
+        raise HTTPException(404, "audit not found")
+    if not payload.get("html") and not payload.get("pre_requests"):
+        raise HTTPException(400, "capture contained neither HTML nor requests")
+
+    from engine.consent.from_capture import result_from_capture
+    from engine.consent.checks import findings_from_scan
+    scan = result_from_capture({**payload, "url": payload.get("url")
+                                or a["target_url"]})
+    rows = findings_from_scan(scan)
+    db.save_findings(audit_id, rows)
+
+    # Rescore, because nine new rows change the coverage and the Consent
+    # section's score. An ingest that leaves the stored score describing the
+    # run before it is the same silent-staleness bug as reusing a crawl.
+    findings = db.get_findings(audit_id)
+    cat = db.catalog()
+    sc = engine_scoring.score(findings, cat, a.get("vertical"))
+    db.save_scores(audit_id, sc)
+
+    answered = sum(1 for f in rows.values() if f.get("status") != "Need Access")
+    print(f"[api] {audit_id} consent capture ingested — {answered}/{len(rows)} "
+          f"rows answered from the browser", flush=True)
+    return {"ok": True, "answered": answered, "total": len(rows),
+            "cmps": [c.get("name") for c in (scan.get("cmps") or [])],
+            "report": f"/audits/{audit_id}"}
+
+
 @app.post("/api/audits/{audit_id}/capture")
 def ingest_capture(audit_id: str, payload: dict, x_api_key: str | None = Header(None)):
     """

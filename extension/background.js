@@ -256,6 +256,7 @@ async function run(startUrl) {
 
 chrome.runtime.onMessage.addListener((msg, _s, respond) => {
   if (msg?.type === "VICI_START") { run(msg.url); respond({ ok: true }); }
+  if (msg?.type === "VICI_CONSENT") { consentRun(msg.url); respond({ ok: true }); }
   // Launched from the audit page's own button: the page already knows the
   // audit id and the target, so nothing needs copying into the popup.
   if (msg?.type === "VICI_START_FOR") {
@@ -269,3 +270,189 @@ chrome.runtime.onMessage.addListener((msg, _s, respond) => {
   if (msg?.type === "VICI_GET_STATE") respond({ state });
   return true;
 });
+
+
+// ===================================================================
+// CONSENT CAPTURE
+//
+// The standalone scanner's dead end is bot protection: a challenge page means
+// Playwright falls back to raw HTML, which cannot see the banner, Consent Mode,
+// pre-consent fires or the reject test. That is three and a half of the four
+// questions it exists to answer.
+//
+// This is the same trick the crawl capture uses, applied to consent. The
+// operator's own Chrome, their own IP, their own cookies — which challenge
+// pages let through, because it is a person.
+//
+// The extension CLASSIFIES NOTHING. It records what happened and posts it; the
+// server runs the same signature matching, gcs= parsing and endpoint tables the
+// Playwright path uses. Two classifiers would eventually disagree about the
+// same site and there would be no way to know which was right.
+// ===================================================================
+
+const ACCEPT_TEXT = /\b(accept|agree|allow|got it|ok|i understand|continue)\b/i;
+const REJECT_TEXT = /\b(reject|decline|refuse|deny|necessary only|essential only)\b/i;
+
+let recorder = null;   // { bucket: [urls], filter: tabId }
+
+function recStart(tabId) {
+  recStop();
+  const bucket = [];
+  const onBefore = d => {
+    if (d.tabId === tabId && d.url && !d.url.startsWith("chrome-")) bucket.push(d.url);
+  };
+  chrome.webRequest.onBeforeRequest.addListener(
+    onBefore, { urls: ["<all_urls>"], tabId });
+  recorder = { bucket, onBefore };
+  return bucket;
+}
+
+function recStop() {
+  if (recorder) {
+    try { chrome.webRequest.onBeforeRequest.removeListener(recorder.onBefore); }
+    catch (e) { /* already gone */ }
+    recorder = null;
+  }
+}
+
+async function inTab(tabId, fn, args = []) {
+  const [res] = await chrome.scripting.executeScript(
+    { target: { tabId }, func: fn, args, world: "MAIN" });
+  return res?.result;
+}
+
+// Runs INSIDE the page. Reads what only the page can know: whether anything
+// that looks like a consent banner is actually visible, and what Consent Mode
+// defaults the dataLayer was given before the tags loaded.
+function _probe() {
+  const out = { visible: false, defaults: {}, read: false, html: "",
+                scripts: [] };
+  try {
+    out.html = document.documentElement.outerHTML.slice(0, 400000);
+    out.scripts = [...document.querySelectorAll("script[src]")]
+      .map(s => s.src).slice(0, 200);
+  } catch (e) { /* nothing */ }
+  try {
+    const rx = /(cookie|consent|gdpr|ccpa|privacy|onetrust|cmp)/i;
+    const nodes = [...document.querySelectorAll(
+      "div,section,aside,dialog,[role=dialog],[aria-modal]")].slice(0, 4000);
+    for (const n of nodes) {
+      const id = (n.id || "") + " " + (n.className || "");
+      if (typeof id !== "string" || !rx.test(id)) continue;
+      const r = n.getBoundingClientRect();
+      const st = getComputedStyle(n);
+      // Visible means ON SCREEN and painted. A banner rendered off-canvas or
+      // at zero opacity is exactly the failure mode this row is looking for.
+      if (r.width > 120 && r.height > 40 && r.bottom > 0 && r.top < innerHeight
+          && st.visibility !== "hidden" && st.display !== "none"
+          && parseFloat(st.opacity || "1") > 0.05) { out.visible = true; break; }
+    }
+  } catch (e) { /* leave false */ }
+  try {
+    const dl = window.dataLayer || [];
+    out.read = Array.isArray(dl);
+    for (const row of dl) {
+      // gtag pushes arguments objects: ["consent","default",{...}]
+      const a = row && row.length ? [...row] : null;
+      if (a && a[0] === "consent" && a[1] === "default" && a[2]) {
+        Object.assign(out.defaults, a[2]);
+      }
+    }
+  } catch (e) { /* leave empty */ }
+  return out;
+}
+
+function _click(patternSource) {
+  const rx = new RegExp(patternSource, "i");
+  const els = [...document.querySelectorAll(
+    "button,a,[role=button],input[type=button],input[type=submit]")];
+  for (const el of els) {
+    const t = (el.innerText || el.value || el.getAttribute("aria-label") || "").trim();
+    if (!t || t.length > 40 || !rx.test(t)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) continue;
+    el.click();
+    return t;
+  }
+  return null;
+}
+
+async function settle(ms) { await new Promise(r => setTimeout(r, ms)); }
+
+async function consentRun(startUrl) {
+  const c = await cfg();
+  if (!c.apiBase || !c.auditId) { say("ERROR: set API URL and audit ID first"); return; }
+  state = { running: true, done: 0, total: 4, log: state.log, pages: [], extras: {} };
+  keepAlive(true);
+  say(`consent capture of ${startUrl}`);
+
+  const tab = await chrome.tabs.create({ url: "about:blank", active: false });
+  const cap = { url: startUrl, accept_clicked: false, reject_clicked: false };
+  try {
+    // ---- 1. pre-consent: load and watch, touching nothing ----------------
+    let bucket = recStart(tab.id);
+    await chrome.tabs.update(tab.id, { url: startUrl });
+    await settle(6000);
+    const probe = await inTab(tab.id, _probe);
+    cap.pre_requests = [...bucket];
+    cap.html = probe?.html || "";
+    cap.scripts = probe?.scripts || [];
+    cap.banner_visible = !!probe?.visible;
+    cap.consent_defaults = probe?.defaults || {};
+    cap.consent_defaults_read = !!probe?.read;
+    state.done = 1; say(`pre-consent: ${cap.pre_requests.length} requests, ` +
+                        `banner ${cap.banner_visible ? "visible" : "not seen"}`);
+
+    // ---- 2. accept, then watch again -------------------------------------
+    const hit = await inTab(tab.id, _click, [ACCEPT_TEXT.source]);
+    if (hit) {
+      cap.accept_clicked = true;
+      await settle(5000);
+      cap.post_requests = [...bucket];
+      say(`clicked “${hit}” — ${cap.post_requests.length} requests total`);
+    } else {
+      say("no Accept control found");
+    }
+    state.done = 2;
+
+    // ---- 3. reject, on a FRESH load --------------------------------------
+    // A fresh load matters: once Accept has been clicked the CMP has written
+    // its cookie, and a Reject click after that is testing a different state
+    // from the one a first-time visitor sees.
+    recStop();
+    bucket = recStart(tab.id);
+    await chrome.tabs.update(tab.id, { url: startUrl + (startUrl.includes("?") ? "&" : "?") + "vici=1" });
+    await settle(5000);
+    const rej = await inTab(tab.id, _click, [REJECT_TEXT.source]);
+    if (rej) {
+      cap.reject_clicked = true;
+      bucket.length = 0;             // only what fires AFTER the click counts
+      await settle(5000);
+      cap.reject_requests = [...bucket];
+      say(`clicked “${rej}” — ${cap.reject_requests.length} requests after`);
+    } else {
+      say("no Reject control found");
+    }
+    state.done = 3;
+  } catch (e) {
+    say("ERROR: " + (e?.message || e));
+  } finally {
+    recStop();
+    chrome.tabs.remove(tab.id).catch(() => {});
+  }
+
+  say("uploading consent capture…");
+  try {
+    const res = await fetch(
+      `${c.apiBase.replace(/\/$/, "")}/api/audits/${c.auditId}/consent-capture`,
+      { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cap) });
+    say(res.ok ? "done — consent capture uploaded"
+               : `upload failed: HTTP ${res.status}`);
+  } catch (e) {
+    say("upload failed: " + (e?.message || e));
+  }
+  state.done = 4; state.running = false;
+  keepAlive(false);
+  chrome.runtime.sendMessage({ type: "VICI_STATE", state }).catch(() => {});
+}

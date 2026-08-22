@@ -12,9 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-27"
-BUILD_NOTES = ("Site Scanner: phase pills, a livelier page, and two pairs "
-               "of labels that no longer look like duplicates")
+BUILD = "2026.08.20-28"
+BUILD_NOTES = ("The consent scanner is folded in as nine checkpoints, a "
+               "standalone check, and an extension capture for sites that "
+               "block the browser")
 # ---------------------------------------------------------------------------
 
 

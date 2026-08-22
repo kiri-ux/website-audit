@@ -312,3 +312,12 @@ OFF-26,OFF,14. Off-Page SEO & Authority,Broken link building,Ahrefs / Semrush,Me
 OFF-27,OFF,14. Off-Page SEO & Authority,HARO opportunities,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
 OFF-28,OFF,14. Off-Page SEO & Authority,Brand mention opportunities,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
 OFF-29,OFF,14. Off-Page SEO & Authority,Unlinked brand mentions,Ahrefs / Semrush,Medium,A,Ahrefs / Semrush
+CONS-01,CONS,"17. Consent & Privacy",Consent management platform installed,Consent Scanner,High,A,Consent Scanner
+CONS-02,CONS,"17. Consent & Privacy",Consent banner actually appears,Consent Scanner,High,A,Consent Scanner
+CONS-03,CONS,"17. Consent & Privacy",Google Consent Mode defaults set,Consent Scanner,High,A,Consent Scanner
+CONS-04,CONS,"17. Consent & Privacy",No tracking before consent,Consent Scanner,High,A,Consent Scanner
+CONS-05,CONS,"17. Consent & Privacy",Reject is respected,Consent Scanner,High,A,Consent Scanner
+CONS-06,CONS,"17. Consent & Privacy",Global Privacy Control respected,Consent Scanner,High,A,Consent Scanner
+CONS-07,CONS,"17. Consent & Privacy",Do Not Sell / opt-out link present,Consent Scanner,High,A,Consent Scanner
+CONS-08,CONS,"17. Consent & Privacy",State privacy law requirements,Consent Scanner,High,A,Consent Scanner
+CONS-09,CONS,"17. Consent & Privacy",Tag Manager consent trigger available,Consent Scanner,High,A,Consent Scanner

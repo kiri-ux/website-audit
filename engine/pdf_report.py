@@ -58,6 +58,7 @@ SECTION_NAMES = {
     "MOB": "Mobile SEO", "SCHEMA": "Structured Data (Schema)",
     "INTL": "International SEO", "HTML": "HTML & Code Quality",
     "EEAT": "E-E-A-T Audit", "GEO": "AI Search", "OFF": "Off-Page SEO & Authority",
+    "CONS": "Consent & Privacy",
 }
 # Chart labels. The full names are correct in prose and in the tables, but a
 # ranked bar chart has a fixed label gutter — shortening beats auto-shrinking,
@@ -68,7 +69,7 @@ SHORT_NAMES = {
     "CANON": "Canonicalization", "PERF": "Performance & CWV", "ONP": "On-Page SEO",
     "MOB": "Mobile SEO", "SCHEMA": "Structured Data", "INTL": "International SEO",
     "HTML": "HTML & Code Quality", "EEAT": "E-E-A-T", "GEO": "AI Search",
-    "OFF": "Off-Page & Authority",
+    "OFF": "Off-Page & Authority", "CONS": "Consent & Privacy",
 }
 ORDER = list(SECTION_NAMES)
 STATUS_ORDER = ["Fail", "Not Implemented", "Warning", "Pass", "Info",
