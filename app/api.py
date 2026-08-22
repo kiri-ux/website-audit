@@ -512,9 +512,20 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
         prods = [x.strip() for x in consent_products.split(",") if x.strip()]
         if prods:
             opts["consent_products"] = prods
-        convs = [u.strip() for u in conversion_urls.split() if u.strip()]
+        # NO CAP. The browser already harvested and de-duplicated these, and
+        # a client with fourteen landing pages has fourteen pages where a
+        # conversion pixel can fire ungated. Silently keeping six would be the
+        # same failure as every other quiet truncation in this codebase: a
+        # list that looks complete and is not.
+        convs, seen = [], set()
+        for u in conversion_urls.split():
+            u = u.strip()
+            key = u.lower().split("://")[-1].lstrip("www.").rstrip("/")
+            if u and key not in seen:
+                seen.add(key)
+                convs.append(u)
         if convs:
-            opts["conversion_urls"] = convs[:6]
+            opts["conversion_urls"] = convs
         if implementation.strip():
             opts["implementation"] = implementation.strip()
 

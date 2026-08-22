@@ -425,6 +425,23 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
     skipped, vendor = unrequested(
         b["vendor"], ((meta or {}).get("extras") or {}).get("phases_run"))
 
+    # A PERMANENT BOUNDARY IS NOT A FIX LIST ITEM.
+    #
+    # Eight rows sat under "a credential we have not set, or a call we have
+    # not written": Index Coverage, Core Web Vitals and the rest that Google
+    # publishes in the Search Console UI and exposes through no API. There is
+    # no credential and no call. They will be there on every run forever, and
+    # a permanent entry on a to-do list is how the whole list stops being
+    # read — the same failure as the analyst section and the unticked phases.
+    #
+    # They still belong in the document, because someone has to know the
+    # number came from a person opening a browser. They just do not belong
+    # under a heading that promises they will go away.
+    _NO_API = {"gsc_ui_only", "ga4_admin_only"}
+    boundary = [c for c in vendor
+                if (findings.get(c) or {}).get("source") in _NO_API]
+    vendor = [c for c in vendor if c not in set(boundary)]
+
     if vendor:
         items = "".join(
             f"<li><b>{n}</b> — {e(why)}"
@@ -439,6 +456,19 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             f"A credential we have not set, or a call we have not written. "
             f"Nothing to ask anyone for.</div>"
             f"<ul style='margin:6px 0 0 18px'>{items}</ul></div>")
+
+    if boundary:
+        rows = "".join(
+            f"<li><b>{n}</b> — {e(why)}</li>" for why, n, _fix in reasons(boundary))
+        out.append(
+            f"<div style='margin-top:12px'>"
+            f"<b style='color:var(--ink2)'>Google publishes no API for this "
+            f"&middot; {len(boundary)}</b>"
+            f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
+            f"Read from the Search Console interface by hand, or skipped. "
+            f"Nothing to configure and nothing that will change — this is a "
+            f"limit of Google's API, not a gap in the run."
+            f"</div><ul style='margin:6px 0 0 18px'>{rows}</ul></div>")
 
     if skipped:
         # Muted, and phrased as a choice. This is not a defect list — it is

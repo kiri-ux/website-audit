@@ -919,7 +919,7 @@ banner, Consent Mode and what fires before consent. No crawl.'>
           <div class='geobox' id='cvbox'>
             <span id='cvpills'></span>
             <input id='cvinput' class='geoin' autocomplete='off'
-                   placeholder='https://client.com/thank-you — then Enter'>
+                   placeholder='clientsite.com/thank-you'>
           </div>
           <input type='hidden' name='conversion_urls' id='conversion_urls'
                  form='auditform'>
@@ -1237,12 +1237,47 @@ banner, Consent Mode and what fires before consent. No crawl.'>
       document.getElementById('conversion_urls').value = CONVS.join(' ');
     }}
     function cvDrop(i) {{ CONVS.splice(i, 1); cvRender(); }}
+
+    // HARVEST URLS OUT OF WHATEVER GETS PASTED, and drop the rest.
+    //
+    // Lifted from the standalone scanner, which learned this the hard way:
+    // people paste a line out of an email — "thank you page is
+    // clientsite.com/thanks (and the quote form)" — and splitting on
+    // whitespace turns every word into a pill. A real TLD is required, so
+    // "e.g." and sentence fragments never qualify, and trailing punctuation
+    // is stripped so a URL at the end of a sentence survives the full stop.
+    function cvExtract(chunk) {{
+      var out = [];
+      var re = /(https?:\/\/[^\s,]+|(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z]{{2,}})+(?:\/[^\s,]*)?)/gi;
+      var m;
+      while ((m = re.exec(chunk || ''))) {{
+        var u = m[0].replace(/[)"'\]>,;.:]+$/, '');
+        if (u.replace(/^https?:\/\//i, '').split('/')[0].indexOf('.') >= 0) {{
+          out.push(u);
+        }}
+      }}
+      return out;
+    }}
+
+    // Same normalization the scanner dedupes on: scheme, www and trailing
+    // slashes are noise, so /contact and https://www.site.com/contact/ are
+    // one URL rather than two pills that scan the same page twice.
+    function cvNorm(u) {{
+      return (u || '').trim().toLowerCase()
+        .replace(/^https?:\/\//, '').replace(/^www\./, '')
+        .replace(/\/+$/, '');
+    }}
+
     function cvAdd(raw) {{
-      (raw || '').split(/[\s,;]+/).forEach(function (u) {{
-        u = (u || '').trim();
-        if (!u) return;
-        if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
-        if (CONVS.indexOf(u) < 0) CONVS.push(u);
+      var site = cvNorm((document.getElementById('turl') || {{}}).value || '');
+      cvExtract(raw).forEach(function (u) {{
+        var key = cvNorm(u);
+        if (!key) return;
+        // The homepage is already scanned. Adding it here would scan it twice
+        // and double every pixel it finds.
+        if (key === site) return;
+        var dupe = CONVS.some(function (x) {{ return cvNorm(x) === key; }});
+        if (!dupe) CONVS.push(u);
       }});
       cvRender();
     }}

@@ -1,6 +1,59 @@
-# Changed files — build 2026.08.20-39
+# Changed files — build 2026.08.20-40
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## Conversion URLs, the way the scanner does it
+
+**No cap.** Six was arbitrary and silent, which makes it the same failure as
+every other quiet truncation here: a list that looks complete and is not. A
+client with fourteen landing pages has fourteen pages where a conversion pixel
+can fire ungated.
+
+**URLs are harvested out of whatever gets pasted, not split on whitespace.**
+Lifted from the standalone scanner, which learned this the hard way — people
+paste a line out of an email and splitting turns every word into a pill. A real
+TLD is required, so `e.g.` and sentence fragments never qualify, and trailing
+punctuation is stripped so a URL at the end of a sentence survives the full
+stop. Verified in a browser against a deliberately messy paste:
+
+```
+"thank you page is srmel.com/thanks (and the quote form at
+ https://www.srmel.com/quote/), plus SRMEL.COM/THANKS/ again and
+ srmel.com itself. e.g. see notes."
+                        ↓
+srmel.com/thanks    https://www.srmel.com/quote/
+```
+
+Everything else dropped: the prose, `e.g.`, the duplicate in different case
+with a trailing slash, and the homepage itself — **the main site wins**, since
+it is already scanned and adding it again would double every pixel found there.
+
+De-duplication normalizes the way the scanner's own `normUrl` does: scheme,
+`www.` and trailing slashes are noise, so `/contact` and
+`https://www.site.com/contact/` are one URL rather than two pills scanning the
+same page twice. Done in the browser *and* again on the server.
+
+---
+
+## "Ours to fix" was carrying something that will never be fixed
+
+Eight of those rows were Index Coverage, Core Web Vitals and the rest that
+Google publishes in the Search Console UI and exposes through **no API**. They
+sat under *"a credential we have not set, or a call we have not written."*
+There is no credential and no call. They will be there on every run forever.
+
+A permanent entry on a to-do list is how the whole list stops being read — the
+same failure as the analyst section and the unticked phases, in a third
+costume. They now have their own heading:
+
+> **Google publishes no API for this · 8**
+> Read from the Search Console interface by hand, or skipped. Nothing to
+> configure and nothing that will change — this is a limit of Google's API,
+> not a gap in the run.
+
+Which leaves **Ours to fix · 1** on that report: the one genuine miss.
 
 ---
 
@@ -823,11 +876,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-39.zip
+unzip -o vici-audit-2026.08.20-40.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-39` in the header before
+Both services redeploy. Confirm `build 2026.08.20-40` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`

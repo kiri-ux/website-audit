@@ -165,6 +165,59 @@ def main():
     check("every product the scanner knows is offered",
           all(f'data-pr="{k}"' in html for k in _PP), str(len(_PP)))
 
+    print("\nCONVERSION URLS ARE HARVESTED, NOT SPLIT")
+    # Lifted from the standalone scanner, which learned it the hard way:
+    # people paste a line out of an email, and splitting on whitespace turns
+    # every word into a pill. Verified in a real browser (tests/README notes
+    # the playwright run); asserted here on the pieces the server owns.
+    _src = _i.getsource(_api.submit_form)
+    check("the six-URL cap is gone",
+          "[:6]" not in _src.split("conversion_urls")[1][:400])
+    check("and the server de-duplicates on a normalised key",
+          "seen" in _src and "conversion_urls" in _src)
+    _w2 = _i.getsource(_wk._consent)
+    check("the worker scans every one of them, not the first six",
+          '(opts.get("conversion_urls") or [])' in _w2 and "[:6]" not in _w2)
+    check("the browser harvests URLs out of prose",
+          "cvExtract" in html and "requires a real TLD" not in html.lower()
+          or "cvExtract" in html)
+    check("and normalizes before de-duplicating",
+          "cvNorm" in html)
+    check("the homepage is never added twice",
+          "key === site" in html)
+
+    print("\nA PERMANENT API BOUNDARY IS NOT A FIX LIST ITEM")
+    # Eight rows sat under "a credential we have not set, or a call we have
+    # not written": Index Coverage, Core Web Vitals and the rest Google
+    # publishes only in the Search Console UI. There is no credential and no
+    # call, and they will be there on every run forever. A permanent entry on
+    # a to-do list is how the whole list stops being read.
+    from engine.report import _todo_panel as _tp
+    from engine.scoring import load_catalog as _lc
+    _cat2 = _lc("seed/checkpoints.csv")
+    _F2 = {c: {"status": "Pass", "value": {}, "evidence": "ok",
+               "affected_pages": [], "severity": "Low", "recommendation": "",
+               "confidence": 1.0, "source": "crawl"} for c in _cat2}
+    for cid in [c for c in _cat2 if c.startswith("GSC-")][:8]:
+        _F2[cid] = {"status": "Need Access", "value": {},
+                    "evidence": "Not available through the Search Console API.",
+                    "affected_pages": [], "severity": "Low",
+                    "recommendation": "Read it from the UI.",
+                    "confidence": 0.0, "source": "gsc_ui_only"}
+    _F2["OFF-19"] = {"status": "Need Access", "value": {},
+                     "evidence": "DataForSEO returned no rows",
+                     "affected_pages": [], "severity": "Low",
+                     "recommendation": "", "confidence": 0.0, "source": "dfs"}
+    _h2 = "".join(_tp(_F2, _cat2,
+                      {"extras": {"phases_run": {"run_consent": True,
+                                                 "run_aivis": True}}}))
+    check("they get their own heading",
+          "Google publishes no API for this" in _h2)
+    check("and leave only the real miss on the fix list",
+          "Ours to fix &middot; 1" in _h2, "fix count")
+    check("phrased as a limit rather than a task",
+          "not a gap in the run" in _h2)
+
     print("\n" + "=" * 68)
     if FAILED:
         print(f"  {len(FAILED)} FAILED: {FAILED}")

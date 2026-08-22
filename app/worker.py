@@ -405,7 +405,7 @@ def _consent(a, audit_id, findings, extras, opts, step):
         # Site-level checks run once, on the homepage, exactly as the
         # standalone tool does it; the extra pages contribute their pixels.
         extra = []
-        for url in (opts.get("conversion_urls") or [])[:6]:
+        for url in (opts.get("conversion_urls") or []):
             try:
                 extra.append(scan_site(
                     url, prefer_full=not opts.get("skip_consent_browser"),
