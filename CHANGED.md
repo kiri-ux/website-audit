@@ -1,6 +1,156 @@
-# Changed files — build 2026.08.20-49
+# Changed files — build 2026.08.20-50
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+Extension is **1.4.4** — reload it at `chrome://extensions`.
+
+---
+
+## Read your live audit before writing any of this
+
+`b1437dd7` at 18:47 UTC, straight off the API:
+
+```
+GSC-05  Info          gsc_ui_capture   Search Console reports 56 indexed pages.
+GSC-06  Warning       gsc_ui_capture   115 of 171 known pages are not indexed (67%).
+GSC-07  Warning       gsc_ui_capture   46 pages in "Crawled - currently not indexed".
+GSC-08  Pass          gsc_ui_capture   No pages in "Discovered - currently not indexed".
+GSC-09  Need Access   gsc_ui_only      Google publishes this in Search Console…
+GSC-10  Need Access   gsc_ui_only      Google publishes this in Search Console…
+GSC-11  Need Access   gsc_ui_only      Google publishes this in Search Console…
+GSC-19  Need Access   gsc_ui_only      Google publishes this in Search Console…
+```
+
+**The capture worked.** Four rows carry `gsc_ui_capture` and real numbers. What
+is left is four rows and three separate faults, and the numbers above give all
+three away.
+
+---
+
+## 46 of 115. The capture read five reasons out of a table of twelve
+
+`SC_REASONS` held the five labels that map to checkpoints. Google's exclusion
+table has about a dozen rows, and the ones we ignored are usually the biggest:
+*Alternate page with proper canonical tag*, *Page with redirect*, *Duplicate
+without user-selected canonical*.
+
+So the read found two rows totalling **46** on a report that says **115** pages
+are not indexed. Sixty-nine excluded pages sat in rows nobody looked at — and
+worse, "Soft 404" being absent proved nothing at all. It could have meant zero
+soft 404s, or it could have meant a row we never read. Both were indistinguish-
+able, so the honest thing was to report neither, which is why GSC-09/10/11 came
+back saying *"Google publishes no API for this — read it by hand"* immediately
+after a capture that had just run.
+
+Two changes settle it:
+
+**The extension reads Google's whole exclusion vocabulary**, not just the five
+mapped ones. Twelve labels, Google's wording, with curly apostrophes normalized
+so *Excluded by ‘noindex’ tag* cannot silently never match.
+
+**The arithmetic licenses the zero.** When the captured rows account for every
+not-indexed page, the table was read whole, and a reason not on it has zero
+pages — that is a measurement, not a guess. When they do not add up, the row
+says so with both numbers:
+
+> Not measured: the capture read exclusion rows covering 46 of 115 not-indexed
+> pages, and "Soft 404" was not among them — so this is unread rather than zero.
+> → Run the capture again, or read this row directly. A partial read here is
+> ours to fix, not the client's.
+
+That is the loud thing a silent gap was never going to be. The extension's own
+log now says it at the moment of the read, too — `accounting for 46 of 115 not
+indexed — INCOMPLETE` rather than the previous `2 reason rows, indexed 56`,
+which read like a success.
+
+The unmapped rows stop being thrown away as well: the largest reasons are named
+on GSC-06 and the full breakdown is kept as structured evidence, so the 69 pages
+have somewhere to be.
+
+---
+
+## "no successful responses collected" was hiding the answer
+
+> Google AI Overviews visibility not measured: no successful responses collected.
+
+`aggregate()` builds `by_platform` from **successful** answers, so a platform
+where every call failed does not appear in it at all. The row then described the
+silence. The provider had raised something specific — `DataForSEO SERP returned
+40401: invalid credentials`, or whatever it actually was — and that message
+reached a counter and died there.
+
+This is the same shape as the save-ordering bug and the truncation bug: *an
+error carried inside a success needs unwrapping, or it is not an error to anyone
+downstream.* The aggregate now carries `platform_errors` — count, successes and
+up to three distinct messages per platform — and the checkpoint prints them:
+
+> Google AI Overviews visibility not measured: every query failed — DataForSEO
+> SERP returned 40401: invalid credentials.
+> → This is our error, not a missing client permission.
+
+Three outcomes, three different sentences: not configured (a credential),
+failed with a message (ours, and here it is), returned nothing with no error
+recorded (also ours, and stated as a bug rather than dressed up).
+
+**On your next run this row will finally tell us why AI Overviews is empty.**
+I still do not know — that is the point. It has never been able to say.
+
+---
+
+## GSC-19 was being sent to the wrong Search Console report
+
+GSC-19 is **Internal links**, which lives under Links. The fallback routed
+everything that was not Core Web Vitals or Enhancements to Indexing → Pages, so
+a row about internal linking told you to go and read the "Why pages aren't
+indexed" table. A row sent to the wrong report is worse than one sent to none:
+it wastes the trip and it makes the other instructions look untrustworthy. It
+now points at Links → Internal links with its own instructions.
+
+---
+
+## One correction to what I told you last time
+
+I said the SERP-feature rows were GEO-19 and GEO-20. They are **GEO-24**
+(Featured Snippets) and **GEO-25** (Passage-based / long-tail ranking). GEO-19
+is a schema-coverage row and has nothing to do with it. The fix in ‑49 was on
+the right rows; I named them wrong in the write-up.
+
+---
+
+## Why your panel still showed the old SERP text
+
+Findings are **stored**, and the recommendation text is composed at scan time
+and saved with the row. The ‑49 fix changes what gets written on the *next*
+run; it cannot reach into an audit that already ran. `b1437dd7` was scanned
+before ‑49 went live, so it is still carrying the old sentence and will keep
+carrying it. Scan the site again and those two rows change.
+
+---
+
+## Tests
+
+Sixteen new assertions across three suites:
+
+```
+A COMPLETE TABLE LICENSES A ZERO; AN INCOMPLETE ONE DOES NOT
+  PASS  a partial read never turns an unseen reason into a Pass  (Need Access)
+  PASS  and it says so with both numbers, not with silence
+  PASS  a complete table makes an absent reason a measured zero  (Pass)
+  PASS  a captured row still beats the inference
+
+AND THE UNMAPPED ROWS ARE NOT THROWN AWAY
+  PASS  the largest reasons are named on the excluded-pages row
+  PASS  and the full breakdown is kept as structured evidence
+
+A PLATFORM THAT FAILED EVERY QUERY SAYS WHY
+  PASS  the provider's own message reaches the row  (…40401…)
+  PASS  and it is named as ours, not a client permission
+  PASS  silence with no error recorded is reported as a bug on our side
+```
+
+One test also had to be fixed rather than added. It asserted the wait anchor
+`"why aren't pages indexed"` — and passed the entire time the anchor was broken,
+because the phrase survived in a comment two lines above the code. A test that
+greps a file will do that. It now asserts the actual call.
 
 ---
 

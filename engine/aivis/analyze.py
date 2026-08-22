@@ -165,6 +165,34 @@ def aggregate(results: list[dict], queries_by_id: dict, profile) -> dict:
             "errors": sum(1 for r in errs if r["platform"] == p),
         }
 
+    # WHY A PLATFORM RETURNED NOTHING, NOT JUST THAT IT DID.
+    #
+    # `by_platform` is built from SUCCESSFUL answers, so a platform where every
+    # call failed does not appear in it at all — and the checkpoint row then
+    # said "no successful responses collected" and stopped. The provider had
+    # raised something specific ("DataForSEO SERP returned 40401: invalid
+    # credentials"); it reached a counter and died there.
+    #
+    # This is the same shape as every other bug in this codebase: an error
+    # carried inside a success needs unwrapping, or it is not an error to
+    # anyone downstream. The messages travel now, deduplicated, so the row can
+    # name the cause instead of describing the silence.
+    platform_errors = {}
+    for p in sorted({r["platform"] for r in errs}):
+        msgs, seen_msg = [], set()
+        for r in errs:
+            if r["platform"] != p:
+                continue
+            m = str(r.get("error") or "").strip()
+            if m and m not in seen_msg:
+                seen_msg.add(m)
+                msgs.append(m)
+        platform_errors[p] = {
+            "errors": sum(1 for r in errs if r["platform"] == p),
+            "successes": sum(1 for r in ok if r["platform"] == p),
+            "messages": msgs[:3],
+        }
+
     by_intent = {}
     for intent in sorted({queries_by_id[r["query_id"]].intent for r in ok
                           if r["query_id"] in queries_by_id}):
@@ -208,6 +236,7 @@ def aggregate(results: list[dict], queries_by_id: dict, profile) -> dict:
         "unprompted_mention_rate": rate(unp, "mentioned"),
         "unprompted_citation_rate": rate(unp, "cited"),
         "by_platform": by_platform,
+        "platform_errors": platform_errors,
         "by_intent": by_intent,
         "share_of_voice": sov,
         "competitor_mention_counts": dict(comp.most_common(15)),

@@ -239,6 +239,41 @@ def main():
     check("profile IS due under a zero-day interval", len(due_profiles(0)) == 1,
           f"{len(due_profiles(0))} due")
 
+    print("\nA PLATFORM THAT FAILED EVERY QUERY SAYS WHY")
+    # THE BUG: `by_platform` is built from SUCCESSFUL answers, so a platform
+    # where every call errored vanished from it entirely and the checkpoint
+    # read "Google AI Overviews visibility not measured: no successful
+    # responses collected." The provider had raised something specific and
+    # useful; it reached a counter and stopped there. Same shape as every
+    # other bug here — an error carried inside a success needs unwrapping, or
+    # it is not an error to anyone downstream.
+    from engine.aivis.geo_checks import findings_from_run as _ffr
+    from types import SimpleNamespace as _NS
+    _prof = _NS(domain="ootenlawfirm.com", competitors=[], brand="Ooten")
+    _agg = {"by_platform": {}, "skipped_platforms": [], "repeats": 1,
+            "platform_errors": {"ai_overview": {
+                "errors": 8, "successes": 0,
+                "messages": ["DataForSEO SERP returned 40401: invalid "
+                             "credentials"]}}}
+    _rows = _ffr(_agg, _prof)
+    check("the provider's own message reaches the row",
+          "40401" in _rows["GEO-23"]["evidence"],
+          _rows["GEO-23"]["evidence"][:100])
+    check("and it is named as ours, not a client permission",
+          "our error" in _rows["GEO-23"]["recommendation"].lower())
+    check("the message is kept as structured evidence too",
+          bool(_rows["GEO-23"]["value"].get("provider_messages")))
+    # A platform nobody configured is a different statement and keeps its own.
+    _skipped = _ffr({"by_platform": {}, "skipped_platforms": ["chatgpt"],
+                     "repeats": 1, "platform_errors": {}}, _prof)
+    check("an unconfigured platform still reads as a missing credential",
+          "no API credentials" in _skipped["GEO-27"]["evidence"])
+    # And silence with no recorded error is called what it is: our bug.
+    _silent = _ffr({"by_platform": {}, "skipped_platforms": [], "repeats": 1,
+                    "platform_errors": {}}, _prof)
+    check("silence with no error recorded is reported as a bug on our side",
+          "bug on our side" in _silent["GEO-23"]["recommendation"])
+
     print("\n" + "=" * 68)
     if FAILURES:
         print(f"  {len(FAILURES)} FAILED: {', '.join(FAILURES)}")

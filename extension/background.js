@@ -483,12 +483,39 @@ async function consentRun(startUrl) {
 const SC_BASE = "https://search.google.com/search-console";
 
 // Google's own wording for the exclusion reasons, lowercased for matching.
+//
+// THE WHOLE VOCABULARY, not only the five that map to checkpoints.
+//
+// Reading five rows out of a table of twelve gave a capture that looked
+// complete and was not: Ooten's report said 115 pages not indexed and the two
+// rows we recognised accounted for 46 of them. Sixty-nine pages were excluded
+// for reasons nobody saw, and — worse — we could not tell whether "Soft 404"
+// was absent because it is zero or because we simply had not looked at it.
+//
+// With the full list, the arithmetic settles it: when the captured rows sum to
+// the not-indexed total, the table was read completely, and a reason that is
+// not on it has zero pages. That is a measurement, not a guess. When they do
+// not sum, the report says so with both numbers instead of quietly implying a
+// clean result.
 const SC_REASONS = [
+  // mapped to checkpoints
   "crawled - currently not indexed",
   "discovered - currently not indexed",
   "soft 404",
   "server error (5xx)",
-  "redirect error"
+  "redirect error",
+  // the rest of Google's published reasons, read for completeness
+  "alternate page with proper canonical tag",
+  "blocked by robots.txt",
+  "blocked due to access forbidden (403)",
+  "blocked due to unauthorized request (401)",
+  "blocked due to other 4xx issue",
+  "duplicate without user-selected canonical",
+  "duplicate, google chose different canonical than user",
+  "excluded by 'noindex' tag",
+  "not found (404)",
+  "page with redirect",
+  "url blocked due to other 4xx issue"
 ];
 
 /** Injected into the Search Console tab. Reads text, classifies nothing. */
@@ -529,9 +556,15 @@ function _scScrape(reasons) {
     return null;
   };
 
+  // Google prints a curly apostrophe in "Excluded by ‘noindex’ tag". Matching
+  // on the straight one and normalizing here keeps the constant readable and
+  // stops one row from silently never matching.
+  const flat = (s) => String(s || "").toLowerCase()
+    .replace(/[‘’ʼ]/g, "'").replace(/[–—]/g, "-");
+
   for (const el of nodes) {
     const t = (el.textContent || "").trim();
-    const low = t.toLowerCase();
+    const low = flat(t);
     if (t.length > 70) continue;
     out.seen.push(t);
     for (const r of reasons) {
@@ -686,8 +719,28 @@ async function consoleCapture(auditId, property, returnTabId) {
         if (result.indexed) draft.indexed = result.indexed;
         if (result.not_indexed) draft.not_indexed = result.not_indexed;
         Object.assign(draft.reasons, result.reasons || {});
-        say(`Index coverage: ${Object.keys(result.reasons || {}).length} ` +
-            `reason rows, indexed ${result.indexed || "?"}`);
+        // SAY WHETHER THE TABLE WAS READ WHOLE.
+        //
+        // "2 reason rows, indexed 56" reads like a success. It was a success
+        // for two rows out of a table whose other rows held sixty-nine pages.
+        // The accounting is the only thing that tells you which of those two
+        // things happened, so it goes on screen at the moment of the read.
+        const _n = (v) => {
+          const s = String(v || "").replace(/[, ]/g, "");
+          const k = /[kK]$/.test(s) ? 1000 : (/[mM]$/.test(s) ? 1000000 : 1);
+          const f = parseFloat(s);
+          return isNaN(f) ? null : Math.round(f * k);
+        };
+        const acct = Object.values(result.reasons || {})
+          .reduce((a, v) => a + (_n(v) || 0), 0);
+        const notIdx = _n(result.not_indexed);
+        const rows = Object.keys(result.reasons || {}).length;
+        say(`Index coverage: indexed ${result.indexed || "?"}, ${rows} ` +
+            `reason ${rows === 1 ? "row" : "rows"}` +
+            (notIdx !== null
+              ? ` accounting for ${acct} of ${notIdx} not indexed` +
+                (acct === notIdx ? " — whole table" : " — INCOMPLETE")
+              : ""));
       }
     } else {
       say("Indexing report did not finish loading — are you signed in?");

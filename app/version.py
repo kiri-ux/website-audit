@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-49"
-BUILD_NOTES = ("Conversion URLs, products and industry were parsed inside "
-               "the consent guard, so a full audit threw them away")
+BUILD = "2026.08.20-50"
+BUILD_NOTES = ("The capture read 5 of 12 exclusion rows and the AI rows "
+               "swallowed the provider's own error message")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

@@ -41,6 +41,16 @@ REASON_IDS = {
 CAPTURE_IDS = ("GSC-05", "GSC-06", "GSC-07", "GSC-08", "GSC-09", "GSC-10",
                "GSC-11", "GSC-12")
 
+# The human wording for each mapped reason, used when the row has to explain
+# its own absence from the table.
+_REASON_NAME = {
+    "GSC-07": "Crawled - currently not indexed",
+    "GSC-08": "Discovered - currently not indexed",
+    "GSC-09": "Soft 404",
+    "GSC-10": "Server error (5xx)",
+    "GSC-11": "Redirect error",
+}
+
 # How many excluded pages stops being housekeeping and starts being a finding.
 # A site with a handful of soft 404s has a tidy-up; one with hundreds has a
 # structural problem. Expressed as a share of the indexed count rather than an
@@ -114,14 +124,24 @@ def findings_from_capture(cap: dict | None) -> dict:
         total = (indexed or 0) + excluded
         share = (excluded / total) if total else 0
         heavy = share >= _SHARE_WARN and excluded >= 10
+        # NAME THE BIG ROWS HERE. Most of the exclusion table maps to no
+        # checkpoint — "Alternate page with proper canonical tag", "Page with
+        # redirect" — and on a real site those unmapped rows are usually where
+        # most of the excluded pages are. Reporting the total and hiding the
+        # breakdown sends the reader back to Search Console to find out what we
+        # already read.
+        top = sorted([(l, n) for l, n in reasons if n], key=lambda x: -x[1])
+        top_txt = "; ".join(f"{l} ({n:,})" for l, n in top[:4])
         out["GSC-06"] = _f(
             "Warning" if heavy else "Info",
             {"not_indexed": excluded, "indexed": indexed,
-             "share_not_indexed": round(share, 3)},
+             "share_not_indexed": round(share, 3),
+             "reasons": {l: n for l, n in top} or None},
             f"{excluded:,} of {total:,} known "
             f"{'page is' if total == 1 else 'pages are'} not indexed"
             + (f" ({share:.0%} of everything Google knows about)."
-               if total else "."),
+               if total else ".")
+            + (f" Largest reasons: {top_txt}." if top_txt else ""),
             "Medium" if heavy else "Low",
             "Open the exclusion reasons below — the large ones are usually "
             "one template, not a thousand separate problems." if heavy else "")
@@ -151,6 +171,51 @@ def findings_from_capture(cap: dict | None) -> dict:
                 "Medium" if big else "Low",
                 "Worth opening — a count this size is usually one template "
                 "rather than many separate pages." if big else "")
+
+    # ---------------------------------------------------------------- ZEROS
+    #
+    # A REASON MISSING FROM A COMPLETE TABLE IS A ZERO. A REASON MISSING FROM
+    # AN INCOMPLETE ONE IS UNKNOWN. THE ARITHMETIC IS THE ONLY THING THAT
+    # TELLS THEM APART.
+    #
+    # The capture used to read only the five reasons that map to checkpoints.
+    # On Ooten's report those two present rows accounted for 46 of 115
+    # not-indexed pages: sixty-nine pages sat in rows nobody looked at, and
+    # "Soft 404" was absent — which could equally have meant zero soft 404s or
+    # a row we never read. Writing Pass would have been a clean bill of health
+    # for a question nobody asked; writing nothing left three checkpoints
+    # advertising "read it by hand" straight after a capture that ran.
+    #
+    # The extension now reads Google's whole exclusion vocabulary, so the sum
+    # is checkable. When the captured rows account for every not-indexed page,
+    # the table was read whole and an absent reason is a measured zero. When
+    # they do not, the row says so with both numbers — which is loud, and is
+    # the thing a silent gap was never going to be.
+    counted = [n for _, n in reasons if n is not None]
+    accounted = sum(counted)
+    complete = bool(counted) and excluded is not None and accounted == excluded
+    if excluded is not None and counted:
+        listed = {REASON_IDS.get(l.lower()) for l, _ in reasons}
+        for cid, name in _REASON_NAME.items():
+            if cid in out or cid in listed:
+                continue
+            if complete:
+                out[cid] = _f(
+                    "Pass", {"count": 0, "inferred_from": "complete table"},
+                    f"No pages in Search Console's “{name}” report — the "
+                    f"exclusion table accounts for all {excluded:,} "
+                    f"not-indexed pages and does not list this reason.", "Low")
+            else:
+                out[cid] = _f(
+                    "Need Access",
+                    {"accounted_for": accounted, "not_indexed": excluded},
+                    f"Not measured: the capture read exclusion rows covering "
+                    f"{accounted:,} of {excluded:,} not-indexed pages, and "
+                    f"“{name}” was not among them — so this is unread rather "
+                    f"than zero.", "Low",
+                    "Run the Search Console capture again, or open Indexing → "
+                    "Pages and read this row directly. A partial read here is "
+                    "ours to fix, not the client's.", 0.0)
 
     cwv = cap.get("cwv") or {}
     poor, ni = _int(cwv.get("poor")), _int(cwv.get("needs_improvement"))

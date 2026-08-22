@@ -130,8 +130,16 @@ def main():
     # not trying: it looks like the capture is broken.
     check("no request is made to a Search Console path that cannot exist",
           'scUrl("enhancements"' not in bg)
+    # WAS: asserted the wait string "why aren't pages indexed". That phrase is
+    # my wording; Google's heading is "Why pages aren't indexed" — same five
+    # words, different order — so the poll never matched and burned its full
+    # forty seconds on a page that had rendered fine. The assertion passed the
+    # whole time because the phrase survived in a comment.
+    #
+    # The wait anchors on the reason labels now: the strings we came to read.
     check("the read waits for the report, not for a byte count",
-          "wantText" in bg and "why aren't pages indexed" in bg)
+          "wantText" in bg and "scOpen(tab.id, scUrl(\"index\", property, auth), "
+          "SC_REASONS)" in bg)
     check("and a hand-closed tab is not reported as a crash",
           "No tab with id" in bg and "changing their mind" in bg)
     check("and a partial capture reports the labels it DID see",
@@ -216,6 +224,61 @@ def main():
           "Signed in as" in bg2 and "signed_in_as" in bg2)
     check("and the run stops there rather than reporting an empty capture",
           "cannot see this property" in bg2)
+
+    print("\nA COMPLETE TABLE LICENSES A ZERO; AN INCOMPLETE ONE DOES NOT")
+    # Ooten's real capture: 115 not indexed, two recognised rows accounting for
+    # 46 of them. Sixty-nine pages sat in rows the scrape never looked at, so
+    # "Soft 404" being absent proved nothing at all.
+    partial = F({
+        "indexed": 56, "not_indexed": 115,
+        "reasons": {"Crawled - currently not indexed": 46,
+                    "Discovered - currently not indexed": 0}})
+    check("a partial read never turns an unseen reason into a Pass",
+          partial["GSC-09"]["status"] != "Pass", partial["GSC-09"]["status"])
+    check("and it says so with both numbers, not with silence",
+          "46 of 115" in partial["GSC-09"]["evidence"],
+          partial["GSC-09"]["evidence"][:90])
+    check("carrying zero confidence, so scoring leaves it out",
+          partial["GSC-09"]["confidence"] == 0.0)
+    check("and it is named as ours to fix, not the client's",
+          "ours to fix" in partial["GSC-09"]["recommendation"].lower())
+
+    # The same site once the whole vocabulary is read: every excluded page is
+    # accounted for, so a reason that is not on the table has none.
+    whole = F({
+        "indexed": 56, "not_indexed": 115,
+        "reasons": {"Crawled - currently not indexed": 46,
+                    "Discovered - currently not indexed": 0,
+                    "Alternate page with proper canonical tag": 51,
+                    "Page with redirect": 18}})
+    check("a complete table makes an absent reason a measured zero",
+          whole["GSC-09"]["status"] == "Pass", whole["GSC-09"]["status"])
+    check("and says what licensed the zero",
+          "accounts for all 115" in whole["GSC-09"]["evidence"])
+    check("server errors and redirect errors too",
+          whole["GSC-10"]["status"] == "Pass"
+          and whole["GSC-11"]["status"] == "Pass")
+    check("a captured row still beats the inference",
+          whole["GSC-07"]["value"]["count"] == 46)
+
+    print("\nAND THE UNMAPPED ROWS ARE NOT THROWN AWAY")
+    # Most of a real exclusion table maps to no checkpoint, and that is
+    # usually where most of the excluded pages are. Reporting 115 and hiding
+    # the breakdown sends the reader back to Search Console for what we read.
+    check("the largest reasons are named on the excluded-pages row",
+          "Alternate page with proper canonical tag (51)"
+          in whole["GSC-06"]["evidence"], whole["GSC-06"]["evidence"][-90:])
+    check("and the full breakdown is kept as structured evidence",
+          (whole["GSC-06"]["value"].get("reasons") or {}).get(
+              "Page with redirect") == 18)
+
+    print("\nTHE WHOLE VOCABULARY IS WHAT THE EXTENSION READS")
+    for _label in ("alternate page with proper canonical tag",
+                   "page with redirect", "not found (404)",
+                   "duplicate without user-selected canonical"):
+        check(f"the scrape knows “{_label}”", _label in bg2)
+    check("and a curly apostrophe cannot silently miss a row",
+          "\\u2018\\u2019" in bg2 or "‘’" in bg2)
 
     print("\n" + "=" * 68)
     if FAILED:

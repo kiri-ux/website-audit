@@ -726,6 +726,18 @@ def collect_gsc(site_url: str, refresh_token: str | None = None,
                 f"?resource_id={prop_q}",
                 "Open Mobile first. Record the Poor and Needs-improvement URL "
                 "counts and the metric named for each group."),
+        # GSC-19 is "Internal links", which lives under Links — a completely
+        # different report. It was falling through to the coverage default, so
+        # a row about internal linking told the reader to go and read the
+        # "Why pages aren't indexed" table. A row sent to the wrong report is
+        # worse than one sent to none: it wastes the trip and it makes the
+        # other instructions look untrustworthy.
+        "links": ("Links → Internal links",
+                  f"https://search.google.com/search-console/links"
+                  f"?resource_id={prop_q}",
+                  "Open 'Top linked pages — internally'. Record how many "
+                  "pages have very few internal links, and whether the most-"
+                  "linked pages are the ones that should be."),
         "enh": ("Enhancements",
                 f"https://search.google.com/search-console/enhancements"
                 f"?resource_id={prop_q}",
@@ -739,6 +751,7 @@ def collect_gsc(site_url: str, refresh_token: str | None = None,
         low = (cid or "").upper()
         _WHICH[cid] = ("cwv" if low in ("GSC-12", "GSC-13", "GSC-14")
                        else "enh" if low in ("GSC-15", "GSC-16")
+                       else "links" if low == "GSC-19"
                        else "coverage")
     for cid in GSC_IDS:
         where, link, how = _UI[_WHICH.get(cid, "coverage")]

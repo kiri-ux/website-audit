@@ -61,13 +61,34 @@ def findings_from_run(agg: dict, profile) -> dict:
         stats = by_platform.get(plat)
 
         if not stats:
-            reason = ("not configured — no API credentials supplied"
-                      if plat in skipped else "no successful responses collected")
+            # THE PROVIDER SAID WHY. SAY IT.
+            #
+            # This row used to read "no successful responses collected" and
+            # stop, which describes the silence rather than its cause, and
+            # sends the reader to configure a credential that may already be
+            # correct. The aggregate now carries the provider's own error
+            # messages, so a failed platform reports what failed.
+            errs = (agg.get("platform_errors") or {}).get(plat) or {}
+            msgs = [m for m in (errs.get("messages") or []) if m]
+            if plat in skipped:
+                reason = "not configured — no API credentials supplied"
+                rec = f"Configure {label} access to measure citation share."
+            elif msgs:
+                reason = ("every query failed — "
+                          + "; ".join(m[:160] for m in msgs[:2]))
+                rec = ("This is our error, not a missing client permission. "
+                       "The message above is the provider's own; fix that "
+                       "and the row answers itself.")
+            else:
+                reason = "no successful responses collected, and no error was recorded"
+                rec = (f"The {label} provider returned nothing and reported no "
+                       f"reason — that is a bug on our side, not a setting.")
             out[cid] = _finding(
-                "Need Access", {"platform": plat},
+                "Need Access",
+                {"platform": plat, "errors": errs.get("errors"),
+                 "provider_messages": msgs or None},
                 f"{label} visibility not measured: {reason}.",
-                severity="Medium", confidence=0.0,
-                recommendation=f"Configure {label} access to measure citation share.")
+                severity="Medium", confidence=0.0, recommendation=rec)
             continue
 
         cr, mr = stats["citation_rate"], stats["mention_rate"]
