@@ -19,6 +19,7 @@ function render(st) {
   $("go").textContent = st.running ? "Stop" : "Start capture";
   $("go").className = st.running ? "stop" : "";
   $("log").textContent = (st.log || []).join("\n");
+  renderDraft(st);
 }
 
 $("go").addEventListener("click", async () => {
@@ -54,3 +55,77 @@ chrome.runtime.onMessage.addListener(m => { if (m?.type === "VICI_STATE") render
 chrome.runtime.sendMessage({ type: "VICI_GET_STATE" }).then(r => render(r?.state));
 setInterval(() => chrome.runtime.sendMessage({ type: "VICI_GET_STATE" })
   .then(r => render(r?.state)).catch(() => {}), 1000);
+
+// ---- Search Console capture ------------------------------------------------
+$("console").addEventListener("click", async () => {
+  const id = $("auditId").value.trim();
+  if (!id) { $("status").textContent = "paste an audit id first"; return; }
+  const prop = prompt(
+    "Search Console property to read.\n\n" +
+    "Copy it exactly as Search Console shows it — usually the site URL with " +
+    "the trailing slash, or sc-domain:example.com for a domain property.",
+    "https://");
+  if (!prop) return;
+  $("status").textContent = "opening Search Console…";
+  chrome.runtime.sendMessage({ type: "VICI_CONSOLE", auditId: id, property: prop });
+});
+
+// The draft is rendered as EDITABLE fields, not a read-only summary. If the
+// scrape put a number in the wrong row the fix is right there, which is the
+// difference between a tool someone trusts and one they stop using the first
+// time it is wrong.
+const DRAFT_LABELS = {
+  indexed: "Indexed pages",
+  not_indexed: "Not indexed",
+  cwv_poor: "CWV — Poor",
+  cwv_ni: "CWV — Needs improvement"
+};
+
+function renderDraft(st) {
+  const box = $("draft");
+  const d = st?.consoleDraft;
+  if (!d) { box.style.display = "none"; return; }
+  box.style.display = "block";
+  const rows = [];
+  const add = (key, label, val) =>
+    rows.push(`<label>${label}</label>` +
+      `<input data-k="${key}" value="${(val ?? "").toString()
+        .replace(/"/g, "&quot;")}">`);
+  add("indexed", DRAFT_LABELS.indexed, d.draft.indexed);
+  add("not_indexed", DRAFT_LABELS.not_indexed, d.draft.not_indexed);
+  Object.keys(d.draft.reasons || {}).forEach(k =>
+    add(`reasons.${k}`, k, d.draft.reasons[k]));
+  if (d.draft.cwv) {
+    add("cwv.poor", DRAFT_LABELS.cwv_poor, d.draft.cwv.poor);
+    add("cwv.needs_improvement", DRAFT_LABELS.cwv_ni,
+        d.draft.cwv.needs_improvement);
+  }
+  $("draftrows").innerHTML = rows.join("");
+}
+
+function collectDraft(st) {
+  const d = JSON.parse(JSON.stringify(st.consoleDraft.draft));
+  document.querySelectorAll("#draftrows input").forEach(el => {
+    const k = el.dataset.k, v = el.value.trim();
+    if (k.startsWith("reasons.")) {
+      if (v) d.reasons[k.slice(8)] = v; else delete d.reasons[k.slice(8)];
+    } else if (k.startsWith("cwv.")) {
+      d.cwv = d.cwv || {}; d.cwv[k.slice(4)] = v || null;
+    } else if (v) { d[k] = v; } else { delete d[k]; }
+  });
+  return d;
+}
+
+$("send").addEventListener("click", async () => {
+  const { state } = await chrome.runtime.sendMessage({ type: "VICI_GET_STATE" });
+  if (!state?.consoleDraft) return;
+  await chrome.runtime.sendMessage({
+    type: "VICI_CONSOLE_EDIT", draft: collectDraft(state) });
+  chrome.runtime.sendMessage({ type: "VICI_CONSOLE_SEND" });
+  $("draft").style.display = "none";
+});
+
+$("discard").addEventListener("click", async () => {
+  await chrome.runtime.sendMessage({ type: "VICI_CONSOLE_EDIT", draft: {} });
+  $("draft").style.display = "none";
+});

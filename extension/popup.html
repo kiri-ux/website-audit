@@ -25,6 +25,11 @@ button.stop{background:#d03b3b}
 .bar>i{display:block;height:100%;background:#1c5ba6;width:0;border-radius:3px;
  transition:width .3s}
 @media(prefers-color-scheme:dark){.bar{background:#262623}}
+#draftrows{display:grid;grid-template-columns:1fr auto;gap:5px 8px;
+ align-items:center;font-size:12px;margin-bottom:4px}
+#draftrows label{font-size:11.5px;text-transform:none;letter-spacing:0;
+ margin:0;font-weight:500;color:#52514e}
+#draftrows input{padding:4px 7px;font-size:12px;width:96px;text-align:right}
 #log{margin-top:8px;max-height:150px;overflow:auto;font:11px ui-monospace,Menlo,monospace;
  color:#52514e;white-space:pre-wrap}
 @media(prefers-color-scheme:dark){#log{color:#c3c2b7}}
@@ -46,6 +51,20 @@ button.stop{background:#d03b3b}
 </div>
 <button id="go">Start capture</button>
   <button id="consent" class="alt">Consent check</button>
+  <button id="console" class="alt">Search Console capture</button>
+
+<!-- THE DRAFT, SHOWN BEFORE ANYTHING IS SENT.
+     The scrape reads Google's own visible labels off an obfuscated Angular
+     app. It is right most of the time and it must never be trusted silently:
+     a number read off the wrong table becomes a number in a client report.
+     There is a person at the keyboard, so they see it first and can correct
+     any field before it goes. -->
+<div id="draft" style="display:none">
+  <div class="sub" style="margin:10px 0 4px"><b>Check these before sending</b></div>
+  <div id="draftrows"></div>
+  <button id="send">Send to the audit</button>
+  <button id="discard" class="alt">Discard</button>
+</div>
 <div class="bar"><i id="bar"></i></div>
 <div id="status" class="sub" style="margin:0">idle</div>
 <div id="log"></div>

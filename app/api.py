@@ -905,6 +905,54 @@ def audit_summary(audit_id: str, polish: bool = False,
 
 
 # ==================================================================== BROWSER CAPTURE
+@app.post("/api/audits/{audit_id}/console-capture")
+def ingest_console_capture(audit_id: str, payload: dict,
+                           x_api_key: str | None = Header(None)):
+    """
+    Accept Search Console's UI-only numbers, read from a signed-in browser.
+
+    Eight checkpoints are published by Google in the interface and exposed
+    through no API. The report has been honest about that for several builds —
+    "Google publishes no API for this" — but honest and unmeasured is still
+    unmeasured, and someone was retyping numbers off a screen into nothing.
+
+    The extension already runs in the operator's own signed-in Chrome, which is
+    exactly what those reports require. It reads the visible labels, shows what
+    it found for confirmation, and posts it here.
+
+    NOTHING IS INFERRED. A field the capture did not carry is not written, so a
+    scrape that half-worked leaves the other half unmeasured rather than
+    filling it with zeros — a zero in the exclusion reports reads as "no pages
+    excluded", which is a materially wrong statement about a site.
+    """
+    p = principal(x_api_key)
+    a = db.get_audit(audit_id, p.scope)
+    if not a:
+        raise HTTPException(404, "audit not found")
+
+    from engine.console_capture import findings_from_capture
+    rows = findings_from_capture(payload or {})
+    if not rows:
+        raise HTTPException(
+            400, "capture carried no numbers we recognised — Google may have "
+                 "renamed a label, or the report had not finished loading")
+
+    # Merge over what is already stored rather than replacing it: this is a
+    # supplement to an audit that has already run, not a re-run.
+    findings = db.get_findings(audit_id)
+    findings.update(rows)
+    db.save_findings(audit_id, findings)
+
+    cat = db.catalog()
+    scores = engine_scoring.score(findings, cat, a.get("vertical"))
+    db.save_scores(audit_id, scores)
+    print(f"[api] {audit_id} console capture filled {len(rows)} rows: "
+          f"{', '.join(sorted(rows))}", flush=True)
+    return {"audit_id": audit_id, "filled": sorted(rows),
+            "count": len(rows),
+            "overall": (scores.get("overall") or {}).get("score")}
+
+
 @app.post("/api/audits/{audit_id}/consent-capture")
 def ingest_consent_capture(audit_id: str, payload: dict,
                            x_api_key: str | None = Header(None)):

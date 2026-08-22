@@ -1,6 +1,78 @@
-# Changed files — build 2026.08.20-41
+# Changed files — build 2026.08.20-42
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## The extension reads Search Console's UI-only reports
+
+Eight checkpoints are published by Google in the interface and exposed through
+no API. Honest about it since ‑40 — and honest and unmeasured is still
+unmeasured, with someone retyping numbers off a screen into nothing.
+
+The extension already runs in your own signed-in Chrome, which is exactly what
+those reports require. So it reads them there. **Site Scanner 1.3.0**, new
+button: **Search Console capture**.
+
+It opens Indexing → Pages and Core Web Vitals for the property, reads them, and
+maps the figures onto the checkpoints that ask for them:
+
+| Report row | Checkpoint |
+|---|---|
+| Indexed | GSC-05 |
+| Not indexed | GSC-06 |
+| Crawled - currently not indexed | GSC-07 |
+| Discovered - currently not indexed | GSC-08 |
+| Soft 404 | GSC-09 |
+| Server error (5xx) | GSC-10 |
+| Redirect error | GSC-11 |
+| Core Web Vitals Poor / Needs improvement | GSC-12 |
+
+That mapping is not a coincidence — the exclusion reasons Search Console lists
+under *"Why pages aren't indexed"* **are** those checkpoints, one for one.
+
+### It anchors on Google's words, not Google's markup
+
+The scrape matches the visible English labels — `Crawled - currently not
+indexed`, `Soft 404` — rather than class names. Search Console is an obfuscated
+Angular build whose class names change without notice; the label is the string
+on the screen and in Google's own documentation. When Google does rename one,
+the capture returns **nothing** for that row rather than the wrong row's number.
+
+### And it never sends without a person looking
+
+The scrape is a first draft. What it found appears in the popup as **editable
+fields**, and nothing posts until you press Send. If a number landed in the
+wrong row the fix is right there.
+
+That is deliberate, and it is the difference between a tool people trust and
+one they abandon the first time it is quietly wrong. A number read off the
+wrong table becomes a number in a client report, and there is a person at the
+keyboard three feet away.
+
+### Nothing is invented
+
+Every field is optional and a missing one stays unmeasured. A capture that
+half-worked leaves the other half alone rather than filling it with zeros — a
+zero in the exclusion reports reads as *"no pages excluded"*, which is a
+materially wrong statement about a site rather than a smaller version of the
+right one. `test_console_capture` holds that: one number in, one row out.
+
+Provenance travels with every row — `captured_from: Search Console UI`, the
+timestamp, and a `gsc_ui_capture` source tag that separates it from a failed
+API call. A number read off a screen and a number pulled from an API are not
+the same kind of fact, and nobody will remember which in six months.
+
+### A count is not a verdict
+
+Every site of any age has a few soft 404s. Calling nine of them a failure is
+how a row gets skipped every time thereafter. Zero is a clean pass; anything
+else is reported as a measurement with the number attached; only a large share
+of the indexed count earns a Warning, and nothing here is ever worse than one.
+Core Web Vitals is the exception — a Poor group is a Fail, because it is a
+failing template rather than a tally.
+
+**Consent dashboard is next.**
 
 ---
 
@@ -962,11 +1034,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-41.zip
+unzip -o vici-audit-2026.08.20-42.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-41` in the header before
+Both services redeploy. Confirm `build 2026.08.20-42` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`

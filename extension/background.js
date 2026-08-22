@@ -456,3 +456,200 @@ async function consentRun(startUrl) {
   keepAlive(false);
   chrome.runtime.sendMessage({ type: "VICI_STATE", state }).catch(() => {});
 }
+
+// ---------------------------------------------------------------------------
+// SEARCH CONSOLE CAPTURE
+//
+// Eight checkpoints live in reports Google publishes only in the interface.
+// No credential fixes that — but this extension already runs in the operator's
+// own signed-in Chrome, which is exactly what those reports require.
+//
+// It reads the VISIBLE LABELS Google prints for a human, not class names. That
+// is deliberate: the markup is an obfuscated Angular build whose class names
+// change without notice, while "Crawled - currently not indexed" is the string
+// on the screen and in Google's own documentation. When Google does rename one,
+// this returns nothing for that row rather than the wrong row's number.
+//
+// AND IT NEVER POSTS WITHOUT A HUMAN LOOKING. The scrape is a first draft: what
+// it found is shown for confirmation, because a number quietly read off the
+// wrong table is worse than no number, and there is a person right there.
+// ---------------------------------------------------------------------------
+
+const SC_BASE = "https://search.google.com/search-console";
+
+// Google's own wording for the exclusion reasons, lowercased for matching.
+const SC_REASONS = [
+  "crawled - currently not indexed",
+  "discovered - currently not indexed",
+  "soft 404",
+  "server error (5xx)",
+  "redirect error"
+];
+
+/** Injected into the Search Console tab. Reads text, classifies nothing. */
+function _scScrape(reasons) {
+  const out = { reasons: {}, seen: [] };
+  const num = (t) => {
+    const m = String(t || "").replace(/ /g, " ")
+      .match(/(\d[\d,.]*\s*[KM]?)\s*$/i);
+    return m ? m[1].trim() : null;
+  };
+  // Walk every element that holds a short, leaf-level string. Search Console
+  // renders each figure as its own node beside its label, so the reliable
+  // move is to find the LABEL and then look at its row.
+  const nodes = Array.from(document.querySelectorAll("div,span,td,th,a"))
+    .filter(el => el.children.length === 0 && (el.textContent || "").trim());
+
+  const rowNumberFor = (el) => {
+    // Walk up until an ancestor also contains a number, then read it.
+    let cur = el;
+    for (let i = 0; i < 5 && cur; i++) {
+      cur = cur.parentElement;
+      if (!cur) break;
+      const cells = Array.from(cur.children || []);
+      for (const c of cells) {
+        if (c === el || c.contains(el)) continue;
+        const n = num(c.textContent);
+        if (n) return n;
+      }
+    }
+    return null;
+  };
+
+  for (const el of nodes) {
+    const t = (el.textContent || "").trim();
+    const low = t.toLowerCase();
+    if (t.length > 70) continue;
+    out.seen.push(t);
+    for (const r of reasons) {
+      if (low === r || low.startsWith(r)) {
+        const n = rowNumberFor(el);
+        if (n) out.reasons[t] = n;
+      }
+    }
+    if (low === "indexed" || low === "indexed pages") {
+      const n = rowNumberFor(el); if (n) out.indexed = n;
+    }
+    if (low === "not indexed" || low === "not indexed pages") {
+      const n = rowNumberFor(el); if (n) out.not_indexed = n;
+    }
+    if (low === "poor") { const n = rowNumberFor(el); if (n) out.cwv_poor = n; }
+    if (low === "need improvement" || low === "needs improvement") {
+      const n = rowNumberFor(el); if (n) out.cwv_ni = n;
+    }
+    if (low === "good") { const n = rowNumberFor(el); if (n) out.cwv_good = n; }
+  }
+  out.seen = out.seen.slice(0, 40);
+  out.url = location.href;
+  return out;
+}
+
+async function scOpen(tabId, url) {
+  await chrome.tabs.update(tabId, { url });
+  // Search Console is a single-page app that renders well after load fires, so
+  // waiting on the tab status is not enough — poll for content instead.
+  for (let i = 0; i < 30; i++) {
+    await settle(1000);
+    const [{ result } = {}] = await chrome.scripting.executeScript({
+      target: { tabId }, func: () => document.body.innerText.length
+    });
+    if ((result || 0) > 400) { await settle(1500); return true; }
+  }
+  return false;
+}
+
+/**
+ * Walk the two reports for one property and return a draft capture.
+ * `property` is the Search Console resource id, e.g. https://example.com/
+ */
+async function consoleCapture(auditId, property) {
+  const c = await cfg();
+  state.running = true; state.done = 0; state.total = 2; keepAlive(true);
+  const enc = encodeURIComponent(property || "");
+  const draft = { property, captured_at: new Date().toISOString(), reasons: {} };
+  let tab;
+  try {
+    tab = await chrome.tabs.create({ url: "about:blank", active: true });
+
+    say("Opening Indexing → Pages…");
+    if (await scOpen(tab.id, `${SC_BASE}/index?resource_id=${enc}`)) {
+      const [{ result } = {}] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, func: _scScrape, args: [SC_REASONS]
+      });
+      if (result) {
+        if (result.indexed) draft.indexed = result.indexed;
+        if (result.not_indexed) draft.not_indexed = result.not_indexed;
+        Object.assign(draft.reasons, result.reasons || {});
+        say(`Index coverage: ${Object.keys(result.reasons || {}).length} ` +
+            `reason rows, indexed ${result.indexed || "?"}`);
+      }
+    } else {
+      say("Indexing report did not finish loading — are you signed in?");
+    }
+    state.done = 1;
+
+    say("Opening Core Web Vitals…");
+    if (await scOpen(tab.id, `${SC_BASE}/core-web-vitals?resource_id=${enc}`)) {
+      const [{ result } = {}] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, func: _scScrape, args: [SC_REASONS]
+      });
+      if (result && (result.cwv_poor || result.cwv_ni || result.cwv_good)) {
+        draft.cwv = { poor: result.cwv_poor, needs_improvement: result.cwv_ni,
+                      good: result.cwv_good };
+        say(`Core Web Vitals: poor ${result.cwv_poor || 0}, ` +
+            `needs improvement ${result.cwv_ni || 0}`);
+      }
+    }
+    state.done = 2;
+  } catch (e) {
+    say(`Console capture failed: ${e.message}`);
+  }
+
+  const found = Object.keys(draft.reasons).length +
+                (draft.indexed ? 1 : 0) + (draft.not_indexed ? 1 : 0) +
+                (draft.cwv ? 1 : 0);
+  if (!found) {
+    say("Nothing recognised. Google may have renamed a label, or the report " +
+        "had not rendered. Nothing was sent.");
+    state.running = false; keepAlive(false);
+    return;
+  }
+
+  // CONFIRM BEFORE SENDING. There is a person at the keyboard and the cost of
+  // a wrong number here is a wrong number in a client report.
+  state.consoleDraft = { auditId, draft, found };
+  say(`Found ${found} figures. Review them in the popup and press Send.`);
+  state.running = false; keepAlive(false);
+  chrome.runtime.sendMessage({ type: "VICI_STATE", state }).catch(() => {});
+}
+
+async function consoleSend() {
+  const pending = state.consoleDraft;
+  if (!pending) return;
+  const c = await cfg();
+  try {
+    const r = await fetch(
+      `${c.apiBase}/api/audits/${pending.auditId}/console-capture`,
+      { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pending.draft) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || r.status);
+    say(`Sent. Filled ${d.count} checkpoint${d.count === 1 ? "" : "s"}: ` +
+        `${(d.filled || []).join(", ")}`);
+    state.consoleDraft = null;
+  } catch (e) {
+    say(`Send failed: ${e.message}`);
+  }
+  chrome.runtime.sendMessage({ type: "VICI_STATE", state }).catch(() => {});
+}
+
+chrome.runtime.onMessage.addListener((msg, _s, respond) => {
+  if (msg?.type === "VICI_CONSOLE") {
+    consoleCapture(msg.auditId, msg.property); respond({ ok: true });
+  }
+  if (msg?.type === "VICI_CONSOLE_SEND") { consoleSend(); respond({ ok: true }); }
+  if (msg?.type === "VICI_CONSOLE_EDIT" && state.consoleDraft) {
+    state.consoleDraft.draft = msg.draft;
+    respond({ ok: true });
+  }
+});
