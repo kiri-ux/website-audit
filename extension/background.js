@@ -605,8 +605,11 @@ async function scOpen(tabId, url, wantText) {
     const [{ result } = {}] = await chrome.scripting.executeScript({
       target: { tabId },
       func: (want) => {
-        const t = document.body.innerText || "";
-        if (want) return t.toLowerCase().includes(want.toLowerCase()) ? 9999 : 0;
+        const t = (document.body.innerText || "").toLowerCase();
+        const list = Array.isArray(want) ? want : (want ? [want] : []);
+        if (list.length) {
+          return list.some(w => t.includes(String(w).toLowerCase())) ? 9999 : 0;
+        }
         return t.length;
       },
       args: [wantText || ""]
@@ -656,8 +659,13 @@ async function consoleCapture(auditId, property, returnTabId) {
              : "Opening Indexing → Pages…");
     // "Why aren't pages indexed" is the heading directly above the exclusion
     // table, so its presence means the table is there to read.
-    if (await scOpen(tab.id, scUrl("index", property, auth),
-                     "why aren't pages indexed")) {
+    // ANCHOR ON THE REASON LABELS THEMSELVES, not on a heading I typed from
+    // memory. The wait string was "why aren't pages indexed"; Google's actual
+    // heading is "Why pages aren't indexed" — same words, different order —
+    // so the poll ran its full forty seconds and gave up on a page that had
+    // rendered fine. Any one of the reasons appearing proves the table is
+    // there, and those strings are already the thing we came to read.
+    if (await scOpen(tab.id, scUrl("index", property, auth), SC_REASONS)) {
       const [{ result: denied } = {}] = await chrome.scripting.executeScript({
         target: { tabId: tab.id }, func: _scDenied
       });
@@ -733,7 +741,13 @@ async function consoleCapture(auditId, property, returnTabId) {
   if (!found) {
     say("Nothing recognised. Google may have renamed a label, or the report " +
         "had not rendered. Nothing was sent.");
+    // GO BACK ANYWAY. Failing is not a reason to abandon someone in a Search
+    // Console tab wondering whether the thing is still running — the whole
+    // point of returning them is that they know it finished, and that is more
+    // true when it finished badly.
+    await scReturn(tab);
     state.running = false; keepAlive(false);
+    chrome.runtime.sendMessage({ type: "VICI_STATE", state }).catch(() => {});
     return;
   }
 
@@ -752,18 +766,28 @@ async function consoleCapture(auditId, property, returnTabId) {
   state.consoleDraft = { auditId, draft, found };
   say(`Read ${found} figures. Sending…`);
   await consoleSend();
-  try {
-    if (tab?.id) await chrome.tabs.remove(tab.id);
-  } catch (e) { /* already closed */ }
-  if (state.consoleReturnTab) {
-    try {
-      await chrome.tabs.update(state.consoleReturnTab, { active: true });
-      await chrome.tabs.reload(state.consoleReturnTab);
-      say("Back on the audit — the captured rows are in it now.");
-    } catch (e) { say("Sent. Reopen the audit to see the filled rows."); }
-  }
+  await scReturn(tab, true);
   state.running = false; keepAlive(false);
   chrome.runtime.sendMessage({ type: "VICI_STATE", state }).catch(() => {});
+}
+
+/** Close the Search Console tab and put the operator back where they were. */
+async function scReturn(tab, reload) {
+  try {
+    if (tab?.id) await chrome.tabs.remove(tab.id);
+  } catch (e) { /* already closed by hand */ }
+  if (!state.consoleReturnTab) return;
+  try {
+    await chrome.tabs.update(state.consoleReturnTab, { active: true });
+    if (reload) {
+      await chrome.tabs.reload(state.consoleReturnTab);
+      say("Back on the audit — the captured rows are in it now.");
+    } else {
+      say("Back on the audit. Nothing was changed.");
+    }
+  } catch (e) {
+    say("Finished. Reopen the audit to see where it got to.");
+  }
 }
 
 async function consoleSend() {

@@ -468,67 +468,82 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
         opts["run_aivis"] = True
     if run_consent:
         opts["run_consent"] = True
-        # STATES AND INDUSTRIES WERE NEVER PLUMBED, AND THAT SILENTLY GUTTED
-        # TWO CHECKPOINTS.
-        #
-        # The scanner takes both. The worker passed both. Nothing ever SET
-        # them, so `states` arrived as None on every run — which meant the GPC
-        # pass never ran (CONS-06 was permanently "Need Access"), the per-state
-        # loop never executed, and CONS-08, titled "State privacy law
-        # requirements", reported on the single universal privacy-policy-link
-        # row: "All 1 checked requirements are met across US."
-        #
-        # Twenty states and three sensitive-industry rules were vendored,
-        # tested, and unreachable.
-        st = [x.strip().upper() for x in consent_states.replace(",", " ").split()
-              if x.strip()]
-        # DERIVE FROM THE MARKETS WHEN THE FORM DID NOT SEND A LIST.
-        #
-        # The states box used to be prefilled `CA CO CT TX VA OR` — a
-        # reasonable guess, and wrong for every client who does not sell
-        # there. A Knoxville law firm had California's law tested and
-        # Tennessee's ignored, and nothing in the report said so.
-        #
-        # The markets already say where they sell. Reading the states off them
-        # makes the guess unnecessary, and keeps a hand-typed list authoritative
-        # when someone does override it. Filtered to the states we actually
-        # have checks for, because listing one we cannot test is a promise the
-        # scan does not keep.
-        if not st and primary_markets.strip():
-            try:
-                from engine.geo import summarize as _geo
-                st = _geo(primary_markets)["checkable"]
-            except Exception:  # noqa: BLE001
-                st = []
-        if st:
-            opts["consent_states"] = st
-        ind = [x.strip() for x in consent_industries.split(",") if x.strip()]
-        if ind:
-            opts["consent_industries"] = ind
-        # WIRED THE SAME DAY THE FIELDS SHIPPED, on purpose. Adding an input
-        # the server drops is the exact failure this codebase spent a day
-        # chasing: states and industries sat on the scanner's signature for
-        # five builds with nothing setting them, and two checkpoints quietly
-        # answered nothing the whole time.
-        prods = [x.strip() for x in consent_products.split(",") if x.strip()]
-        if prods:
-            opts["consent_products"] = prods
-        # NO CAP. The browser already harvested and de-duplicated these, and
-        # a client with fourteen landing pages has fourteen pages where a
-        # conversion pixel can fire ungated. Silently keeping six would be the
-        # same failure as every other quiet truncation in this codebase: a
-        # list that looks complete and is not.
-        convs, seen = [], set()
-        for u in conversion_urls.split():
-            u = u.strip()
-            key = u.lower().split("://")[-1].lstrip("www.").rstrip("/")
-            if u and key not in seen:
-                seen.add(key)
-                convs.append(u)
-        if convs:
-            opts["conversion_urls"] = convs
-        if implementation.strip():
-            opts["implementation"] = implementation.strip()
+
+    # WHO THE CLIENT IS, AND WHERE THEY SELL, IS NOT A CONSENT SETTING.
+    #
+    # Every line below used to sit inside `if run_consent:`, which meant that
+    # running a full audit with the consent box unticked threw away the
+    # conversion URLs, the products, the industries, the derived states and
+    # the implementation — silently, with the form showing them right up until
+    # submit. The dashboard then read them back off the stored options, found
+    # nothing, and printed "—", which is what "conversion urls didn't save"
+    # actually was: they saved exactly as far as the guard and no further.
+    #
+    # These describe the CLIENT. They belong on the record whichever job ran,
+    # so a re-run prefills from them and the next scan does not need them
+    # retyped. The consent phase still reads them only when it runs.
+    #
+    # STATES AND INDUSTRIES WERE NEVER PLUMBED, AND THAT SILENTLY GUTTED
+    # TWO CHECKPOINTS.
+    #
+    # The scanner takes both. The worker passed both. Nothing ever SET them,
+    # so `states` arrived as None on every run — which meant the GPC pass
+    # never ran (CONS-06 was permanently "Need Access"), the per-state loop
+    # never executed, and CONS-08, titled "State privacy law requirements",
+    # reported on the single universal privacy-policy-link row: "All 1 checked
+    # requirements are met across US."
+    #
+    # Twenty states and three sensitive-industry rules were vendored, tested,
+    # and unreachable.
+    st = [x.strip().upper() for x in consent_states.replace(",", " ").split()
+          if x.strip()]
+    # DERIVE FROM THE MARKETS WHEN THE FORM DID NOT SEND A LIST.
+    #
+    # The states box used to be prefilled `CA CO CT TX VA OR` — a reasonable
+    # guess, and wrong for every client who does not sell there. A Knoxville
+    # law firm had California's law tested and Tennessee's ignored, and
+    # nothing in the report said so.
+    #
+    # The markets already say where they sell. Reading the states off them
+    # makes the guess unnecessary, and keeps a hand-typed list authoritative
+    # when someone does override it. Filtered to the states we actually have
+    # checks for, because listing one we cannot test is a promise the scan
+    # does not keep.
+    if not st and primary_markets.strip():
+        try:
+            from engine.geo import summarize as _geo
+            st = _geo(primary_markets)["checkable"]
+        except Exception:  # noqa: BLE001
+            st = []
+    if st:
+        opts["consent_states"] = st
+    ind = [x.strip() for x in consent_industries.split(",") if x.strip()]
+    if ind:
+        opts["consent_industries"] = ind
+    # WIRED THE SAME DAY THE FIELDS SHIPPED, on purpose. Adding an input the
+    # server drops is the exact failure this codebase spent a day chasing:
+    # states and industries sat on the scanner's signature for five builds
+    # with nothing setting them, and two checkpoints quietly answered nothing
+    # the whole time.
+    prods = [x.strip() for x in consent_products.split(",") if x.strip()]
+    if prods:
+        opts["consent_products"] = prods
+    # NO CAP. The browser already harvested and de-duplicated these, and a
+    # client with fourteen landing pages has fourteen pages where a conversion
+    # pixel can fire ungated. Silently keeping six would be the same failure as
+    # every other quiet truncation in this codebase: a list that looks complete
+    # and is not.
+    convs, seen = [], set()
+    for u in conversion_urls.split():
+        u = u.strip()
+        key = u.lower().split("://")[-1].lstrip("www.").rstrip("/")
+        if u and key not in seen:
+            seen.add(key)
+            convs.append(u)
+    if convs:
+        opts["conversion_urls"] = convs
+    if implementation.strip():
+        opts["implementation"] = implementation.strip()
 
     # A CONSENT CHECK IS A ONE-PAGE AUDIT.
     #

@@ -436,6 +436,55 @@ def main():
           "hardcoded in the page template" in _vb)
     check("an empty value renders nothing at all", _value_block({}) == "")
 
+    print("\nTHE CLIENT PROFILE SURVIVES A RUN WITH CONSENT UNTICKED")
+    # THE BUG: every one of these was parsed inside `if run_consent:`. Tick
+    # "Full audit" and leave the consent box alone and the conversion URLs,
+    # the products, the industry, the derived states and the implementation
+    # were all read off the form and thrown away — the operator watched them
+    # sit in the field right up to submit, then the settings panel said "—".
+    # That is what "conversion urls didn't save" was.
+    import app.api as _api2
+    from app import db as _db2
+    _saved = {}
+
+    def _fake_create(owner, name, url, vert, _x, options):
+        _saved.update(options or {})
+        return "testaudit"
+
+    _real_create, _real_enq = _db2.create_audit, _api2.Q.enqueue
+    _db2.create_audit = _fake_create
+    _api2.Q.enqueue = lambda *_a, **_k: None
+    # Called directly, so the FastAPI `Form(...)` defaults never resolve —
+    # fill every parameter the way an unticked, empty form actually posts.
+    _kw = {}
+    for _n, _p in _insp.signature(_api2.submit_form).parameters.items():
+        _kw[_n] = 150 if _n == "max_pages" else (
+            None if _n == "x_api_key" else "")
+    _kw.update(
+        target_url="https://ootenlawfirm.com/", client_name="Ooten",
+        primary_markets="Knox County, TN × Blount County, TN",
+        conversion_urls="https://ootenlawfirm.com/contact/ "
+                        "https://ootenlawfirm.com/thank-you",
+        consent_products="meta,google_ads", consent_industries="Legal",
+        implementation="gtm", phases="1", do_audit="on",
+        run_judgment="on", run_collectors="on", run_screenshots="on",
+        run_consent="")              # <- THE BOX IS NOT TICKED
+    try:
+        _api2.submit_form(**_kw)
+    finally:
+        _db2.create_audit, _api2.Q.enqueue = _real_create, _real_enq
+
+    check("the consent phase is correctly OFF",
+          not _saved.get("run_consent"))
+    check("but the conversion URLs are still on the record",
+          len(_saved.get("conversion_urls") or []) == 2,
+          str(_saved.get("conversion_urls")))
+    check("the products too", _saved.get("consent_products") == ["meta", "google_ads"])
+    check("the industry too", _saved.get("consent_industries") == ["Legal"])
+    check("the implementation too", _saved.get("implementation") == "gtm")
+    check("and the states derived from the markets, not from a guess",
+          _saved.get("consent_states") == ["TN"], str(_saved.get("consent_states")))
+
     print("\n" + "=" * 68)
     if FAILED:
         print(f"  {len(FAILED)} FAILED: {FAILED}")

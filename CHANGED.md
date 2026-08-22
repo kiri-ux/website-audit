@@ -1,6 +1,99 @@
-# Changed files — build 2026.08.20-48
+# Changed files — build 2026.08.20-49
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## The SERP rows never asked DataForSEO — they only ever talked about it
+
+You asked: *wasn't the serp fixed to use dataforseo?* It was, in ‑38. The
+provider falls through to `/serp/google/organic/live/advanced` and unwraps the
+envelope properly.
+
+Two rows never went near the provider. `GEO-19` and `GEO-20` — Featured
+Snippets and People Also Ask — are answered by `engine/aivis/geo_checks.py`,
+which writes its own recommendation text, and that text still said:
+
+> Configure `SERP_ENDPOINT` and `SERP_API_KEY` on the worker.
+
+Nothing connected that sentence to the provider, so fixing the provider could
+not possibly have changed it. It survived because it was never code that ran —
+it was a string. You read a fix-me for a variable you do not need, on a row
+whose data source has been configured for two builds.
+
+The rows now read the capability and say the true thing:
+
+> Featured Snippets is a Google SERP feature, not an AI chat platform, and no
+> SERP query ran for this audit.
+> → Tick **Ask the AI assistants** — the SERP query goes through DataForSEO,
+> which is already configured here, so nothing else is needed.
+
+That is the whole fix. The measurement was always available; the row was
+telling you to go buy a key for it.
+
+---
+
+## Conversion URLs did not save, and neither did four other fields
+
+This one was real and worse than reported.
+
+Every one of these was parsed inside `if run_consent:` in `submit_form`:
+
+- conversion URLs
+- products they bought
+- industry
+- implementation
+- the states derived from the markets
+
+Tick **Full audit**, leave the consent box alone, and the form posted all five
+correctly — and the server read them, and dropped them on the floor. The
+settings panel then rendered them back off the stored options, found nothing,
+and printed `—`. The field looked like it lost your typing. It did not: it
+posted fine and the guard ate it.
+
+None of those five is a consent setting. They describe the **client**. They now
+sit on the record whichever job ran, so the settings panel shows them, a re-run
+prefills from them, and nobody retypes fourteen landing pages because the
+consent box happened to be off.
+
+`run_consent` itself is still the only thing that decides whether the phase
+runs. The consent scan reads these when it runs; it just no longer owns them.
+
+Guarded by six new assertions in `tests/test_consent.py` that post a full audit
+with the consent box **unticked** and check all five survive:
+
+```
+THE CLIENT PROFILE SURVIVES A RUN WITH CONSENT UNTICKED
+  PASS  the consent phase is correctly OFF
+  PASS  but the conversion URLs are still on the record
+  PASS  the products too
+  PASS  the industry too
+  PASS  the implementation too
+  PASS  and the states derived from the markets, not from a guess  (['TN'])
+```
+
+---
+
+## The capture waited for my wording, not Google's
+
+The poll anchored on the string `"why aren't pages indexed"`. Google's heading
+is **"Why pages aren't indexed"** — same five words, different order. The test
+was `innerText.includes(...)`, so it never matched, and the capture spent its
+full forty seconds on a page that had finished rendering before the first poll.
+Your log said *"Indexing report did not finish loading — are you signed in?"*
+on a report that was fully loaded and signed in.
+
+It now waits on `SC_REASONS` — the exclusion labels themselves, the strings we
+came to read. If any one of them is on screen the table is there. Anchoring on
+the data instead of on the furniture around it also removes the class of bug
+where Google re-words a heading and the capture silently stops working.
+
+## And a failed capture no longer strands you in Search Console
+
+Both exits go through one `scReturn(tab, reload)`: close the Search Console
+tab, return to the audit page, reload it on success so the new rows are there.
+Before, the success path came back and the failure path left you sitting on
+Google's screen wondering whether to press the button again.
 
 ---
 

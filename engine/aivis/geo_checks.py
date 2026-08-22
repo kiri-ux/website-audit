@@ -112,12 +112,33 @@ def findings_from_run(agg: dict, profile) -> dict:
                 recommendation="Add a dedicated SERP-feature check to measure this "
                                "directly rather than inferring it.")
         else:
+            # STOP NAMING ENV VARS WE NO LONGER NEED.
+            #
+            # This has said "Configure SERP_ENDPOINT / SERP_API_KEY" since
+            # before the AI Overview provider learned to speak DataForSEO —
+            # which is a provider already configured on this worker. So the
+            # row was telling an operator to go and buy a second SERP
+            # subscription to replace one they already pay for, which is the
+            # same mistake the provider itself was making two builds ago and
+            # is arguably worse here: it survived the fix because nothing
+            # connected this text to it.
+            try:
+                from engine.collectors.dataforseo import configured as _dfs_ok
+                have_dfs = _dfs_ok()
+            except Exception:  # noqa: BLE001
+                have_dfs = False
             out[cid] = _finding(
                 "Need Access", {},
-                f"{label} is a Google SERP feature, not an AI chat platform — it "
-                f"requires a SERP data provider and was not measured.",
+                f"{label} is a Google SERP feature, not an AI chat platform, "
+                f"and no SERP query ran for this audit.",
                 severity="Medium", confidence=0.0,
-                recommendation="Configure SERP_ENDPOINT / SERP_API_KEY to measure this.")
+                recommendation=(
+                    "Tick 'Ask the AI assistants' — the SERP query goes "
+                    "through DataForSEO, which is already configured here, so "
+                    "nothing else is needed."
+                    if have_dfs else
+                    "Set DFS_LOGIN / DFS_PASSWORD on the worker, or "
+                    "SERP_ENDPOINT / SERP_API_KEY for a different provider."))
     return out
 
 
