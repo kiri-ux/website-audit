@@ -302,10 +302,18 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
         Leaving them in a log file meant every round of this cost a deploy and
         a rerun to see them.
         """
+        from engine.access import owner
         c, detail = Counter(), {}
         for cid in ids:
             f = findings.get(cid) or {}
-            ev = " ".join(str(f.get("evidence") or "Not run.").split())[:110]
+            # A checkpoint with NO finding has no evidence to quote, and the
+            # placeholder said so: "Not run." six times over. True, unhelpful,
+            # and identical for six different failures. Name the subsystem
+            # instead — that is the sentence someone can act on.
+            own = owner(cid)
+            fallback = (f"{own} produced no result for this run"
+                        if own else "no check produced a result")
+            ev = " ".join(str(f.get("evidence") or fallback).split())[:110]
             c[ev] += 1
             rec = " ".join(str(f.get("recommendation") or "").split())
             if rec and ev not in detail:

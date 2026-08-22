@@ -629,70 +629,94 @@ def _history(domain: str, out: dict) -> None:
 
 def _page_split(domain: str, out: dict, rd) -> None:
     """
-    OFF-19 homepage vs OFF-20 deep-page backlinks.
+    OFF-19 homepage vs OFF-20 deep-page backlinks, and GSC-22 top linked pages.
 
-    A profile where everything points at the homepage cannot rank interior
-    pages, which is the usual shape for a local service business and worth
-    saying out loud.
+    WHY THIS NO LONGER USES /backlinks/domain_pages/live.
+    -----------------------------------------------------
+    It did, and the parse failed on every run. The field names that endpoint
+    actually returned were:
+
+        content_encoding, domain, encoded_size, fetch_time, first_visited,
+        ip, location, main_domain
+
+    No backlink count. No page URL. Those are the fields of a HOST — how it was
+    fetched, where it resolves, when it was first seen — which means the
+    endpoint answers a different question from the one we were asking it, and no
+    amount of tolerant key-matching was going to find a page count in a record
+    that does not contain one. Three rounds of increasingly desperate fallbacks
+    went looking for a number that was never there.
+
+    The individual backlinks endpoint is unambiguous: every backlink names the
+    URL it points AT. Grouping by that gives homepage versus interior and the
+    most-linked pages in one pass, from a call this collector already makes for
+    OFF-18. One request, three rows, nothing inferred.
     """
     try:
-        res = _result(dfs_post("/backlinks/domain_pages/live",
-                               [{"target": domain, "limit": 100,
-                                 "backlinks_status_type": "live"}]))
-    except Exception:  # noqa: BLE001
+        res = _result(dfs_post("/backlinks/backlinks/live",
+                               [{"target": domain, "limit": 1000,
+                                 "backlinks_status_type": "live",
+                                 "mode": "as_is"}]))
+    except Exception as e:  # noqa: BLE001
+        print(f"[dataforseo] backlinks (for page split) failed: "
+              f"{type(e).__name__}: {e}", flush=True)
         return
-    _keys("domain_pages", res)
     items = (res[0].get("items") or []) if res else []
     if not items:
         return
-    home, deep = 0, 0
+    _keys("backlinks_pages", res)
+
+    # Count DISTINCT referring links per target page. A single site linking a
+    # page forty times is one endorsement, not forty, and the homepage/interior
+    # ratio is exactly where that distortion would land.
+    from collections import defaultdict
+    per_page = defaultdict(set)
     for i in items:
-        url = _str(i, "page_address", "url", "page", "address", "domain",
-                   "page_from", "target")
-        n = (_num(i, "backlinks", "referring_pages", "referring_domains")
-             or _any_num(i, "backlink", "referring"))
-        path = url.split("//")[-1].split("/", 1)
-        if len(path) == 1 or path[1] in ("", "/"):
-            home += n
-        else:
-            deep += n
+        tgt = _str(i, "url_to", "target_url", "page_to", "url")
+        src = _str(i, "url_from", "domain_from", "page_from") or str(id(i))
+        if tgt:
+            per_page[tgt].add(src)
+    if not per_page:
+        _unreadable(out, ["OFF-19", "OFF-20", "GSC-22"], "backlinks", items[0])
+        return
+
+    def _is_home(u: str) -> bool:
+        path = u.split("//")[-1].split("/", 1)
+        return len(path) == 1 or path[1].strip("/") == ""
+
+    home = sum(len(v) for u, v in per_page.items() if _is_home(u))
+    deep = sum(len(v) for u, v in per_page.items() if not _is_home(u))
     total = home + deep
     if not total:
-        _unreadable(out, ["OFF-19", "OFF-20"], "domain_pages", items[0])
+        _unreadable(out, ["OFF-19", "OFF-20", "GSC-22"], "backlinks", items[0])
         return
-    # GSC-22 Top linked pages, from the same items. Search Console publishes
-    # this report and exposes no API for it, so it was sitting in the audit
-    # answered by the wrong metric entirely — "25 pages received organic
-    # traffic", which is top TRAFFICKED pages. A page can be the most linked on
-    # a site and receive no traffic at all.
-    ranked = sorted(
-        ((_str(i, "page_address", "url", "page", "address", "domain",
-               "page_from", "target"),
-          _num(i, "backlinks", "referring_pages", "referring_domains")
-          or _any_num(i, "backlink", "referring"))
-         for i in items), key=lambda t: -t[1])
-    ranked = [(u, n) for u, n in ranked if u and n]
-    if ranked:
-        top = ranked[0]
-        out["GSC-22"] = _f(
-            "Info", {"top_linked_pages": ranked[:10]},
-            f"The most-linked page is {top[0]} with {top[1]:,} inbound links; "
-            f"{len(ranked)} pages on the site have links pointing at them. "
-            f"{_NOT_GSC}", "Low", "", 1.0, "dataforseo")
 
+    sampled = len(items)
+    scope = (f" (from the {sampled:,} most recent backlinks)"
+             if sampled >= 1000 else "")
     d_pct = round(100 * deep / total, 1)
-    out["OFF-19"] = _f("Info", {"homepage_backlinks": home},
-                       f"{home:,} backlinks point at the homepage.",
+    out["OFF-19"] = _f("Info", {"homepage_backlinks": home, "sampled": sampled},
+                       f"{home:,} referring links point at the homepage{scope}.",
                        "Low", "", 1.0, "dataforseo")
     out["OFF-20"] = _f("Pass" if d_pct >= 20 else "Warning",
-                       {"deep_backlinks": deep, "deep_pct": d_pct},
-                       f"{deep:,} backlinks point at interior pages "
-                       f"({d_pct}% of the profile).",
+                       {"deep_backlinks": deep, "deep_pct": d_pct,
+                        "sampled": sampled},
+                       f"{deep:,} referring links point at interior pages "
+                       f"({d_pct}% of the profile){scope}.",
                        "Low" if d_pct >= 20 else "Medium",
                        "" if d_pct >= 20 else "Almost every link points at the "
                                               "homepage, so service and "
                                               "location pages have no authority "
                                               "of their own.")
+
+    ranked = sorted(((u, len(v)) for u, v in per_page.items()),
+                    key=lambda t: -t[1])
+    top = ranked[0]
+    out["GSC-22"] = _f(
+        "Info", {"top_linked_pages": ranked[:10], "pages": len(ranked),
+                 "sampled": sampled},
+        f"The most-linked page is {top[0]} with {top[1]:,} referring links; "
+        f"{len(ranked):,} pages on the site have links pointing at them. "
+        f"{_NOT_GSC}", "Low", "", 1.0, "dataforseo")
 
 
 def _toxicity(domain: str, out: dict, spam) -> None:

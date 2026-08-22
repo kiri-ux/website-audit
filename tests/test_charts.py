@@ -49,11 +49,21 @@ class _Rec:
     def __init__(self):
         self.rects, self.texts, self.arcs = [], [], []
         self._font = ("Helvetica", 10)
+        self._fill = None
 
     # --- geometry
     def rect(self, x, y, w, h, stroke=1, fill=0):
+        # The fill COLOR is recorded now, and it has to be.
+        #
+        # Bars used to be one rect each, so "how many filled rects" was a fair
+        # proxy for "how many bars". They are gradients now — dozens of thin
+        # bands per bar — and that proxy started reporting 176 bars for a
+        # four-row chart. Counting draw calls was always measuring the
+        # implementation; what the test actually cares about is how far the
+        # ink reaches, and telling bar ink from track ink needs the color.
         self.rects.append({"x": x, "y": y, "w": w, "h": h,
-                           "stroke": stroke, "fill": fill})
+                           "stroke": stroke, "fill": fill,
+                           "color": self._fill})
 
     def arc(self, x1, y1, x2, y2, startAng=0, extent=90):
         self.arcs.append({"box": (x1, y1, x2, y2), "start": startAng,
@@ -88,7 +98,8 @@ class _Rec:
     def setLineWidth(self, *a): pass
     def setLineCap(self, *a): pass
     def setStrokeColor(self, *a): pass
-    def setFillColor(self, *a): pass
+    def setFillColor(self, col, *a):
+        self._fill = getattr(col, "hexval", lambda: str(col))()
     def setDash(self, *a): pass
 
 
@@ -108,14 +119,40 @@ def main():
     bars = SectionBars(rows, width=6.4 * inch)
     rec, w, h = _render(bars)
 
+    from engine.charts import TRACK
+    track_hex = TRACK.hexval()
     filled = [r for r in rec.rects if r["fill"]]
     hollow = [r for r in rec.rects if not r["fill"] and r["stroke"]]
-    check("assessed rows draw filled bars", len(filled) == 4, f"{len(filled)} filled")
+
+    # Group the ink by row, and ask how far each row's BAR reaches past the
+    # left edge of its track. That is the thing a reader sees and the thing a
+    # zero-length bar would get wrong, and it holds whether the bar is one
+    # rect or sixty bands.
+    def spans():
+        rows_ = {}
+        for r in filled:
+            key = round(r["y"], 1)
+            lo, hi_, is_track = rows_.get(key, (None, None, False))
+            if r["color"] == track_hex:
+                rows_[key] = (lo, hi_, True)
+                continue
+            lo = r["x"] if lo is None else min(lo, r["x"])
+            hi_ = r["x"] + r["w"] if hi_ is None else max(hi_, r["x"] + r["w"])
+            rows_[key] = (lo, hi_, is_track)
+        return {k: v for k, v in rows_.items() if v[0] is not None}
+
+    bars = spans()
+    check("assessed rows draw filled bars", len(bars) == 2, f"{len(bars)} bars")
     check("unassessed rows draw a hollow outline instead",
           len(hollow) == 2, f"{len(hollow)} hollow")
     check("no zero-width bar is ever emitted",
-          all(r["w"] > 0.5 for r in filled),
-          str([round(r["w"], 2) for r in filled]))
+          all(hi_ - lo > 0.5 for lo, hi_, _ in bars.values()),
+          str([round(hi_ - lo, 2) for lo, hi_, _ in bars.values()]))
+    check("every bar sits on a track, so length reads as a proportion",
+          all(t for _, _, t in bars.values()))
+    check("a higher score draws a longer bar",
+          sorted(round(hi_ - lo) for lo, hi_, _ in bars.values())[-1] >
+          sorted(round(hi_ - lo) for lo, hi_, _ in bars.values())[0])
     check("unassessed rows are labelled in words, not just by colour",
           sum(1 for t in rec.texts if "Not assessed" in t["t"]) == 2)
     check("unassessed rows show a dash for the score, never 0",

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Vici Audit Capture",
-  "version": "1.1.0",
-  "description": "Captures SEO/GEO audit data from sites that block server-side crawlers, using the real browser render.",
+  "name": "Site Scanner",
+  "version": "1.2.0",
+  "description": "Runs the audit and consent scan from your own browser, so sites that block server-side crawlers still get measured.",
   "permissions": [
     "activeTab",
     "scripting",
@@ -14,13 +14,25 @@
   "host_permissions": [
     "<all_urls>"
   ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Vici Audit Capture"
+    "default_title": "Site Scanner",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "content_scripts": [
     {

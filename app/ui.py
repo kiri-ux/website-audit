@@ -36,11 +36,17 @@ CSS = """
  * reason it always has: length carries magnitude.
  */
 :root{
- --navy:#12356b; --navy-2:#0e2a56; --navy-line:#1d4a8a;
+ /* SAMPLED OFF AN ADTINI SCREENSHOT, NOT MATCHED BY EYE.
+    Every value below is the modal pixel of the region it names. Eyeballing
+    got --rail to #12356b and --gold to #f0b429, both close enough to look
+    right in isolation and both visibly wrong the moment the two apps sit
+    side by side in adjacent tabs, which is the only way anyone sees them. */
+ --navy:#0c284c; --navy-2:#081d38; --navy-line:#1d4a8a;
+ --rail-bg:#1c5ba6;                      /* the left menu, exactly */
  --blue:#1668c1; --blue-dk:#12539c;
- --gold:#f0b429; --gold-dk:#d99e17;
+ --gold:#e8ac3e; --gold-dk:#cf9421;
  --orange:#e2691a;
- --plane:#f4f6f9; --surface:#ffffff; --line:#dfe4ec; --line-2:#eceff4;
+ --plane:#f1f2f4; --surface:#ffffff; --line:#dfe4ec; --line-2:#eceff4;
  --ink:#1b2733; --ink2:#48566b; --muted:#7d8a9c; --track:#e8ecf2;
  --seq:#1668c1;
  --good:#1a7f4b; --warning:#b7791f; --serious:#c05621; --critical:#c53030;
@@ -52,21 +58,30 @@ CSS = """
  --rail:64px;
 }
 *{box-sizing:border-box}
-/* Roboto, the same face adtini uses, and NOT a stack that quietly falls
-   through to the system font — the two look similar enough at a glance that a
-   fallback would go unnoticed and read as a different product up close. */
+/* NOT ROBOTO. Measured, not guessed.
+   "Roboto, the same face adtini uses" was an assumption written down as a
+   comment and then trusted for six builds. Setting adtini's own heading next
+   to candidates at matched cap height settles it: the ink box of "Workflow"
+   has an aspect ratio of 6.11 in adtini, 6.09 in Arial, and 5.44 in Roboto.
+   Roboto is visibly narrower — that IS the mismatch, and it is why loading a
+   webfont made it worse rather than better.
+   So: no webfont at all. The system stack resolves to the same face adtini
+   gets on the same machine, which is match by construction rather than by
+   my picking a lookalike off Google Fonts. If adtini turns out to name a
+   licensed face, this one line is where it goes. */
 body{margin:0;background:var(--plane);color:var(--ink);
- font:15px/1.55 Roboto,"Helvetica Neue",Arial,sans-serif;
+ font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,
+ "Helvetica Neue",sans-serif;
  -webkit-font-smoothing:antialiased}
 
 /* ---- chrome: rail, top bar, breadcrumb ---- */
-.rail{position:fixed;left:0;top:0;bottom:0;width:var(--rail);background:var(--navy);
+.rail{position:fixed;left:0;top:0;bottom:0;width:var(--rail);background:var(--rail-bg);
  display:flex;flex-direction:column;align-items:center;padding:16px 0;gap:8px;z-index:20}
 .rail a,.rail span{width:40px;height:40px;border-radius:6px;display:flex;
  align-items:center;justify-content:center;color:#93aed2;font-size:19px;
  text-decoration:none}
 .rail a:hover{background:rgba(255,255,255,.08);text-decoration:none}
-.rail .on{background:var(--gold);color:var(--navy-2)}
+.rail .on{background:var(--gold);color:var(--navy)}
 .rail .sp{flex:1}
 .topbar{position:sticky;top:0;z-index:15;background:var(--surface);
  border-bottom:1px solid var(--line);height:60px;display:flex;align-items:center;
@@ -98,15 +113,22 @@ code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
  transition:box-shadow .15s ease, border-color .15s ease}
 .card:hover{border-color:#cfdaea;box-shadow:0 4px 16px -10px rgba(18,53,107,.3)}
 
-/* The one place a gradient earns its keep: the bar the eye lands on first.
-   Navy to a lighter navy, left to right — enough to read as designed, not
-   enough to compete with anything on the page. */
-.topbar{background:linear-gradient(96deg,var(--navy) 0%,#17417e 62%,#1a4a8f 100%);
- border-bottom:0;box-shadow:0 1px 0 rgba(0,0,0,.06)}
-.topbar h1{color:#fff;font-weight:600;letter-spacing:-.015em}
-.topbar .burger{color:#a8c2e4}
-.topbar .right{color:#c2d5ec}
-.topbar .right .chip.build{background:rgba(255,255,255,.14);color:#e8f0fa}
+/* THE TOP BAR IS WHITE, because adtini's is white.
+   It was a navy gradient for one build — asked for, and it did look good on
+   its own. It also made this the one page in the suite whose header did not
+   match the others, which is the opposite of the point: the rail and the bar
+   are the two things a person recognizes before they read a word.
+   The gradient did not go away, it moved. It is a 2px seam under the bar and
+   the rule under every heading, where it reads as finish rather than as a
+   different product. */
+.topbar{background:var(--surface);border-bottom:1px solid var(--line);
+ box-shadow:0 2px 0 -1px rgba(0,0,0,.03)}
+.topbar:after{content:'';position:absolute;left:0;right:0;bottom:-2px;height:2px;
+ background:linear-gradient(90deg,var(--rail-bg) 0%,var(--blue) 38%,
+ rgba(28,91,166,0) 88%)}
+.topbar h1{color:#1e1e1e;font-weight:700;letter-spacing:-.015em}
+.topbar .burger{color:#5c6673}
+.topbar .right{color:var(--ink2)}
 
 /* ---- forms ---- */
 form#auditform{display:grid;grid-template-columns:2fr 1.4fr 1fr .7fr auto;
@@ -222,7 +244,7 @@ td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 
 /* ---- score ring: one hue, length carries magnitude ---- */
 .ring{display:block}
-.ring text{font:500 15px Roboto,"Helvetica Neue",Arial,sans-serif;fill:var(--ink);
+.ring text{font:500 15px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;fill:var(--ink);
  font-variant-numeric:tabular-nums}
 .ring text.sm{font-size:11px;fill:var(--muted);font-weight:500}
 
@@ -346,9 +368,18 @@ def _icon(path: str, size: int = 21) -> str:
 # one icon came out full-size and the next as a 6px speck. A path is a path.
 RAIL = (
     "<nav class='rail' aria-label='sections'>"
-    "<a href='/' class='on' title='Audits'>"
-    + _icon("<rect x='3' y='3' width='18' height='18' rx='2'/>"
-            "<path d='M3 9h18M9 21V9'/>") +
+    # SITE SCANNER.
+    #
+    # ONE OBJECT, because every icon in adtini's rail is one object — a house,
+    # a person, a briefcase, a chart. The first attempt drew a browser window
+    # with a lens over it, which is the better picture of what this tool does
+    # and completely illegible at 21px: three concentric strokes inside a 40px
+    # gold tile came out as a smudged box. The extension icon can afford the
+    # window because it also renders at 48 and 128. This one cannot, so it is
+    # the lens alone — the half that carries the meaning.
+    "<a href='/' class='on' title='Site Scanner'>"
+    + _icon("<circle cx='10.5' cy='10.5' r='6.5'/>"
+            "<path d='M15.2 15.2 20.5 20.5'/>", 20) +
     "</a>"
     "<a href='/visibility' title='AI visibility'>"
     + _icon("<circle cx='12' cy='12' r='9'/><path d='M12 3a9 9 0 0 1 0 18z'/>") +
@@ -389,10 +420,6 @@ def _shell(title, body, refresh=None, heading=None, crumbs=None):
     return (f"<!doctype html><html><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width,initial-scale=1'>{r}"
             f"{HEAD}"
-            f"<link rel='preconnect' href='https://fonts.googleapis.com'>"
-            f"<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
-            f"<link rel='stylesheet' href='https://fonts.googleapis.com/css2?"
-            f"family=Roboto:wght@400;500;600;700&display=swap'>"
             f"<title>{e(title)}</title><style>{CSS}</style></head>"
             f"<body class='viz-root'>{RAIL}"
             f"<header class='topbar'><span class='burger'>\u2630</span>"
@@ -462,7 +489,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
                  ("Max pages", st["max_pages"]),
                  ("Primary markets", st["primary_markets"] or "—"),
                  ("Primary conversion", st["primary_conversion"] or "—"),
-                 ("Prepared by", st["partner"] or "—"),
+                 ("Partner name", st["partner"] or "—"),
                  ("Search Console property", st["gsc_property"] or "auto"),
                  ("GA4 property", st["ga4_property_id"] or "auto"),
                  ("Render JavaScript", "yes" if st["render_js"] else "no"),
@@ -521,7 +548,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
             f"<span>{_fmt_when(a.get('created_at'))}</span>"
             f"</div>"
             + (f"<div class='warn'>⚠ Server crawl blocked. Open the site in "
-               f"Chrome, launch <b>Vici Audit Capture</b>, and paste audit id "
+               f"Chrome, launch <b>Site Scanner</b>, and paste audit id "
                f"<code>{a['id']}</code>.</div>"
                if a["status"] == "needs_capture" else "")
             + _settings_panel(a)
@@ -660,7 +687,7 @@ banner, Consent Mode and what fires before consent. No crawl.'>
     </div>
 
     <div style='margin-top:14px'>
-      <label>Prepared by</label>
+      <label>Partner name</label>
       <input name='partner' form='auditform'
              placeholder='Vici Media'>
       <div style='font-size:12px;color:var(--muted);margin-top:4px'>
@@ -883,7 +910,7 @@ def audit_html(a):
             f"<p><button id='vici-capture-go' class='btn' type='button'>"
             f"Start capture with the Chrome extension</button></p>"
             f"<div id='vici-capture-manual'>"
-            f"<p class='sub'><b>Vici Audit Capture is not installed in this "
+            f"<p class='sub'><b>The Site Scanner extension is not installed in this "
             f"browser.</b> It is an unpacked Chrome extension, so it lives in a "
             f"folder rather than the Web Store — and it disappears if that "
             f"folder moves or is deleted, which is the usual reason it is "
@@ -898,7 +925,7 @@ def audit_html(a):
             f"copy</button> — Chrome will not let a page link there.</li>"
             f"<li>Turn on <b>Developer mode</b>, top right.</li>"
             f"<li><b>Load unpacked</b>, and choose the folder you unzipped. "
-            f"You should see <b>Vici Audit Capture 1.1.0</b>.</li>"
+            f"You should see <b>Site Scanner 1.2.0</b>.</li>"
             f"<li>Reload this page — the Start capture button appears once "
             f"the extension is detected.</li></ol>"
             f"<p class='sub' style='margin-top:10px'>Or drive it by hand: open "

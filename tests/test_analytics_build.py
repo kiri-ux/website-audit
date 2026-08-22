@@ -206,10 +206,21 @@ def main():
           gsc["GSC-19"]["value"]["no_inbound"] == 1, str(gsc["GSC-19"]["value"]))
 
     print("\nA REPORT WITH NO API IS NOT THE CLIENT'S HOMEWORK")
-    check("GSC-20 is an analyst's job, not a missing grant",
-          blocked_on("GSC-20", gsc["GSC-20"]) == "manual")
-    check("GSC-21 is an analyst's job, not a missing grant",
-          blocked_on("GSC-21", gsc["GSC-21"]) == "manual")
+    # These two asserted "manual" until the backlink index started answering
+    # them. That was right while it was true: Google publishes the Links
+    # report and exposes no API for it, so a person really did have to open
+    # Search Console and read it off.
+    #
+    # It is not true any more, and leaving the assertion alone would have
+    # pinned the old behaviour in place. An empty GSC-20 now means OUR
+    # DataForSEO call missed — a bug we fix, not an errand we hand to an
+    # analyst who has no way to do anything about it.
+    check("GSC-20 is ours to fix, not a missing grant",
+          blocked_on("GSC-20", gsc["GSC-20"]) == "vendor")
+    check("GSC-21 is ours to fix, not a missing grant",
+          blocked_on("GSC-21", gsc["GSC-21"]) == "vendor")
+    check("and neither is ever put on a person's work list",
+          blocked_on("GSC-22", gsc["GSC-22"]) != "manual")
     check("it names what would answer it",
           "DataForSEO" in gsc["GSC-20"]["evidence"])
     # The bug this replaced: GSC-22 "Top linked pages" was filled with the
@@ -275,11 +286,32 @@ def main():
     import engine.collectors.dataforseo as D
 
     def dfs(path, payload, timeout=None, retries=1):
-        if "domain_pages" in path:
-            items = [{"page_address": "https://example.com/", "backlinks": 400},
-                     {"page_address": "https://example.com/services",
-                      "backlinks": 120},
-                     {"page_address": "https://example.com/about", "backlinks": 9}]
+        if "backlinks/backlinks" in path:
+            # INDIVIDUAL BACKLINKS, GROUPED BY TARGET — not page summaries.
+            #
+            # This fixture used to answer /backlinks/domain_pages/live with
+            # {page_address, backlinks} rows, because that is what the name
+            # promises. The live endpoint returns HOST records instead —
+            # content_encoding, domain, encoded_size, ip, location — with no
+            # page URL and no backlink count anywhere in them. Three rounds of
+            # tolerant key-matching went by before the internal panel printed
+            # the field names it had actually received.
+            #
+            # So the split is computed from the backlinks themselves now, and
+            # the fake has to be the shape the real call returns: one record
+            # per link, with the page it points at.
+            items = ([{"url_to": "https://example.com/",
+                       "url_from": f"https://site{i}.com/a"} for i in range(9)]
+                     + [{"url_to": "https://example.com/services",
+                         "url_from": f"https://site{i}.com/b"} for i in range(4)]
+                     + [{"url_to": "https://example.com/about",
+                         "url_from": "https://site0.com/c"}]
+                     # Two links from ONE source to the same page count once:
+                     # this is a count of referring pages, not of anchors.
+                     + [{"url_to": "https://example.com/about",
+                         "url_from": "https://site0.com/c"}])
+        elif "domain_pages" in path:
+            items = []
         elif "referring_domains" in path:
             order = (payload[0].get("order_by") or [""])[0]
             if order.startswith("backlinks,"):
@@ -316,8 +348,12 @@ def main():
           "spammy.xyz" not in str(out["GSC-21"]["value"]))
     check("top linked pages are ordered by links, not by traffic",
           out["GSC-22"]["value"]["top_linked_pages"][0]
-          == ("https://example.com/", 400),
+          == ("https://example.com/", 9),
           str(out["GSC-22"]["value"]["top_linked_pages"][:2]))
+    check("a page linked twice from one source counts as one referring page",
+          dict(out["GSC-22"]["value"]["top_linked_pages"]).get(
+              "https://example.com/about") == 1,
+          str(out["GSC-22"]["value"]["top_linked_pages"]))
 
     print("\nAND EVERY ONE OF THEM SAYS IT IS NOT SEARCH CONSOLE'S NUMBER")
     # Ours are generally larger — Google's Links report shows a sample. Someone

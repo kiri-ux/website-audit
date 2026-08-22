@@ -1,1506 +1,229 @@
-# Changed files — build 2026.08.20-28
+# Changed files — build 2026.08.20-29
 
-## The consent scanner, folded in
+Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
 
-`engine/consent/` is the standalone scanner — `scanner.py`, `signatures.py`,
-`state_checks.py`, `industries.py` — vendored with its imports made relative and
-nothing else changed. **The only new code is `checks.py`**, an adapter that turns
-one scan result into nine checkpoints.
+---
 
-Vendored rather than rewritten on purpose. The hard part of consent scanning is
-not the idea; it is fourteen CMP signatures, an accept-click that survives
-iframe banners, and knowing that a Google endpoint carrying a denied-state
-`gcs=` parameter before consent is an **expected cookieless ping rather than a
-violation**. That knowledge accumulated over many versions in one place. A
-second implementation would be a second thing to keep correct, and the two would
-drift on exactly the cases that matter.
+## 1. The analyst section is gone, and it is not coming back
 
-### Nine checkpoints, in a new section
+You asked to be rid of it. It is not hidden — the thing that produced it no
+longer classifies anything into it.
 
-| | |
+`engine/access.py` sorts every unanswered checkpoint into one of three buckets:
+**client** (a grant only they can give), **vendor** (ours), **manual** (a person
+does this by hand). `MANUAL_DESPITE_PREFIX` is now empty, and the two source
+tags that used to land there — `gsc_no_api`, `ga4_no_api` — moved into
+`OURS_DESPITE_PREFIX`.
+
+Those three rows are Search Console's Links reports. Google publishes them and
+exposes no API for them, so "an analyst opens Search Console and reads it off"
+was once an honest label. It stopped being honest when the backlink index
+started answering all three. An empty GSC-22 does not mean nobody has done the
+reading; it means **our DataForSEO call missed**. Leaving the old mapping in
+place put a work item on a person's list that no person could act on.
+
+Verified across the whole catalog:
+
+```
+Counter({'vendor': 284, 'client': 38})     # manual: 0
+```
+
+The bucket itself stays declared. An unrecognized checkpoint id still falls to
+`manual`, which is the conservative fallback that keeps our gaps off the
+client's homework list, and the next genuinely-unautomatable checkpoint should
+land there rather than on them.
+
+---
+
+## 2. "Ours to fix" — the real cause, and the six silent rows
+
+### The cause: we were reading the wrong endpoint
+
+The panel's own diagnostic finally printed the field names DataForSEO returned
+for `/backlinks/domain_pages/live`:
+
+```
+content_encoding, domain, encoded_size, fetch_time, first_visited, ip,
+location, main_domain
+```
+
+No page URL. No backlink count. **That endpoint returns host records, not
+pages.** Three rounds of increasingly tolerant key-matching went into parsing a
+shape that was never going to be there.
+
+`_page_split()` now computes the split from the backlinks themselves —
+`/backlinks/backlinks/live`, grouped by `url_to`, with referring sources
+deduplicated so two links from one page count once. Verified against a fixture
+of 40 raw links from 9 distinct sites:
+
+- **OFF-19** — 9 referring links point at the homepage
+- **OFF-20** — 13 point at interior pages (59.1%)
+- **GSC-22** — top linked page identified, ranked by referring pages
+
+### The six rows that just said "Not run."
+
+A checkpoint with no finding has no evidence to quote, so the panel printed the
+placeholder — six times, identically, for six different failures. True, and
+completely unactionable.
+
+`engine/access.py` gained `owner()`, which names the subsystem that owed each
+row. The panel now says *"the backlink provider produced no result for this
+run"* or *"the AI visibility panel produced no result for this run"* — three
+different fixes that previously looked like one problem.
+
+---
+
+## 3. Gradients in the PDF
+
+All within one hue, and for a specific reason. Section scores are a magnitude,
+carried by a sequential single hue plus length. A gradient that crossed hues
+would turn a ranked scale into a categorical palette and destroy the ordering
+it exists to show. Every gradient here runs light-to-dark inside the same blue:
+it reads as depth and finish, never as a second channel of meaning.
+
+| Where | What |
 |---|---|
-| **CONS-01** | CMP installed |
-| **CONS-02** | Banner actually appears |
-| **CONS-03** | Consent Mode defaults set |
-| **CONS-04** | No tracking before consent |
-| **CONS-05** | Reject is respected |
-| **CONS-06** | Global Privacy Control respected |
-| **CONS-07** | Do Not Sell / opt-out link |
-| **CONS-08** | State privacy law requirements |
-| **CONS-09** | Tag Manager consent trigger available |
+| **Score gauge** | The arc sweeps in segments with an interpolated stroke, so the largest mark in the document carries the ramp |
+| **Section bars** | Every bar on the same ramp, over a flat track |
+| **Inline meters** | Same ramp, in the Score-by-Area table |
+| **Cover** | A full-measure gradient rule under the title |
+| **Hero panel** | A flush gradient cap along its top edge |
+| **Nine headings** | A short tapered version of the same rule, so it reads as a recurring section mark |
 
-**The rule that shapes every one of them:** a basic scan — raw HTML, no browser
-— detects most CMPs and nothing else. Five rows report **Need Access** in that
-mode and say why. "No tracking before consent: Pass" off an HTML fetch would be
-a clean bill of health for a question that was never asked.
+### Three things that were wrong until I looked at the rendered pages
 
-Severities here are higher than an SEO reader expects, and that is correct. A
-pixel firing before consent in a state with a private right of action is a
-different kind of problem from a missing meta description. Banner installed but
-never shown, reject that changes nothing, GPC ignored — all Critical.
+**The tapered rule printed as a dashed line.** Fading the tail with
+`setFillAlpha` seemed obvious. Each band overlaps its neighbor by 0.4pt to stop
+hairlines opening between them — and two translucent fills stacked in that
+overlap are twice as opaque as either one, so the fade came out striped at
+exactly the band pitch. The tail now lerps toward the page color at full
+opacity.
 
-### Two ways to run it
+**The bars had grown a second color channel.** The first cut gave the three
+worst areas a full-depth gradient and everything else a pale one. On the page,
+tone started reading as the data — dark bars looked like the bad ones — and it
+contradicted the gauge on page one, where dark simply means "further along the
+arc". Same ink, two opposite meanings, one document. All bars now share one
+ramp; the worst three are emphasized by a bold label instead.
 
-**As a phase of the audit** — a pill on the form, on by default. One page, not
-the whole crawl: a consent banner is a property of the tag setup, not of any
-URL, and clicking Accept 150 times would cost twenty minutes to learn the same
-thing.
-
-**As a standalone check** — a *Consent check* button beside *Run audit*. It is
-an **audit with one page and one phase**, which means it inherits the queue, the
-status page, the report, client grouping and the rerun button for free. A
-separate record type would have been a second copy of all five.
+**The inline meters looked striped next to identical bars four times as wide.**
+Band count was hard-coded, so the same 48 bands that vanish across four inches
+were countable across one. `_grad_rect` now derives the count from the width,
+one band per 1.5pt.
 
 ---
 
-## The extension does consent capture
+## 4. The chrome, matched to adtini by measurement
 
-The scanner's dead end is bot protection: `_looks_challenged` fires, Playwright
-falls back to raw HTML, and the scan loses the banner, Consent Mode, pre-consent
-fires **and** the reject test — three and a half of the four questions it
-exists to answer. On a challenged site it reports almost nothing.
+Every value below is the modal pixel of the region it names in your screenshot,
+not a match by eye. Eyeballing had produced `#12356b` for the rail and
+`#f0b429` for the gold — both close enough alone, both visibly wrong with the
+two apps in adjacent tabs, which is the only way anyone ever sees them.
 
-The extension runs in your own Chrome, on your IP, with your cookies, which
-challenge pages let through because it is a person. **Consent check** in the
-popup does four things on the open tab:
-
-1. Loads and watches every request, touching nothing.
-2. Reads the page for a visible banner and for `dataLayer` Consent Mode
-   defaults. *Visible* means on screen and painted — a banner rendered
-   off-canvas or at zero opacity is exactly the failure CONS-02 looks for.
-3. Clicks Accept, watches again.
-4. Reloads **fresh** and clicks Reject. Fresh matters: after Accept the CMP has
-   written its cookie, so a Reject click then tests a different state from the
-   one a first-time visitor sees.
-
-**The extension classifies nothing.** It records what happened and posts it;
-`POST /api/audits/{id}/consent-capture` runs the same signature tables, the same
-`gcs=` parsing and the same endpoint lists as the Playwright path, then rescores
-the audit. Two classifiers would eventually disagree about the same site with no
-way to tell which was right — the tests assert both paths reach the same verdict
-on the same evidence.
-
-One more distinction it keeps: a capture that could not read the dataLayer
-reports Consent Mode as **unknown**, not absent. "No defaults set" and "we could
-not look" are opposite findings.
-
----
-
-## Site Scanner
-
-The page is called **Site Scanner** now — title, heading, breadcrumb, and the
-back link on the report.
-
-### Two pairs of labels that meant different things and did not say so
-
-**"E-E-A-T and AI Search" vs "AI visibility."** Both said AI; they are opposites.
-
-| Now reads | What it does |
-|---|---|
-| **Read and judge the pages** *(E-E-A-T, on-page, AI-readiness)* | An LLM reads the **client's own pages** and scores them — is the expertise visible, does the page answer its query, is the CTA clear |
-| **Ask the AI assistants** *(Claude, Gemini · paid per question)* | Asks ChatGPT, Claude, Gemini and the rest **about the brand** and records whether they mention or cite it |
-
-One is about their content. The other is about their presence in someone else's
-answer. Neither needs the word "AI" to be understood, and using it for both is
-what made them look like a duplicate.
-
-**"Re-run" vs "Start a new audit with these settings."** Both made a new audit,
-which is why the difference was invisible. They now say what they do: **Run
-again** fires immediately with the same settings; **Copy these settings into the
-form** fills the form so you can change something first.
-
-### Phase pills
-
-Five checkboxes in a grid read as a settings dialog. The same five as pressable
-pills read as a choice about *this run*, which is what they are — and the state
-is legible from across the room. Checked ones fill blue; a disabled one greys out
-with its reason still readable.
-
-### And a general lift
-
-- **Gradient top bar**, navy to a lighter navy. The one place a gradient earns
-  its keep is the bar the eye lands on first — enough to read as designed, not
-  enough to compete with the content.
-- **Stat tiles react to the cursor** and each carries an accent bar in *its own
-  status color*. Seven identical blue edges is decoration; seven that mean what
-  the dot means is a row you can scan without reading. The dot stays — color
-  alone must never be the only carrier.
-- Rounder cards, softer shadows on hover.
-
----
-
-## "Do I need to recrawl?" — the run tells you now
-
-**For AI visibility, no.** That phase reads the business context, which is
-derived from the stored crawl at run time, not frozen into it. A reused crawl
-works.
-
-**For everything else, it depends on how old the stored crawl is** — and that is
-a question nobody should have to bring to me.
-
-The page record has grown over the last few builds: the **footer** (which is
-where the address is), **stylesheet URLs**, **rel=next/prev/amphtml**, and **meta
-refresh**. A crawl taken before a field existed cannot contain it, so reusing it
-leaves the checks that read it empty with nothing to explain why. That is
-precisely the shape of every "why is this blank?" in this thread.
-
-So the artifact now records **which fields the crawler knew how to capture**
-when it ran, and the reuse path compares:
-
-- **During the run**, the progress line says it: *"reusing the crawl from
-  abc123 (118 pages) — NOTE: this crawl predates fields the current build reads
-  (schema 1 of 3), so the footer, pagination, AMP, meta-refresh and asset checks
-  will be unanswered."*
-- **After the run**, the internal panel repeats it, names the run it came from,
-  and says what to do — because the progress line is gone by the time anyone
-  reads the report and wonders why it looks thinner than the last one.
-
-A current crawl with nothing outstanding shows no panel at all. One that appears
-on every run stops being read.
-
-`CRAWL_SCHEMA` gets bumped whenever a field is added that a check reads. That is
-the whole maintenance cost.
-
----
-
-## "Are we set up to run this?" — now the form answers it
-
-You had to ask, which is the problem. Every AI platform key lives on the
-**worker**; the audit form is served by the **API**, a different container with a
-different environment. So the form could offer a checkbox with no idea whether a
-single key was set, and the only way to find out was to run an audit and read
-eight unanswered rows afterwards.
-
-An API-side `os.getenv` check would have been worse than nothing — a confident
-answer about the wrong machine.
-
-So the worker **publishes what it holds** on startup, into the database, which is
-the one thing both services demonstrably share (same reason crawl artifacts live
-there). The checkbox then has three honest states:
-
-| | |
-|---|---|
-| Keys present | *"ChatGPT, Claude · ~2 min · paid per question"* — it names which assistants will actually answer |
-| No keys | **Disabled**, and it names the variables to set and the service to set them on. A ticked box that cannot do anything is worse than a greyed-out one that explains why |
-| Worker has not reported since its last deploy | Left usable. It may be perfectly well configured, and locking it would be a confident answer we do not have |
-
-`GET /api/capabilities` returns the same thing as JSON, along with whether the
-judgment layer, DataForSEO and Google are configured — the deployment checklist,
-answered by the machine that actually runs the work.
-
-### What to set, on `vici-audit-worker`
-
-Any one of these turns the box on; each adds one platform:
-
-| Variable | Fills |
-|---|---|
-| `OPENAI_API_KEY` | GEO-27 ChatGPT |
-| `ANTHROPIC_API_KEY` | GEO-30 Claude *(also powers the judgment layer)* |
-| `PERPLEXITY_API_KEY` | GEO-28 Perplexity |
-| `GEMINI_API_KEY` | GEO-29 Gemini |
-| `SERP_API_KEY` + `SERP_ENDPOINT` | GEO-23 Google AI Overviews |
-| `COPILOT_ENDPOINT` + `COPILOT_API_KEY` | GEO-26 Bing Copilot |
-
-The last two were undeclared in the blueprint and are now in it. **Copilot has no
-public consumer API** — it needs Azure OpenAI with Bing grounding — so if that
-row stays unmeasured, that is the honest answer and not a gap to chase.
-
-A platform without a key is always reported as *not measured*, never as zero
-visibility. That distinction is the whole point of the monitor: "we did not ask
-Gemini" and "Gemini has never heard of this client" are opposite findings.
-
----
-
-## GEO-24 and GEO-25 — built, and it needed no new anything
-
-**Why hadn't we?** Because I had them filed as "needs a SERP source", and that
-was wrong. The `ranked_keywords` call this tool already makes — the one behind
-the Keyword Rankings table — returns `ranked_serp_element.serp_item` for every
-query the site ranks for, and that object carries a **`type`**. We were reading
-four fields off it and dropping the fifth. The answer was in a response we were
-already paying for and already parsing.
-
-**GEO-24 Featured Snippets** now reports which queries the site owns the answer
-box for, named, biggest first. Holding none is a Warning with the denominator
-stated — *"no featured snippets across the 1,240 queries it ranks for"* — because
-zero out of nothing and zero out of twelve hundred are different findings.
-
-This matters more than its own row: the snippet is disproportionately what
-assistants quote, so it is an AI-visibility lever that sits in ordinary SEO.
-
-**GEO-25 Passage Ranking is a proxy, and the row says so.** Google has never
-exposed passage ranking as a SERP feature — there is no flag to read, and
-anything claiming to measure it directly is guessing. What passage ranking *does*
-is let one section of a long page rank for one specific long question, so the
-visible footprint is long-tail queries (four words or more) ranking in the top 20
-on an **interior** page. A homepage ranking for a long question is explicitly not
-counted — that is the case the deep-page test separates.
-
-The row prints *"Google has no public marker for passage ranking, so this is the
-visible footprint of it rather than a direct measurement"* and carries a
-confidence of 0.7. A proxy presented as a measurement is the exact error this
-codebase keeps having to fix; labeling it is the whole difference.
-
-**Every GEO row now has a source.** Six from the assistants, two from the SERP.
-
----
-
-## "Why is the monitor separate?" — it was, and now it is not
-
-Two real reasons, and one that had quietly stopped being one.
-
-**The real ones.** The monitor is a **time series**: it runs monthly against a
-*frozen* question panel, because regenerating the questions between runs makes
-consecutive points incomparable while still looking like a trend. And it spends
-money per question across several platforms, so it is not something to fire
-without meaning to.
-
-**The one that was not.** Starting the *first* run meant a person building a
-client profile by hand — brand, domain, category, locations, services — from
-facts the crawl had already extracted. That is data entry, not judgment, and it
-is the only reason GEO-23 to GEO-30 were still on a list headed "needs a person".
-
-So the audit builds the profile itself now, from its own crawl: the brand and
-locations from structured data, the category from the business's own words where
-they say what they are (`self_description` is quoted from their copy, which beats
-anything we would infer from a URL), and the service list from top-level URL
-paths with the boilerplate sections dropped. Then it runs the panel as a phase,
-like the judgment layer, and the eight rows fill in the same report.
-
-It does **not** replace a hand-built profile. Competitors and aliases are the two
-things a crawl cannot infer and a person supplies in seconds; a profile kept for
-a client should get those before the second run.
-
-**Opt-in, with a checkbox on the audit form** next to the other phases — it is
-the one phase that costs money per question. One repeat rather than three:
-three is right for a trend line where run-to-run variance has to be averaged out,
-but for a first reading it triples the spend to sharpen a number the report
-rounds anyway.
-
-Failures never take the audit down. No platform keys, a provider erroring, a
-profile we could not build — the eight rows degrade to unanswered exactly as they
-did before, which is the state this whole phase improves on.
-
-### The analyst work list is now zero
-
-Nothing in the 313-checkpoint catalog needs a person. The panel says so:
-
-> **Nothing outstanding.** Every checkpoint either has an answer, needs the
-> client's access, or does not apply to this site.
-
-The `manual` bucket stays in the code, because the fallback rule has to land
-somewhere and it must never land on the client. The test now asserts the rule
-with an id the catalog does not contain, and asserts separately that no real
-checkpoint reaches it.
-
-Two GEO rows will still read as unmeasured with every key set: **GEO-24**
-Featured Snippets and **GEO-25** Passage Ranking are Google SERP features, not AI
-chat platforms, and the monitor says so rather than guessing. A SERP source would
-answer them — that is a build, not a chore.
-
----
-
-## The analyst work list is down to 8
-
-24 → 16 → **8**, and the eight left are all the same thing: **GEO-23 to GEO-30**,
-AI visibility. Those are automated — by the **monitor**, which is a separate
-scheduled run. From this audit's point of view somebody still has to start it.
-That is the only item on the list that needs a person, and it needs one click,
-not an afternoon.
-
-Everything else got built:
-
-| | How |
-|---|---|
-| **TECH-09** Broken external images | Bounded parallel HEAD sweep over image URLs. HEAD refused with 403/405 falls back to GET — some CDNs refuse HEAD and serve GET perfectly well, and calling that a broken asset would invent a finding |
-| **TECH-10 / TECH-11** Broken internal and third-party JS/CSS | Same sweep over stylesheet and script URLs, which the crawler now records |
-| **TECH-37** AMP issues | **N/A** on a site with no AMP; otherwise the amphtml targets are fetched |
-| **SEC-06** Subdomain HSTS | One TLS handshake per subdomain, reading the response header |
-| **SEC-07** Subdomain encryption | The negotiated protocol version, flagging TLS 1.0/1.1 |
-| **SEC-15** Subdomain SNI | A successful handshake against a name-based virtual host **is** SNI working — the client sent the hostname and got the right certificate back |
-
-**Subdomains are discovered, not guessed.** Every external link, image, script
-and stylesheet under the same registrable domain. Probing invented names —
-`mail.`, `ftp.`, `cpanel.` — would report on hosts the business may not run and
-would take far longer for worse data.
-
-**Both sweeps are bounded and parallel** (60 assets, 8 subdomains, 6s timeouts,
-env-tunable). A check that adds two minutes to every audit gets switched off, and
-a check that is switched off answers nothing.
-
-**And a guard worth naming.** If *every* TLS handshake fails, that is far more
-likely to be our network than every one of a client's subdomains being
-simultaneously broken. All-failed reports as unmeasured, not as a page of
-Critical findings — the worst kind of wrong being the confident, alarming kind
-about the wrong machine.
-
----
-
-## The Reviewed column is gone
-
-You asked three times. Three times I answered by fixing the number — a corrected
-numerator, then a corrected denominator, then a caption explaining where the
-difference went — and it still read as *"you did not finish"*.
-
-At that point it is the column's fault, not the reader's. **A ratio sitting next
-to a rating invites "why not all of them?" on every single row**, and answering
-that question is what the coverage strip is already for: it splits the whole
-audit into measured, waiting on you, ours to complete, and not applicable —
-once, in one place, where it can be understood.
-
-What is left is what the table was actually for: **Section · Score · Rating ·
-Issues**, worst first. The heading is now "Score by Area" rather than "Coverage
-by Area", because it stopped being about coverage. The width goes to the meter.
-
-The internal report keeps the ratio. Your team knows what it means and benefits
-from it; the client does not and did not.
-
----
-
-## Smaller
-
-- Phase captions were starting at the page margin, underneath the "Phase 2"
-  chip, hanging left of both the title above and the card below — the one
-  element on the block lined up with nothing. They are captions for the title,
-  so they now start where the title starts.
-- "never counted as zero" removed from both places it appeared.
-- **The internal panel now carries the diagnostic.** A row whose parser missed
-  said "the domain_pages endpoint answered but not in the shape we read" — true,
-  and useless alone. The field names the endpoint actually returned were already
-  recorded in the finding, just not displayed, so every round of this cost a
-  deploy and a rerun to see them. They print under the reason now.
-
----
-
-## "Why isn't the analyst work done automatically?"
-
-Mostly it should be, and now it is. **The list goes 24 → 15**, and three of the
-remaining fifteen fill themselves at run time when Search Console is connected,
-so in practice it is **twelve**.
-
-Nine rows moved, and not one needed a new credential or a new API. Every answer
-was already in something the crawler had loaded and simply was not writing down.
-The crawler now keeps stylesheet hrefs, `rel=next/prev/amphtml`, and meta
-refresh — three lines of parsing:
-
-| | Answered from |
-|---|---|
-| **URL-05** Meta refresh | The tag, which we were parsing past |
-| **CANON-03** AMP canonicals | `rel=amphtml` targets; **N/A** on a site with no AMP, rather than a question about something that does not exist |
-| **CANON-06** Pagination canonicals | `rel=next/prev` plus the canonical — catches page 2 canonicalizing to page 1, which asks Google to drop everything only on page 2 |
-| **HTML-05** Resources as page links | Internal links ending in an asset extension. A PDF linked from a resources page is normal; a stylesheet linked as navigation is not, and only the second one fails |
-| **INTL-08** Country targeting | hreflang region codes, or the ccTLD, which *is* country targeting and a strong one |
-| **TECH-17** Blocked resources | Stylesheet and script URLs against the robots.txt rules we already parse |
-
-And three from the Search Console connection we already hold. These sit under
-**other prefixes** in the template, which is the only reason they were never
-wired up — the collector filled GSC-01..22 and stopped at the prefix boundary:
-
-| | |
-|---|---|
-| **TECH-29** Sitemap submitted | `GET /sites/{property}/sitemaps` — nobody needs to open Search Console to find out. It also reports errors and when Google last read it, because a submitted sitemap Google cannot parse is worse than none: it looks done |
-| **TECH-35** Index coverage reviewed | GSC-05 to GSC-11 **are** that review; the row now says so and points at them |
-| **ANA-03** Search Console verification | It looked for a verification meta tag and nothing else — so a site verified by DNS or by an uploaded HTML file reported *"cannot confirm Search Console access"* while this same collector was reading its data. A working connection **is** the verification |
-
-### What is genuinely left, and why
-
-- **GEO-23 to GEO-30 (8)** — AI visibility. Automated, but by the **monitor**,
-  which is a separate scheduled run. From this audit's point of view somebody
-  still has to start it. The task text says that now instead of implying hand
-  work.
-- **SEC-06, SEC-07, SEC-15 (3)** — subdomain TLS, HSTS and SNI. These need live
-  handshakes against hosts the crawl never visits, and the subdomains have to be
-  discovered first. Automatable, genuinely — say the word.
-- **TECH-09, TECH-10, TECH-11 (3)** — broken external images and broken
-  JavaScript/CSS. Now that stylesheet URLs are captured this is a bounded HEAD
-  sweep over the assets. It adds requests to the run, so I have not switched it
-  on without asking.
-- **TECH-37 (1)** — AMP issues, marked Advanced-plan-only in the template.
-
----
-
-## The errors on this run
-
-**"Enhanced Measurement … (HTTP 404) … this is a permission on that one
-setting"** — you were right to question it. **A 404 is not a permission
-problem**, and the message asserted it was while printing the status code that
-disproved it. That would have sent someone to change a Google permission that
-was never the issue.
-
-The cause: `getEnhancedMeasurementSettings` is not served by the **v1beta**
-Admin API endpoint we were calling. It now tries v1beta, falls back to
-**v1alpha** on a 404 only — a 403 means the endpoint exists and we are not
-allowed in, so asking a different version gets the same answer — and the message
-distinguishes the two: 403 says Editor is needed, 404 says *our call to fix, no
-action on the client's side.*
-
-**"Cannot confirm Search Console access without client credentials"** — that was
-ANA-03, and see above. It is answered by the connection working.
-
-**`domain_pages` shape (2)** — the last-resort reader shipped in ‑20 and needs a
-run to clear.
-
----
-
-## "Is everything in Analyst work actually for a human?"
-
-**It was not, and that was a real bug.** Six checkpoints with working automated
-checks were printed on a person's to-do list: PERF-05, PERF-07, PERF-09,
-HTML-09, ONP-43 and ANA-03. The list told an analyst to open DevTools and read a
-waterfall for three rows automated the build before.
-
-The cause: a checkpoint that returned **no finding at all** fell through to
-`manual` by default. That default was right when the alternative was blaming the
-client, but it also swept up everything we had automated — and PageSpeed
-Insights timing out is exactly the condition that leaves a check with no
-finding. So a transient network failure turned automated rows into permanent
-homework.
-
-Any checkpoint with a registered check is now **ours**. If a check exists and
-came back empty, that is our failure this run and it belongs in "Ours to fix",
-not on someone's list. The work list drops from **30 to 23**, and every one of
-the 23 genuinely has no automation: subdomain TLS, pagination canonicals, meta
-refresh, country targeting, the AI visibility rows, seven TECH rows.
-
-The panel now says so out loud: *"Every one of these needs a person. Nothing
-with a working automated check appears here."*
-
----
-
-## PageSpeed Insights, and the fourteen rows it took with it
-
-Your report carried this fourteen times, to a client:
-
-> Text compression unavailable — PageSpeed Insights API unreachable from the
-> audit host (TimeoutError: The read operation timed out).
-
-Two separate failures in one line.
-
-**PSI is genuinely unreachable from Render** often enough to matter — 429s on
-the shared egress pool, then read timeouts. There was already a DataForSEO
-Lighthouse fallback, but it only covered a fixed list of ten checkpoint IDs, so
-every check added since simply had no fallback at all.
-
-The fallback moved to where it belongs: **one accessor, two providers.** `_psi()`
-tries PageSpeed Insights first — only PSI carries CrUX field data, real visitors
-rather than a lab run — and drops to DataForSEO's hosted Lighthouse when it
-fails. Same schema, so all fourteen checks read it unchanged and none of them
-knows a fallback exists. Verified: with PSI dead and DataForSEO answering, all of
-PERF-05/07/09, MOB-03/05/06, HTML-09 and ONP-43 return real findings.
-
-PSI also gets a longer leash — 120s and one retry, since it fetches the page,
-runs Lighthouse on Google's hardware and *then* returns, which is a genuine
-30-60 seconds on a slow site.
-
-**And the client no longer reads our stack trace.** When no provider answers:
-*"could not be measured on this run — the speed-testing service did not respond.
-Nothing about the site caused this."* The exception stays in the finding's value,
-where the team sees it and the client does not.
-
----
-
-## "Manual" and "Info" were not statuses
-
-You were right that they break the pattern. Every other value in that column
-states a **verdict** — Pass, Fail, Warning, N/A. "Manual" answered *how the
-check gets done*, and "Info" named *a category of finding*. Both answer a
-different question from the one the column asks, so a reader scanning for a
-result hits them and stops.
-
-| Was | Now | Means |
+| Token | Was | Now |
 |---|---|---|
-| Info | **Reference** | A number with no pass or fail attached. 727 backlinks is neither good nor bad. |
-| Manual | **In review** | No verdict yet — an analyst reaches it during the engagement. |
+| left menu | `#12356b` | **`#1c5ba6`** |
+| dark navy (table heads) | `#12356b` | **`#0c284c`** |
+| gold (active tile) | `#f0b429` | **`#e8ac3e`** |
+| page background | `#f4f6f9` | **`#f1f2f4`** |
 
-The stored values are unchanged. `Info` is load-bearing in the scoring code,
-which excludes it from the denominator, and renaming it there would be a rename
-in service of a caption.
+**The top bar is white again.** It was a navy gradient for one build — it did
+look good on its own, and it also made this the one page in the suite whose
+header did not match the others. The rail and the bar are the two things a
+person recognizes before reading a word. The gradient moved rather than
+disappeared: it is now a 2px seam under the bar and the rule under every
+heading, where it reads as finish rather than as a different product.
 
-First choice for Info was "Measured" — dropped, because the coverage strip two
-pages earlier already labels a segment **Measured**, meaning every check we
-managed to answer. One word on two different counts is worse than the jargon it
-replaced.
+### The font was the wrong font
 
-The appendix intro now defines all three.
+Not a stack problem — the wrong face. Setting your heading beside candidates at
+matched cap height settles it. Ink-box aspect ratio of the word "Workflow":
 
----
-
-## The other errors on the panel
-
-**`domain_pages` shape** — added a last-resort reader that takes the first
-integer whose *key mentions* backlinks or referring, after every named candidate
-misses. Bounded guessing beats a zero, because a zero here is indistinguishable
-from a real answer.
-
-**Enhanced Measurement (HTTPError)** — "HTTPError" is the least useful string a
-log can carry: 403 and 404 mean completely different things, one is a permission
-you can ask for. It now reads the status code and Google's own message from the
-response body, and when it is a 403 it says the actionable thing: *this method
-needs Editor on the property; a Viewer grant reads the traffic but not the
-stream settings.*
-
----
-
-## "Why is Reviewed by hand here?" — the panel contradicted itself
-
-The panel headline read **"Action needed before this goes out"**, and directly
-under it a group said **"Nothing to configure, and nothing blocking this
-report."** It demanded action and then listed things needing none. No wonder it
-did not parse.
-
-The headline is now neutral — *"Before this goes out"* — and says which list is
-which. The second group is retitled **Analyst work list**, and its text says what
-it is rather than what it isn't:
-
-> **Not a gap and not a bug** — these are the checkpoints no tool can answer, so
-> a person does them as part of the engagement. They are already excluded from
-> the score, so leaving them until the work starts costs nothing.
-
-## "Why wouldn't we be reviewing something?"
-
-Same question one layer down, on the **Reviewed 4/12** column. Last build I fixed
-the arithmetic; I never explained the gap. The caption now says where the
-difference goes, and points at the coverage panel that breaks it down: checks we
-complete by hand during the engagement, or checks that need access to their
-accounts. Never "we skipped it".
-
----
-
-## The lamp
-
-**It was in the PDF all along** — sitting in a nested cell fixed at 1.55 inches,
-so on a short checkpoint name it floated an inch and a half from the text, in
-white space between two columns, belonging to neither. Against the **ID** it
-lands in a tidy vertical column, unmistakably attached to its row. That is what
-makes it scannable, and it is why you could not find it.
-
-**The legend is gone from the client PDF.** You were right. The lamp is a signal
-for whoever reviews the draft; the client was never asked to act on it, so a
-paragraph explaining a symbol is furniture. The mark stays in both documents, the
-explanation stays only on the operator page — which is where the review actually
-happens.
-
----
-
-## Smaller things
-
-| | |
+| | ratio |
 |---|---|
-| At a glance tiles | Separate rounded cards, matching the dashboard. The first version was one long box with hairlines, on the theory that five borders spend more ink on chrome than on numbers — next to the dashboard it just looked like a table that had lost its header |
-| Footer | `Client - Website Audit`, single hyphen |
-| "Nothing here is a mark against you" | Now "Unmeasured checks are left out of the score, never counted as zero" — the same fact, stated rather than reassured |
-| Completed audit page | **All audits** button at the top. It was a dead end otherwise: back-button only, and after a rerun that lands on a stale status page |
+| **adtini (measured from your screenshot)** | **6.11** |
+| Arial / Helvetica | 6.09 |
+| Roboto — what we were loading | **5.44** |
+
+Roboto is visibly narrower, and we were pulling it from Google Fonts on every
+page load to get it. The webfont link is gone and the CSS uses the system stack,
+which resolves to the same face adtini gets on the same machine — a match by
+construction rather than by my picking a lookalike.
+
+> If adtini actually names a licensed face somewhere in its own CSS, say which
+> and it is a one-line change. The measurement says Arial-metric; it cannot
+> distinguish Arial from a metric-compatible clone.
+
+The PDF still sets Roboto. That is a separate artifact with its own typography
+and nobody has complained about it — say the word and it moves too.
+
+### A Site Scanner icon
+
+One object, because every icon in adtini's rail is one object — a house, a
+person, a briefcase. The first attempt drew a browser window with a lens over
+it: a better picture of what the tool does, and illegible at 21px, where three
+concentric strokes inside a 40px gold tile came out as a smudged box. The rail
+gets the lens alone.
+
+### `Prepared by` → `Partner name`
+
+In the form and on the audit detail page. The PDF cover still reads "Prepared
+by", because that is the client reading it and the phrasing is right there.
 
 ---
 
-## OFF-18 Image backlinks
+## 5. The extension is now Site Scanner
 
-An image backlink is a link where the clickable thing is a picture rather than
-words — a badge, a logo, an infographic embed. They pass authority like any other
-link, but where a text link hands Google a phrase describing the destination, an
-image link hands it the alt attribute, and an image link with **no** alt text
-hands it nothing at all. That is the part worth reporting, and it is why this row
-is not simply a count.
+Same name as the page it feeds, on purpose: it is not a companion tool, it is
+the same tool with a different way in.
 
-**It turned out not to need a new endpoint after all.** The row read exactly one
-key — `referring_links_types["image"]` — and when that key was not in the
-response it fell through to the catch-all, which said the collector "requires an
-additional DataForSEO backlinks endpoint". That sent us looking for a call to add
-when the real problem was a key we were not finding. Same class of bug as the
-missing `dofollow` field, one row over.
+- **Name** — `Vici Audit Capture` → **`Site Scanner`**, version 1.2.0
+- **Description** — now mentions the consent scan, which it has been able to
+  run since ‑28: *"Runs the audit and consent scan from your own browser, so
+  sites that block server-side crawlers still get measured."*
+- **A logo**, at 16/32/48/128, declared for both the toolbar button and the
+  extensions page. The popup leads with the mark instead of a bare string.
+- Popup blues repointed at the sampled `#1c5ba6` / `#0c284c`.
 
-Two routes now:
-
-- **The summary breakdown**, tried first under four possible key names. Costs
-  nothing — the response is already in hand.
-- **`/backlinks/backlinks/live`** if the summary genuinely does not carry it. One
-  metered call, made only when needed, reading the 1,000 most recent links and
-  counting `item_type == "image"` — plus how many of those have empty alt text.
-
-The endpoint route reads a **sample**, so it says so: *"20 of the 1,000 most
-recent backlinks come through an image rather than text."* Same rule as the URL
-Inspection rows — a bounded read never gets written up as a profile-wide total.
-
-And when the summary key is missing, the log now prints the top-level field names
-it did return, so the next fix is a rename rather than another round of guessing.
+`extension/icons/make_icons.py` draws them from the two sampled colors, so the
+next palette change is an edit there rather than someone opening an image
+editor and guessing. **The small sizes are a different drawing, not a scaled
+one** — three concentric strokes cannot resolve inside sixteen pixels, and 16px
+in the toolbar is where the icon actually lives all day, so 16 and 32 drop the
+window and keep the lens.
 
 ---
 
-## "No address" when it's in the footer
+## Tests
 
-Third time this has reached a client, and the previous two fixes were both aimed
-at the wrong place. Adding JSON-LD helped where the address was in the schema. It
-did nothing where the address is simply printed in the footer.
+All 18 suites pass. Three needed changing, and all three were the test being
+wrong rather than the code:
 
-**The footer is the last thing in the DOM.** Body text is capped at 20,000
-characters and then sliced head-and-tail before it reaches the judgment layer —
-so on a long page, the footer is *precisely* what falls out of the middle. The
-address was never in the material the model saw. No amount of prompt tuning fixes
-a string that does not contain the thing.
-
-The crawler now captures the footer into its own field — `<footer>`,
-`role="contentinfo"`, or an id/class containing "footer" — and every judgment
-prompt carries it **in full, never sliced**, with a rule saying anything in it is
-present site-wide and must be treated as visible to visitors.
-
-A second rule went in alongside it, because the same row exposed it: evidence
-must be written as a finding about the site, addressed to its owner. *"…no
-physical address is visible in the provided material from any contact page URL"*
-describes how the sausage was made, appears nowhere else in the document, and so
-stands out as machine output on an otherwise human page.
-
-**This needs a fresh crawl to take effect.** The footer field does not exist in
-artifacts captured by earlier builds, so reusing a stored crawl keeps the old
-behaviour for that run.
+- **`test_charts`** counted filled rects to count bars. Bars are gradients now,
+  so it reported 176 bars in a four-row chart. It was always measuring the
+  implementation; it now measures how far each row's ink reaches past its
+  track, plus two new assertions (every bar sits on a track; a higher score
+  draws a longer bar).
+- **`test_analytics_build`** faked `/backlinks/domain_pages/live` with the
+  shape the name promises rather than the shape it returns. The fixture is now
+  per-link records, and asserts that two links from one source to one page
+  count as one referring page.
+- **`test_analytics_build`** also asserted GSC-20/21 were `manual`. That was
+  right while it was true. Leaving it would have pinned the old behavior in
+  place; it now asserts `vendor`, plus a check that GSC-22 is never put on a
+  person's list.
 
 ---
 
-## Nine checkpoints that were never manual
-
-Every one of these was printing "Manual" or "Waiting on our data provider" while
-the answer sat unread in a Lighthouse response we already fetch for
-PERF-10/11/19. No new API calls, no new credentials.
-
-| | Answered from |
-|---|---|
-| **MOB-03** Mobile Friendly Test | viewport, content-width, font-size, tap-targets |
-| **MOB-04** Responsive design | viewport + content-width |
-| **MOB-05** Touch elements | tap-targets |
-| **MOB-06** Font readability | font-size |
-| **HTML-09** Accessibility basics | the Lighthouse accessibility category, naming the failing basics |
-| **ONP-43** Proper compression | uses-text-compression |
-| **PERF-05 / 07 / 09** | compression, minification, resource-summary |
-
-Plus **HTML-04** (Flash, Java applets, Silverlight) from the crawl — it is a
-substring search over HTML we already hold, which is a strange thing to ask a
-person to do by hand.
-
-One honest note on MOB-03: Google retired the standalone Mobile-Friendly Test
-API. What replaced it is exactly these Lighthouse audits, so that is what the row
-now says it is.
-
----
-
-## At a glance, in the PDF
-
-The tile strip from the operator dashboard, under the score ring: **Passing ·
-Failing · Worth a look · Need your access · Pages reviewed**. Five whole numbers
-with no ratios to decode — it answers "how did we do" before the reader has to
-interpret a bar.
-
-Hairlines between tiles rather than five separate cards; at 6.5 inches, five
-bordered boxes spend more ink on chrome than on numbers.
-
----
-
-## Copy
-
-**"44 checks are ours to finish… reviewed by hand rather than by crawler"** had
-two faults: it said *crawler*, and it left you unsure whether any of it was
-yours. Nothing on that line is. It now reads "checks we finish ourselves, with
-nothing needed from you", and says plainly that they never count against the
-result.
-
-**Nofollow** added to the glossary — "0 of 875 outbound external links use
-rel=nofollow" is unreadable without it. "Pages crawled" on the dashboard tiles is
-now "Pages reviewed".
-
----
-
-## The OFF-13/16/17/19/20 "Need Access" rows
-
-Already fixed in ‑14; they need a rerun to clear. The anchors endpoint has no
-`dofollow` field — it reports a total and a *nofollow* count, and followed is the
-difference. Reading a key that does not exist summed to zero, and an implausible
-zero is reported as unreadable rather than printed as a measurement, which is why
-you saw Need Access rather than a confident "0.0% followed".
-
-**OFF-18 Image backlinks** is the one genuinely missing endpoint. Say the word
-and it is a small addition.
-
----
-
-## "It looks like we didn't finish the audit"
-
-You were reading it correctly, and the numbers were wrong.
-
-**Reviewed 4/12** was two different numbers printed as one ratio. The numerator
-excluded `Info` rows — measurements we *did* take and report, like a backlink
-count, that simply have no pass/fail threshold. The denominator counted every
-row the template has, including checks that do not apply to this client at all.
-
-So International SEO showed **2/8 · Excellent** for a US-only law firm whose
-other six international checkpoints are not gaps in our work, they are questions
-about markets it does not sell in. And Off-Page showed **10/29** for a section we
-had largely measured — thirteen answered rows were invisible.
-
-Two corrections pulling in opposite directions:
-
-- **N/A leaves the denominator.** A check that does not apply is not a shortfall.
-- **Info joins the numerator.** We measured it and printed it; that is reviewed.
-
-What is left is the honest remainder: checks that apply to this site and that we
-could not answer. Off-Page goes from 10/29 to roughly 23/29, and the caption now
-says what the pair means.
-
----
-
-## Blank cells under "What we found"
-
-Every **Manual** row had an empty cell. The old reasoning was that the pill
-already says Manual and repeating one sentence down twelve rows is wallpaper.
-That was wrong: an empty cell in a column headed *What we found* does not read as
-"handled by hand", it reads as **nobody did this** — which is the opposite of
-true and the worst thing a paid deliverable can imply about itself.
-
-Each Manual row now carries a short, per-section note — four to eight words,
-specific enough to be information, brief enough that a column of them scans as a
-status rather than as prose. "Confirmed with an external TLS scanner."
-"Confirmed firing in GA4 DebugView on a real session."
-
-The dedupe skips them deliberately. Three Manual rows in a row *should* read the
-same; collapsing them to "Same finding as PERF-05" would say something false —
-they are three separate checks that happen to be handled the same way.
-
-### And three of them should never have been manual
-
-**PERF-05** (uncompressed JS/CSS), **PERF-07** (unminified), **PERF-09** (script
-and stylesheet weight) were telling an analyst to go and read a DevTools
-waterfall. The Lighthouse run we **already make** for PERF-10/11/19 answers all
-three outright — `uses-text-compression`, `unminified-javascript`,
-`unminified-css`, `resource-summary`. No new call; those audits were already in
-the response and we were ignoring them.
-
----
-
-## One finding, printed twice
-
-Two separate bugs, same symptom.
-
-**In Top Findings** — ONP-23 "Unique title on every page" and ONP-01 "Issues with
-duplicate title tags" both printed *"83 pages share 25 duplicated title tags"* in
-consecutive rows. The dedupe that fixes exactly this was written months ago and
-wired only to the appendix, so it never ran on the page-3 table a client actually
-reads.
-
-**In the five headline findings** — items 2 and 3 were *"On-page fundamentals are
-inconsistent"* and *"Page titles don't say what each page is about"*, with the
-same evidence, the same rationale and the same remedy under both. There was
-already a merge pass for groups that would print the same *title*; there was none
-for two different titles resting on the same *observation*. Two of the client's
-five headline slots spent on one measurement.
-
----
-
-## Copy and definitions
-
-| Was | Now |
-|---|---|
-| "…and its absence is not a fault." | "Google collects real-visitor speed data only for sites above a traffic threshold, and this site is below it." |
-| `srcset` used with no explanation | **Responsive images (srcset)** added to the glossary |
-
-Lazy loading turned out to be defined already — worth knowing that the definition
-only appears when the term is *first* used, so it can be several pages from where
-you noticed the gap.
-
----
-
-## GSC-20/21/22 — the plan, and why the last one was wrong
-
-I told you last message to keep these as an analyst read. That was the weaker
-answer, and "someone will open Search Console and read it off" is a plan that
-means it never happens on a single audit.
-
-All three are now measured, from data this tool **already pays for and already
-fetches** for the Off-Page section. No new subscription, one extra API call.
-
-| | Answered from |
-|---|---|
-| **GSC-20** External links | Total backlinks, already in the summary call |
-| **GSC-21** Top linking sites | `referring_domains`, ordered by link volume |
-| **GSC-22** Top linked pages | `domain_pages`, already fetched for OFF-19/20 |
-
-**The one extra call, and why it is not optional.** The toxicity check already
-queries `referring_domains`, but ordered by *spam score* — its 200 rows are the
-worst neighbours, not the biggest linkers. Sorting that sample by backlinks
-would confidently name a "top linking site" that is merely the most-linked of
-the 200 diciest ones. So GSC-21 makes its own call ordered by volume.
-
-**Every one of these rows says where its number came from**, because ours will
-not match Search Console. Google's Links report shows a sample; a backlink index
-does not, so our figures are generally larger. A client who opens Search Console,
-sees a different number and was not warned stops trusting the whole document.
-
-### And a bug this turned up
-
-**GSC-22 "Top linked pages" was being filled with the pages that got the most
-organic *traffic*.** A page can be the most linked on a site and receive no
-traffic at all. That is the same error as OFF-10 printing a nofollow percentage
-under "Lost backlinks" — a real number, confidently mislabelled, which is worse
-than an admitted gap. The traffic figure was genuinely useful, so it moved to
-GSC-01 where it describes what it actually is.
-
----
-
----
-
-## The 502
-
-Your run reached the judgment layer and the report page returned 502. The API's
-own code was fine. What was not fine is that three things had no ceiling on how
-long they could wait:
-
-- `psycopg2.connect()` with no `connect_timeout` waits **forever** when Postgres
-  cannot accept another connection.
-- A query with no `statement_timeout` waits forever behind a lock.
-- `redis.from_url()` with no socket timeout waits forever on a host that accepts
-  the connection and then goes quiet.
-
-Uvicorn serves these routes from a bounded thread pool. A handful of permanently
-stuck requests takes every thread — and once that happens `/healthz` cannot be
-answered either, so Render concludes the service is dead and starts serving 502s
-to the browser. **A database having a bad minute became a total outage.**
-
-The judgment layer is where it surfaced because that is the window of heaviest
-database write pressure, and it just grew 50%. The status page was also
-refreshing every 4 seconds, each refresh opening a brand-new connection.
-
-Four fixes:
-
-| | |
-|---|---|
-| `/healthz` no longer touches Redis or Postgres | Queue depth is best-effort and degrades to `null`. A liveness check that fails when a dependency is slow is not a liveness check; it is a way of converting someone else's bad minute into your own outage |
-| Postgres gets `connect_timeout` and `statement_timeout` | A request that cannot get a connection now fails fast with a real error instead of hanging a thread forever |
-| Redis gets socket timeouts | Sized to outlast the 2-second blocking pop the worker legitimately sits on |
-| The status page refreshes every 6s, not 4s | Every refresh is a full render and a fresh connection |
-
-None of this makes the database faster. It puts a ceiling on the damage.
-
-### And the run that died is no longer a spinner
-
-The worker now stamps a heartbeat on every step. If that stops moving for ten
-minutes the status page says **"This run has stopped responding"**, tells you
-how long ago and at which phase, and offers a rerun **from the stored pages** so
-it does not go back out to the client's server. Runs from before this build have
-no heartbeat, and unknown is treated as alive — calling a live run dead is the
-worse error of the two.
-
----
-
-## Lightbulbs on the judged rows
-
-Every row the judgment layer produced now carries a small gold lightbulb, in
-both the HTML report and the PDF, with a legend at the head of the full record.
-
-**On the wording.** You asked for the mark without calling the rows AI-generated,
-which left the question of what the legend should say. It reads:
-
-> **Judged by review rather than measured.** These checkpoints are qualitative —
-> whether a page answers the question it ranks for, whether its call to action is
-> clear — so they carry a judgment where the rest of this report carries a
-> measurement.
-
-That is true, it does not name the mechanism, and it is useful to both readers.
-Your team sees exactly which rows to check hardest. A client sees something worth
-knowing: this row is an assessment, not a hard number. An unexplained symbol in a
-client deliverable would have been worse than no symbol.
-
-Two details. A **Need Access** or **N/A** row gets no lamp — it was never judged,
-so there is nothing to reread. And the lamp is drawn as vectors, not the emoji:
-U+1F4A1 is missing from Roboto *and* from DejaVu, and reportlab renders a missing
-glyph as a solid black box.
-
----
-
-## Report copy
-
-| Was | Now |
-|---|---|
-| "Schema entities — WebSite, Organization, WebPage, BreadcrumbList, ImageObject" | "Structured data found — site identity, business details, page markup, breadcrumb trail, images" |
-| "worth handling this month" | "should be resolved within 30 days" |
-| "The same gap shows up across 8 different **signals**" | "…across 8 separate **checks**" |
-| "This is table stakes rather than optimization." | Cut |
-| — | **Ranking signal** added to the glossary |
-
-Schema.org type names are developer vocabulary. Brendan's template never printed
-raw type names — it asked whether the right markup was present, in words. A
-business owner cannot act on "ImageObject" and will not ask; they will decide the
-page is not for them.
-
-"Signals" was a third word for a thing the report already calls a **check** on
-the cover and a **checkpoint** in the appendix. One word now.
-
-### Definitions land at first mention
-
-Two faults, one cause. Glossary terms came back in glossary order rather than in
-the order they appear, so **canonical tag** was explained underneath the E-E-A-T
-paragraph — two paragraphs after the word it was needed for. And the definitions
-for both summary blocks were pooled with the overview text, which is why
-**structured data** appeared with a definition for a term that is in none of the
-paragraphs above it.
-
-Terms now come back in order of first appearance, and each block defines only
-what it introduced, directly underneath itself.
-
----
-
-## Prepared by, per audit
-
-A **Prepared by** field on the audit form, saved with the audit and prefilled
-from a previous run for the same client. It overrides `FIRM_NAME` on the cover;
-blank falls back to the configured firm, so nothing changes for audits where
-nobody fills it in. White-labelled work goes out under the partner's name and
-that varies between two audits run in the same hour — an environment variable
-was the wrong home for it.
-
----
-
-## From the Ooten run
-
-**Search Console filled.** GSC-05 through 19 all carried measurements — 24 of 24
-sampled pages indexed, 111 of 111 served over HTTPS, breadcrumbs appearing in
-search, 121.9 average internal links per page. Only GSC-20/21 remain, which is
-correct: no API exists for them.
-
-**Two GA4 rows fell through, both my bugs.**
-
-- **GA4-03 Enhanced Measurement** swallowed its exception with no logging, so a
-  failed call was indistinguishable from "not built yet" — on a run where the
-  Admin API demonstrably worked, because GA4-06 read key events from the same API
-  with the same token two rows below. It now logs, and reports which of the two
-  it is.
-- **GA4-16 Revenue** — GA4 returns **no rows** rather than a row of zeros when a
-  property has never recorded revenue. That is an answer, not a failure to read.
-  It also now falls back to requesting `totalRevenue` alone, because one unknown
-  metric name fails the whole request.
-
-**The DataForSEO shapes.** `_num()` now tries every plausible key name instead of
-one guess. The specific bug: the anchors endpoint has **no `dofollow` field** —
-it reports a total and a *nofollow* count, and the followed figure is the
-difference. Reading a key that does not exist summed to zero, which is what
-produced "0.0% of backlinks are followed" on a live profile. If a shape still
-misses, the row stays Need Access and the field names appear in the row's
-recommendation on the internal report.
-
----
-
-## Files
-
-| File | Change |
-|---|---|
-| `app/db.py` | Connect and statement timeouts; `heartbeat_at` migration |
-| `app/queue.py` | Redis socket timeouts |
-| `app/api.py` | `/healthz` independent of dependencies; `partner` field; rerun accepts `reuse_crawl` |
-| `app/ui.py` | Stalled-run panel; 6s refresh; Prepared by field |
-| `app/worker.py` | Heartbeat on every step |
-| `engine/report.py` | Lamp, legend, `is_judged` |
-| `engine/pdf_report.py` | Lamp in the table, legend, per-block definitions, plain-English structured data |
-| `engine/charts.py` | `Lamp` flowable |
-| `engine/glossary.py` | Appearance-order terms; **Ranking signal** |
-| `engine/summarise.py` | "separate checks"; 30 days; the HTTPS line |
-| `engine/context.py` | `describe_entities()` |
-| `engine/collectors/analytics.py` | GA4-03 logging, GA4-16 empty-result handling |
-| `engine/collectors/dataforseo.py` | `_num()` / `_str()` tolerant field reads |
-| `tests/test_resilience.py` | **New.** 40 checks |
-
-All 17 suites green.
-
----
-
-# Changed files — build 2026.08.20-13
-
-## Two builds you asked for, both about the same thing: stop deferring
-
-### 1. On-page quality is judged, not left for an analyst
-
-*"Read the priority pages and judge intent, keyword use and CTA quality"* was
-printed in the report as **your** homework. It is now the scan's.
-
-Fifteen On-Page checkpoints moved into the judgment layer — ONP-13, 24, 25, 28,
-29, 34, 35, 36, 37, 38, 39, 40, 41, 49, 50. They cover search intent match,
-keyword placement and density, heading structure against the topic, CTA presence
-and clarity, readability, content depth against what the query needs, and
-internal linking relevance.
-
-These need a different sample from the E-E-A-T rows, so they got their own
-retriever. It picks up to six content-bearing pages (120+ words), weights money
-pages first (`/service`, `/product`, `/practice`, `/solution`, `/pricing`,
-`/contact`, `/quote`, `/book`), and **deduplicates by URL shape** so that twelve
-near-identical location pages do not consume the whole sample and leave the
-services page unread. It also passes a wider window — 2,200 characters rather
-than 900 — because you cannot judge whether a page answers a search intent from
-its first paragraph.
-
-**ONP-43 (compression) was deliberately left alone.** It is a response header,
-not a judgment, and asking a language model to guess at one would be a worse
-answer than admitting we have not automated it.
-
-Cost note, since it is real: the judgment layer went from 29 calls per audit to
-44. Runtime is roughly flat — it is still six-way parallel — but the API spend
-per audit rises about 50%.
-
-### 2. The 27 Search Console and Analytics rows that said "read this from the interface"
-
-A granted, working Google connection filled 11 of 38 rows. The other 27 said
-some version of *we have not built this yet*, which is a strange thing to print
-in a document you are charging for. All 27 now carry measurements, from three
-places the collector was not previously looking.
-
-**URL Inspection API — index coverage (GSC-05..11).** Indexed and excluded
-counts, crawled-not-indexed, discovered-not-indexed, soft 404s, server errors,
-redirect errors.
-
-This one comes with a caveat built into every sentence it writes. The API
-answers **one URL per call** and is quota-capped, so it reads a bounded sample —
-the shallowest, best-linked pages first, 25 by default (`GSC_INSPECT_SAMPLE`).
-Every row therefore carries its denominator: *"8 of the 12 pages sampled are
-indexed; all 12 pages found on the site were inspected."* The version of that
-sentence without the denominator would be a lie about a 400-page site, and the
-temptation to write it is exactly why the test suite now asserts the
-denominator is present.
-
-**The `searchAppearance` dimension — rich results (GSC-14..18).** Rich results
-overall, breadcrumbs, product results, FAQ results, video pages, each with
-impressions and clicks.
-
-Absence is handled with some care here. No breadcrumbs is a Warning, because
-breadcrumb markup applies to essentially any site. No **product** results is
-`Info` — a law firm has nothing to sell, and scoring that as a defect is the
-kind of noise that teaches a reader to skim the section. `Info` is already
-excluded from scoring, so it reports the fact without moving the number.
-
-**The GA4 Admin API — configuration (GA4-03, GA4-06).** Enhanced Measurement,
-naming which events are switched off; and key events, read from `keyEvents` with
-a fallback to `conversionEvents` for properties Google has not migrated.
-
-Traffic tells you what happened. Configuration tells you whether what happened
-was measured correctly — and when a number looks wrong, it is almost always the
-second one that explains it.
-
-**Plus GA4-04 events** (with the automatic-event set filtered out, so "3 events
-recorded" cannot pass for a real install), **GA4-07 cross-domain** and **GA4-08
-internal traffic** from one hostname report, and **GA4-13 landing pages**.
-
-GA4-08 measures the *effect* rather than reading the filter config, because the
-Admin API does not expose data filters — if `staging.example.com` is reporting
-into the live property, the filter is not working whatever it says it does.
-
-### Four rows answered from data the audit already had
-
-No new API call for any of these; we were sitting on the answers.
-
-| | |
-|---|---|
-| **GSC-12** Core Web Vitals | The CrUX field data PageSpeed Insights already returned for PERF-11 — the same dataset Search Console's report is built from |
-| **GSC-13** HTTPS | Our own fetches, plus the HTTP→HTTPS upgrade check |
-| **GSC-19** Internal links | The crawl's link graph, which can also name the orphaned pages |
-| **GA4-15** Conversion rate | Organic conversions ÷ organic sessions, two numbers GA4 returns and will not divide |
-
-### Three rows that will never be answered, said plainly
-
-**GSC-20** (external links) and **GSC-21** (top linking sites) have no API in any
-form. **GA4-14** (exit pages) has no equivalent in an event-based model — it was
-a Universal Analytics concept and did not survive the move.
-
-None of the three is a missing client grant, and none is a build being deferred.
-GSC-20/21 now bucket as **"Reviewed by hand"** with a pointer to the backlink
-data in Off-Page and Authority, which covers the same ground properly. GA4-14 is
-marked **N/A** with the reason stated.
-
-This needed a third rule in `engine/access.py`. We already had one for *"the
-prefix says client, the reason says it is ours"*; there is now one for *"the
-prefix says client, the reason says nobody can get it"*.
-
-### No re-consent needed
-
-Both new APIs are covered by the scopes your tokens already hold —
-`webmasters.readonly` for URL Inspection, `analytics.readonly` for the Admin
-API. Nothing to do in Google Cloud.
-
----
-
-## Files
-
-| File | Change |
-|---|---|
-| `engine/judgment.py` | 15 ONP specs; `_priority()` retriever; a British spelling caught by the voice test |
-| `engine/collectors/analytics.py` | URL Inspection, searchAppearance, GA4 Admin API, four rows from our own data |
-| `engine/access.py` | `MANUAL_DESPITE_PREFIX` — reports with no API are an analyst's read |
-| `app/worker.py` | Passes the crawl and the findings-so-far into the Search Console collector |
-| `engine/report.py` | The On-Page "reviewed by hand" note is now about compression, not intent; a Search Console note added |
-| `tests/test_analytics_build.py` | **New.** 45 checks over the new rows |
-| `tests/test_charts.py` | ONP-34 is no longer manual — it belongs to the judgment layer now |
-| `tests/test_collectors.py` | Coverage grew 96 → 111 |
-
-All 16 suites green.
-
----
-
-# Changed files — build 2026.08.20-07
-
-## Restyled to adtini
-
-The operator UI now uses adtini's design language, so it does not arrive
-looking like a separate product bolted on when it moves into that site.
-
-Read off the workflow and forecast screens:
-
-| | |
-|---|---|
-| Navy rail, fixed left, gold active item | `#12356b` / `#f0b429` |
-| White top bar with the page title, sticky | 44px, matching the Forecast header |
-| Breadcrumb under it | `Audits › The Ooten Law Firm` |
-| Pale blue-grey page, white cards, 6px radius | `#f4f6f9` on `#ffffff` |
-| Navy table header, white type | matches the Workflow list |
-| Pastel status pills, dark text | green ready, blue running, purple needs-capture, pink failed |
-| Fully-rounded action buttons | blue primary, ghost, plus navy / gold / orange to hand |
-| Roboto | loaded from Google Fonts, same as the PDF |
-
-**Two things deliberately did not change.** Severity keeps its ordinal blue
-ramp rather than adtini's categorical pastels, because on a ranked scale the
-ordering *is* the information and four unrelated hues would destroy it. And the
-score ring stays one hue with length carrying magnitude, for the same reason it
-always has.
-
-This is the operator UI only — `app/ui.py`. The client-facing HTML report has
-its own stylesheet and is untouched, since it is a deliverable that goes out
-under the client's nose rather than a screen inside adtini. Say the word if you
-want that moved over too.
-
----
-
-# Build 2026.08.20-06
-
-## "No stored crawl when there is" — the same split, the other way
-
-Ooten's earlier run came from a **browser capture**, and the capture endpoint
-runs on the **API**, which wrote the artifact to the API's disk. The worker
-then looked for it on the worker's disk and found nothing. Last build I moved
-resolution to the worker to fix the crawl direction; this is the same bug
-mirrored, and it was sitting right behind it.
-
-There is no arrangement of a local path that fixes this, because the two
-services do not share a filesystem at all. So **artifacts now live in the
-database** — `ARTIFACT_STORE` defaults to `db://`. The database is the one
-store both services demonstrably share, and a crawl artifact is a few megabytes
-of very repetitive JSON that gzips to a fraction of that. `s3://` is still
-there and still right at volume; `local://` is now honestly documented as
-single-process only.
-
-This also fixes artifact download, which had been quietly 404ing for the same
-reason since the first two-service deploy.
-
-The failure message now names what it looked at: *"3 earlier run(s) of this URL
-exist, but none has a stored crawl"* rather than a flat "none available" while
-the dashboard shows three.
-
-## Settings used — the expand arrow
-
-Every client card gets **Settings used**: vertical, max pages, primary markets,
-primary conversion, the hand-picked Search Console and GA4 properties, and the
-render/user-agent flags. Under it, **Start a new audit with these settings**
-fills the form at the top — including re-selecting the properties you chose by
-hand, which is the part that was being lost on every re-audit.
-
-That last bit matters more than it looks: a property picked by hand was picked
-because the matcher was wrong about that client, and re-deriving it from the
-domain would quietly undo the correction.
-
-## Installing the extension
-
-The blocked-audit page now carries the steps, because an unpacked extension
-disappears whenever its folder moves and "ask someone for the folder" is not a
-step that survives a Tuesday. **`GET /extension.zip`** builds the extension
-from the running image, so the download always matches the deployment.
-
-`chrome://extensions` gets a copy button rather than a link — Chrome refuses to
-let a page link there.
-
-## Smaller
-
-- Access-check results are pills: green found, amber "could not tell quickly",
-  red no. The amber state exists because GA4's quick check genuinely cannot
-  answer, and that must not look like a no.
-- One back link on the audit page, not two.
-
----
-
-# Build 2026.08.20-05
-
-## "I ticked reuse and it crawled anyway"
-
-It did, and that is on me. `reuse_crawl` was resolved on the **API**, which
-looked up the previous audit's artifact and passed its id to the worker. But
-the API and the worker are separate containers, and with a local
-`ARTIFACT_STORE` the API cannot read a single artifact the worker wrote — the
-gotcha already written down in this very file. So the lookup found nothing,
-quietly dropped the option, and crawled a site that blocks crawlers.
-
-Resolution moved to the worker, which is the process that can actually see the
-artifacts. And if reuse is requested and no stored crawl exists, the audit now
-**fails with that sentence** instead of crawling. Doing the slow, rude thing
-after being told not to is worse than stopping.
-
-## The extension
-
-**It stopped when you switched tabs.** Not tab throttling — the MV3 service
-worker was being evicted. A capture spends most of its time waiting for page
-loads and dwelling, which is exactly what Chrome reads as idle, so the worker
-died mid-run about 30 seconds in. Now a cheap API call every 20s holds it open
-for the length of a run, with a `chrome.alarms` backstop that survives eviction
-and wakes it back up. Switching tabs is fine; the capture drives its own
-background tab.
-
-**"150 pages" captured 2.** `ootenlawfirm.com/sitemap.xml` is a sitemap
-*index* — `<sitemapindex>` pointing at child sitemaps, not a list of pages. The
-regex matched its `<loc>` elements, found one, and sampled two URLs. Now
-follows one level of index (up to 25 children), and when a sitemap is still
-thin it reads the homepage's own internal links rather than giving up. The
-existing "will follow links from the homepage" message was aspirational — that
-code did not exist.
-
-**Fewer fields.** API URL is gone: it is one fixed deployment, and it was a box
-nobody ever changed and everybody had to fill. Partner API key is gone too.
-What is left is the audit id, pages and dwell.
-
-**One-click start.** The blocked-audit page now carries a **Start capture with
-the Chrome extension** button. The extension's content script finds it, reads
-the audit id and target off the element, and starts the run — nothing is copied
-between tabs. When the extension is not installed the button stays hidden and
-you get the audit id with a copy button instead, which is also new.
-
-## How does it know a capture finished?
-
-The extension tells it. When the walk ends it POSTs every captured page to
-`/api/audits/{id}/capture`; the API runs the checkpoints against that payload
-and marks the audit ready. Your log line — `DONE — 255 checkpoints evaluated` —
-is the server's reply. There is no polling and no timeout to wait out.
-
-## Layout
-
-The access-check button and the property dropdowns were living inside the
-Target URL grid cell, so they became part of the five-column row: labels
-stopped lining up with their inputs, and the result text wrapped one word per
-line in a 200px column. Both now sit on their own full-width rows below the
-form.
-
----
-
-# Build 2026.08.20-04
-
-## Pick the property yourself when the matcher misses
-
-Two dropdowns appear under the URL field after you click **Check access**, one
-for Search Console and one for GA4, each listing every property our logins can
-see. A matched property is preselected. When nothing matched, the first option
-reads *"No match — pick one, or leave blank"* and the list is right there.
-
-Each has a filter box above it, because `reporting-zone` holds hundreds of
-properties and a native select with 400 rows is not a control.
-
-This is the answer to a question the automatic match cannot answer: **is the
-client actually in there?** A miss currently means "email them for access", and
-that is the wrong move if the property exists under a name the matcher could
-not connect to the domain — a brand that is not the domain, a client on a
-subdomain, a Search Console entry that is a domain property. Now you look.
-
-Mechanics worth knowing:
-
-- A chosen property **wins over the automatic match**. It is stored on the
-  audit, so a re-run keeps the choice rather than making you find it twice.
-- Leaving the blank option selected is exactly the old behaviour — the audit
-  matches on its own.
-- `GET /api/properties` backs the lists. It uses `sites` and
-  `accountSummaries` only; neither opens a data stream, so it does not get
-  slower as the number of properties grows. Cached for two minutes.
-- A login whose token will not exchange is reported in `errors` and skipped,
-  rather than taking the whole list down with it.
-
----
-
-# Build 2026.08.20-03
-
-## Check access before you spend a crawl
-
-**Check GA4 / Search Console access** sits next to the URL field on the
-homepage. It asks the same questions the collectors ask and answers in a
-second or two:
+## Deploy
 
 ```
-✓ Search Console: https://ootenlawfirm.com/ (via reporting-zone)
-✓ GA4: Ooten Law Firm (522482558, via reporting-zone)
+unzip -o vici-audit-2026.08.20-29.zip
+git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Search Console is exact — one `sites` call per login lists everything, so a
-"no" there is a real no. **GA4 is not**, and the button says so rather than
-pretending. Matching a GA4 property to a domain means opening its data
-streams, one API call each, and `reporting-zone` holds hundreds. The quick
-check only opens streams for properties whose *name* already looks right; when
-that finds nothing it reports "no quick match — the audit looks wider" instead
-of claiming there is no property. An overconfident "no" is worse than a slow
-"maybe", because it would have us emailing clients for access they already
-gave.
+Both services redeploy. Confirm `build 2026.08.20-29` in the header before
+trusting a run.
 
-`GOOGLE_TOKENS` has to be on the **API** as well as the worker for this, since
-the API is what answers while you are still looking at the form. If it is only
-on the worker the button says "not set on this service" — accurate about the
-API, and it says nothing about whether the audit will find the data.
-
-## Run only the part you need
-
-Under the form: **E-E-A-T and AI Search**, **Search Console / Analytics /
-off-page**, **Evidence screenshots**, and **Reuse the last crawl of this URL**.
-
-The last one is the point. The crawl is the slow, rude phase — 150 requests to
-someone's server — and re-running because our LLM key was missing shouldn't
-cost the client's site another 150. Ticking it finds the newest audit of that
-exact URL whose artifact we still hold and re-scores those pages.
-
-The honest caveat is on the form: sitewide counts then describe the site as of
-that crawl, so a fresh crawl is the right choice for "has the fix landed".
-
-One subtlety worth knowing: an unticked checkbox sends nothing, which is
-indistinguishable from a script that predates the feature. A hidden `phases`
-field tells them apart — with it, an absent box really means off; without it,
-everything runs as before. Getting that backwards silently skips the judgment
-layer, which is the failure we have already had once.
-
----
-
-# Build 2026.08.20-02
-
-## Why Ooten's Search Console and GA4 came back empty
-
-Not a permissions problem. Two matching bugs, and both produced the same false
-sentence — "no Vici login has access to this property" — about properties
-`digital@reporting.zone` can read perfectly well.
-
-**Search Console: scheme.** The audit was submitted as
-`http://ootenlawfirm.com/`. The property is `https://ootenlawfirm.com/`. Those
-are genuinely different properties to Google, and we compared the two strings
-literally, so it did not match. Anyone typing a URL types `http://`, and the
-site then redirects — so this would have missed on most audits, not just this
-one. Now matches any of `http`/`https` x `www`/bare, plus the `sc-domain:`
-form, and **queries with the property string Google returned** rather than the
-URL the audit was submitted with. Matching on one and querying with the other
-is its own bug, waiting.
-
-**GA4: display names have spaces.** The scan ordered properties by name
-similarity — `"ootenlawfirm" in "ooten law firm"` — which can essentially never
-be true. So nothing was ever "likely", the scan ran in arbitrary order, and on
-a login holding hundreds of properties the right one sat past the 60-property
-cap. Both sides are now squashed to letters and digits, so "Ooten Law Firm"
-matches `ootenlawfirm` and sorts first.
-
-Neither is a scoring change. Both are the difference between the section
-filling and the section reading Not Assessed.
-
----
-
-# Build 2026.08.20-01
-
-**Cumulative since 2026.08.18-16.** Apply and you are current whatever you last
-uploaded.
-
-## Two of these were wrong, not ugly
-
-**The footer never reached the judgment layer.** EEAT-20 told a client "no
-physical address or business hours are present" about a site whose address is
-in the footer of every page. `_slice()` sent the model `text[:1400]` — and a
-footer is, by definition, the last thing on the page, so a head-only slice
-could never contain it. The checkpoints that most need the footer (address,
-hours, legal entity, support channels) were exactly the ones structurally
-guaranteed to miss it. Now sends head **and** tail with the cut marked.
-
-**"CrUX field assessment: UNKNOWN" was a failure.** UNKNOWN means Google has no
-real-visitor data, which happens when a site is below the traffic threshold —
-so a fast site failed PERF-10 for not being popular enough to measure. Now
-falls back to the lab score and says which one you are reading, in English.
-
-## Typeface
-
-Roboto, via `fonts-roboto` in the image. `engine/fonts.py` registers all four
-faces or none — registering regular and bold without italic gives a document
-that changes typeface mid-sentence. Falls back to Helvetica silently at render
-time (a missing font must never take a report down) but says so in the log, and
-`tests/test_charts.py` fails if the image lost the package.
-
-## Repetition
-
-| Was | Now |
-|---|---|
-| ONP-01 and ONP-23 both printing "83 pages share 25 duplicated title tags" | second row reads "Same finding as ONP-01." |
-| 15 judgment rows all opening "All examined pages (homepage, practice areas, …) contain only generic…" | near-duplicates keep only what differs, prefixed "As EEAT-01." |
-| 12 consecutive Manual rows each carrying the same explanatory sentence | blank — the pill says Manual and the intro says what that means |
-| 29 Off-Page rows each saying "No backlink data provider is configured" | collapsed the same way |
-| Findings 2 and 3 both titled "Trust and expertise signals are weak" | groups that would print the same title are merged, freeing a headline slot |
-| "Meta Pixel · N/A · Not detected." and friends | N/A rows dropped from the appendix; the count is stated instead |
-
-## Copy
-
-- "We crawled 118 pages" → "We reviewed 118 pages". "Automated crawl of…" →
-  "118 pages reviewed from…". No mention of crawling anywhere client-facing.
-- "It shows up in 11 separate checks, including Real examples included, …" →
-  "The same gap shows up across 11 different signals." The trailing list was
-  raw checkpoint names, several of which end in "included". **Signals, not
-  locations** — we counted signals, and "locations" would read as pages.
-- Plan items for the 29 judgment checkpoints are verb-led work. "Address
-  first-hand experience demonstrated" → "Add first-hand detail — your own
-  cases, photos and specifics".
-- "Titles and headings are not doing their job" → "Page titles don't say what
-  each page is about" — names the job instead of asserting failure.
-- "priority templates" → "starting with the pages that bring in the most
-  traffic".
-- Top Findings and Methodology sublines removed. Scores by Area subline is
-  yours, keeping the hollow-bar note because an unassessed area must never
-  read as a zero.
-- "1 pages exceed 200KB" → "1 page exceeds 200KB", at render time rather than
-  in forty check modules.
-- Appendix: "a judgment call we make by hand rather than by crawler" → "a
-  judgment call, made by hand as part of the work".
-
-## Layout
-
-- Severity is a pill in the Top Findings meta line, matching the appendix.
-- Severity legend uses the same pill. It was painting the cell background and
-  setting TEXTCOLOR on the cell — which a Paragraph's own style overrides — so
-  "Critical" was dark grey on dark navy.
-- Phase captions back to left-aligned.
-- Coverage columns renamed **Reviewed** / **Issues**, with a line saying they
-  are different denominators. "4/12 … 2" read as one ratio.
-- Canonicalization was printing a definition of *indexing*, because "canonical"
-  had been defined earlier and the next unused term that appeared in any row
-  won by default. A section now only offers terms its own subject licenses, and
-  prints nothing when they are spent.
-
-## "88 checks are ours to finish" — where does that reach us?
-
-It didn't. That was a promise in a client deliverable with no worklist behind
-it. The internal report page now opens with **Action needed**, before anything
-else: what is blocked on our configuration (grouped by reason, not one row per
-checkpoint), what is waiting on a client grant, and what needs manual review
-listed by section. Internal only — it never appears in the client PDF.
-
-## Still empty, and why
-
-`DFS_LOGIN` / `DFS_PASSWORD` are not on the worker. That is Off-Page (0/29) and
-MOB-03..06 both reading "waiting on our data provider".
-
-*(Written before -02: this section also claimed the Search Console and GA4
-message was a real missing client grant. It was not — see the top of this file.
-Leaving the correction visible rather than quietly editing it, because "the
-tool said access was missing" is exactly the kind of claim that gets repeated
-to a client before anyone checks it.)*
-
-## Verified before sending
-
-- Rendered and looked at: cover, gauge, severity legend, methodology.
-- Roboto registers; `_agree`, `_dedupe_evidence` unit-checked including the
-  cases they must NOT touch (real plurals, "1 address", short rows).
-- 14 suites green; `import app.api, app.worker` on a clean merged tree.
-
-## What to check
-
-- Header chip reads **2026.08.20-01**.
-- Put `DFS_LOGIN` / `DFS_PASSWORD` on the worker, then re-run.
-- Open the internal report page — Action needed is the first thing on it.
+The extension is not deployed by Render — reload it in `chrome://extensions`
+after the pull. You should see **Site Scanner 1.2.0** with the new icon.

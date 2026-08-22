@@ -74,6 +74,113 @@ def _gap_w(r, thick, dy):
     return max(1.0, 2 * r * math.sqrt(1 - k * k) - thick * 1.6)
 
 
+# ---------------------------------------------------------------- gradients
+#
+# WITHIN ONE HUE, ALWAYS.
+#
+# The dataviz rules at the top of report.py are not decoration: section scores
+# are magnitude, and magnitude is carried by a sequential single hue plus
+# length. A gradient that crosses hues would turn a ranked scale into a
+# categorical palette and destroy the ordering it exists to show.
+#
+# So every gradient here runs light-to-dark inside the same blue. It reads as
+# depth and finish; it never becomes a second channel of meaning. Length is
+# still the whole message.
+GRAD_LO = colors.HexColor("#7fb3ef")
+GRAD_HI = colors.HexColor("#14498f")
+
+
+def _lerp(a, b, t):
+    """A color t of the way from a to b."""
+    t = max(0.0, min(1.0, t))
+    return colors.Color(a.red + (b.red - a.red) * t,
+                        a.green + (b.green - a.green) * t,
+                        a.blue + (b.blue - a.blue) * t)
+
+
+def _grad_rect(c, x, y, w, h, lo=GRAD_LO, hi=GRAD_HI, steps=None):
+    """
+    A horizontal gradient, drawn as thin bands.
+
+    reportlab has `linearGradient`, but it fills the CURRENT PATH and interacts
+    badly with the clipping these flowables already do. Bands are dumber and
+    work everywhere.
+
+    Band count is derived from the WIDTH, not fixed. A fixed count is the bug
+    that made the inline meters look striped while the big bars looked smooth:
+    the same 48 bands are invisible across four inches and countable across
+    one. One band every 1.5pt holds up at print resolution and at the zoom
+    levels anyone actually reads a PDF at.
+    """
+    if w <= 0 or h <= 0:
+        return
+    if steps is None:
+        steps = max(16, min(160, int(w / 1.5)))
+    step = w / steps
+    for i in range(steps):
+        c.setFillColor(_lerp(lo, hi, i / max(1, steps - 1)))
+        # A hair of overlap: adjacent fills that merely touch leave hairlines
+        # at some zoom levels, which reads as banding rather than a gradient.
+        c.rect(x + i * step, y, step + 0.4, h, stroke=0, fill=1)
+
+
+class GradRule(Flowable):
+    """
+    A gradient rule. The document's one piece of pure decoration.
+
+    Everything else in here encodes something — length is a score, position is
+    a rank, tone is depth along a single hue. This encodes nothing, and that is
+    deliberate: a report of this length needs a repeating mark that says "a new
+    part starts here" faster than a heading can be read, and a hairline in flat
+    gray does not do it.
+
+    `taper` fades the right end into the page instead of stopping square, which
+    is what makes it read as a flourish rather than as a bar someone forgot to
+    fill.
+    """
+
+    def __init__(self, width=2.1 * inch, height=3.0, taper=True,
+                 space_before=0, space_after=0, lo=GRAD_LO, hi=GRAD_HI):
+        super().__init__()
+        self.width, self.height, self.taper = width, height, taper
+        self._sb, self._sa = space_before, space_after
+        # Rules run DARK to LIGHT, left to right — the opposite of the bars,
+        # where light-to-dark tracks a growing measurement. Nothing is being
+        # measured here, and starting at full strength at the margin is what
+        # anchors the mark to the text block beside it.
+        self.lo, self.hi = lo, hi
+
+    def wrap(self, aw, ah):
+        self.width = min(self.width, aw)
+        return self.width, self.height + self._sb + self._sa
+
+    def draw(self):
+        c = self.canv
+        y = self._sa
+        if not self.taper:
+            _grad_rect(c, 0, y, self.width, self.height,
+                       lo=self.hi, hi=self.lo)
+            return
+        # The tail fades toward the PAGE COLOR, not toward transparent.
+        #
+        # setFillAlpha was the obvious way to do this and it printed a dashed
+        # line. Each band overlaps its neighbor by 0.4pt to stop hairlines
+        # from opening up between them — and two translucent fills stacked in
+        # that overlap are twice as opaque as either one, so the fade came out
+        # striped at exactly the band pitch. Opaque bands lerped to white keep
+        # the overlap harmless. The rule only ever sits on the white page, so
+        # there is nothing for a white tail to ghost against.
+        steps = 60
+        step = self.width / steps
+        for i in range(steps):
+            t = i / (steps - 1)
+            col = _lerp(self.hi, self.lo, t)
+            if t > 0.55:
+                col = _lerp(col, colors.white, (t - 0.55) / 0.45)
+            c.setFillColor(col)
+            c.rect(i * step, y, step + 0.4, self.height, stroke=0, fill=1)
+
+
 class ScoreGauge(Flowable):
     """
     Overall score as a 270° arc.
@@ -113,8 +220,19 @@ class ScoreGauge(Flowable):
         if self.score is not None:
             frac = max(0.0, min(1.0, self.score / 100.0))
             if frac > 0:
-                c.setStrokeColor(SEQ)
-                c.arc(x1, y1, x2, y2, 225, -270 * frac)
+                # Swept in segments so the arc can carry a gradient. A single
+                # stroke can only be one color, and the arc is the largest
+                # single mark in the document — the one place the extra dozen
+                # lines of drawing buy the most.
+                n = max(6, int(60 * frac))
+                sweep = -270.0 * frac
+                for i in range(n):
+                    c.setStrokeColor(_lerp(GRAD_LO, GRAD_HI, i / max(1, n - 1)))
+                    # Segments overlap by a whisker for the same reason the
+                    # gradient bands do.
+                    c.arc(x1, y1, x2, y2,
+                          225 + sweep * (i / n),
+                          sweep / n - (0.35 if i < n - 1 else 0))
 
         # centered readout
         c.setFillColor(INK if self.score is not None else MUTED)
@@ -207,9 +325,20 @@ class SectionBars(Flowable):
 
             c.setFillColor(TRACK)
             c.rect(bar_x, y, bar_w, bar_h, stroke=0, fill=1)
-            c.setFillColor(SEQ if i in worst else SEQ_DIM)
-            c.rect(bar_x, y, bar_w * max(0.0, min(1.0, sc / 100.0)), bar_h,
-                   stroke=0, fill=1)
+            fill_w = bar_w * max(0.0, min(1.0, sc / 100.0))
+            # EVERY bar gets the SAME ramp.
+            #
+            # The first cut gave the three worst areas a full-depth gradient
+            # and everything else a pale one. On the page that turned tone
+            # into a second reading of the data — dark bars looked like the
+            # bad ones — and it contradicted the gauge on page one, where dark
+            # is simply "further along the arc". Same ink, two opposite
+            # meanings, in one document.
+            #
+            # Length is the whole message. The three worst are already called
+            # out by a bold label in full-strength ink, which is emphasis
+            # applied to the label rather than to the measurement.
+            _grad_rect(c, bar_x, y, fill_w, bar_h)
 
             # Fit the value to its own column. "70  Needs Improvement" is more
             # than twice the width of "100  Strong", and at a fixed size the
@@ -308,9 +437,14 @@ class MiniMeter(Flowable):
             return
         c.setFillColor(TRACK)
         c.rect(0, 0, self.width, self.height, stroke=0, fill=1)
-        c.setFillColor(SEQ)
-        c.rect(0, 0, self.width * max(0.0, min(1.0, self.score / 100.0)),
-               self.height, stroke=0, fill=1)
+        # Same ramp as the big bars, and the same band density.
+        #
+        # Band count comes from the width — see _grad_rect. Hard-coding it
+        # here is what made these look striped next to identical-looking bars
+        # four times as wide.
+        _grad_rect(c, 0, 0,
+                   self.width * max(0.0, min(1.0, self.score / 100.0)),
+                   self.height)
 
 
 GOLD = colors.HexColor("#F1B434")

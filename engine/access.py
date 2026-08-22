@@ -25,7 +25,7 @@ Three buckets, one rule each:
           stays, because the fallback below has to land somewhere and it must
           not land on the client.
 
-Deliberately conservative: anything unrecognised falls to `manual` rather than
+Deliberately conservative: anything unrecognized falls to `manual` rather than
 `client`, because over-reporting the client's homework is the failure we are
 fixing.
 """
@@ -118,14 +118,75 @@ def vendor_ids() -> set:
 # of error: a run where access demonstrably worked (11 of 38 rows filled with
 # real numbers) still told us to go and ask the client for access again.
 OURS_DESPITE_PREFIX = {"gsc_ui_only", "ga4_admin_only",
-                       "gsc_misconfigured", "ga4_misconfigured"}
+                       "gsc_misconfigured", "ga4_misconfigured",
+                       # The three link reports. Google exposes no API for
+                       # them, so the backlink index answers them instead —
+                       # which makes an empty row our failed call, not a
+                       # missing client grant and not a job for a person.
+                       "gsc_no_api", "ga4_no_api"}
 
-# And a third case, which is neither: reports Google publishes in the Search
-# Console interface and exposes through no API at all — the external-links and
-# top-linking-sites reports. No grant unlocks them and no build we could do
-# would reach them. They belong with the checkpoints an analyst reads by hand,
-# not on a list of things we owe the client or ourselves.
-MANUAL_DESPITE_PREFIX = {"gsc_no_api", "ga4_no_api"}
+# THIS SET IS NOW EMPTY, AND THAT IS THE POINT.
+#
+# It held `gsc_no_api` — the three link reports Google publishes and exposes
+# through no API. At the time they genuinely were an analyst's read, so filing
+# them under "a person does this" was honest.
+#
+# They are not any more: the backlink index answers all three. The source tag
+# survives as the label for "Search Console cannot give us this", but an empty
+# row now means our DataForSEO call did not land, which is OURS. Leaving the
+# mapping in place kept GSC-22 on a human's list every time that call missed —
+# a work item for a person that no person could do anything about.
+#
+# The set stays declared because the DISTINCTION is still real, and the next
+# genuinely-unautomatable checkpoint should land here rather than on the client.
+MANUAL_DESPITE_PREFIX: set = set()
+
+
+def _owner_map() -> dict:
+    """
+    Which subsystem owed each checkpoint an answer.
+
+    `blocked_on` says WHOSE problem an empty row is. That was enough while the
+    answer could be "a person" — a name is a next step. Now that the answer is
+    always "ours", it stopped being one: a panel that says "6 checks: Not run."
+    tells whoever reads it nothing they can act on, and "Not run." was
+    literally the string, because a checkpoint with no finding has no evidence
+    to quote. Naming the subsystem turns it back into a next step: the
+    backlink provider missed, or no LLM key is set, or the browser phase never
+    started. Three different fixes that looked identical.
+    """
+    m = {}
+
+    def tag(mod, attr, name):
+        try:
+            src = getattr(__import__(mod, fromlist=[attr]), attr)
+        except Exception:  # noqa: BLE001
+            return
+        for cid in src:
+            m.setdefault(cid, name)
+
+    # Most specific first — a checkpoint claimed by two producers is owed by
+    # the one that would actually have written the row.
+    tag("engine.consent.checks", "CONS_IDS", "the consent and privacy scan")
+    tag("engine.aivis.geo_checks", "GEO_IDS", "the AI visibility panel")
+    tag("engine.judgment", "CHECKPOINT_IDS", "the judgment layer")
+    tag("engine.collectors.dataforseo", "LIGHTHOUSE_IDS", "Lighthouse")
+    tag("engine.collectors.analytics", "GSC_EXTRA_IDS", "Search Console")
+    tag("engine.checks", "REGISTRY", "the crawl checks")
+    return m
+
+
+_OWNER_CACHE: dict | None = None
+
+
+def owner(cid: str) -> str:
+    """Human name of the subsystem that owed this checkpoint, or ''."""
+    global _OWNER_CACHE
+    if _OWNER_CACHE is None:
+        _OWNER_CACHE = _owner_map()
+    if cid.startswith("OFF-"):
+        return "the backlink provider"
+    return _OWNER_CACHE.get(cid, "")
 
 
 def blocked_on(cid: str, finding: dict | None = None) -> str:

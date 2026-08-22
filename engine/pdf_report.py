@@ -30,7 +30,7 @@ from reportlab.lib.units import inch
 from reportlab.platypus import (BaseDocTemplate, Frame, PageBreak, PageTemplate,
                                 Paragraph, Spacer, Table, TableStyle, KeepTogether)
 
-from .charts import (ScoreGauge, SectionBars, SegmentBar, MiniMeter,
+from .charts import (ScoreGauge, SectionBars, SegmentBar, MiniMeter, GradRule,
                      DefBadge, Lamp, severity_segments, coverage_segments)
 
 # ---- palette (matches the HTML report) -------------------------------------
@@ -258,6 +258,19 @@ def _us_date(stamp) -> str:
 
 def _p(text):
     return _h.escape(str(text if text is not None else ""))
+
+
+def _rule(width=1.75 * inch):
+    """
+    The section mark, in one place.
+
+    A short tapered gradient under every section heading. It is the same mark
+    as the cover's full-measure rule, scaled down — which is the whole point:
+    the reader meets it once on page one and thereafter recognizes it as
+    "a new section", without reading the heading first. Twelve headings
+    calling this beats twelve headings each deciding their own width.
+    """
+    return GradRule(width=width, height=2.6, space_before=0, space_after=3)
 
 
 def _styles():
@@ -607,6 +620,7 @@ def _ai_visibility(meta, S):
     if not v or v.get("citation_rate") is None:
         return []
     out = [Paragraph("AI Search Visibility", S["h2"]),
+           _rule(),
            Paragraph("Measured by asking the assistants real buying questions "
                      "in your category and recording what came back. No brand "
                      "name in the question — this is what someone finds when "
@@ -697,6 +711,7 @@ def _evidence(meta, S):
         return []
     from reportlab.platypus import Image as RLImage
     out = [Paragraph("What This Looks Like", S["h2"]),
+           _rule(),
            Paragraph("Captured from your live site. Red outlines mark the "
                      "elements the check flagged.", S["small"]),
            Spacer(1, 8)]
@@ -765,6 +780,11 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             pass
     story.append(Paragraph("Comprehensive SEO &amp; AI Search (GEO) Audit",
                            S["h1"]))
+    # The cover's rule is the widest one in the document and the only one that
+    # runs the full measure. Every later section gets a short version of the
+    # same mark, so the reader learns it here.
+    story.append(GradRule(width=6.6 * inch, height=4.0, space_after=2,
+                          space_before=8))
     story.append(Paragraph(_p(meta.get("client", "")), S["h2"]))
     story.append(Spacer(1, 4))
     analyst = meta.get("analyst") or {}
@@ -865,6 +885,10 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         ("LEFTPADDING", (0, 0), (-1, -1), 12), ("RIGHTPADDING", (0, 0), (-1, -1), 12),
         ("TOPPADDING", (0, 0), (-1, -1), 12), ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
     ]))
+    # A flush gradient cap on the panel. Untapered and full-measure, so it
+    # reads as the panel's own top edge rather than as a rule floating above
+    # it — the tapered version left a visible gap at the right-hand corner.
+    story.append(GradRule(width=6.6 * inch, height=3.0, taper=False))
     story.append(hero)
     story.append(Spacer(1, 12))
 
@@ -957,6 +981,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     defined = set()
     if summary:
         story.append(Paragraph("Executive Summary", S["h2"]))
+        story.append(_rule())
         if summary.get("overview"):
             story.append(Paragraph(_p(summary["overview"]), S["body"]))
         if summary.get("headline"):
@@ -1011,6 +1036,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         # ordered, and a sentence explaining both reads like filler written to
         # occupy the space under a header.
         story.append(Paragraph("Top Findings", S["h2"]))
+        story.append(_rule())
         story.append(Spacer(1, 8))
         for i, t in enumerate(five, start=1):
             block = [Paragraph(f"{i}. {_p(t.get('title'))}", S["h3"])]
@@ -1068,6 +1094,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     # break left a third of page 2 blank. KeepTogether keeps the chart intact.
     story.append(Spacer(1, 6))
     story.append(Paragraph("Scores by Area", S["h2"]))
+    story.append(_rule())
 
     secs = [(k, v) for k in ORDER if (v := (scores.get("sections") or {}).get(k))]
     # Ranked worst-first: the reader should not have to scan a table to find
@@ -1142,6 +1169,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     issues = _dedupe_evidence(issues)
     if issues:
         story.append(Paragraph("Priority Issues", S["h2"]))
+        story.append(_rule())
         rows = [[Paragraph("<b>ID</b>", S["cellsm"]),
                  Paragraph("<b>Checkpoint</b>", S["cellsm"]),
                  Paragraph("<b>Severity</b>", S["cellsm"]),
@@ -1168,6 +1196,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     if rk.get("available") and rk.get("rows"):
         story.append(PageBreak())
         story.append(Paragraph("Keyword Rankings &amp; Industry Benchmarks", S["h2"]))
+        story.append(_rule())
         story.append(Paragraph(
             f"The keywords this domain already ranks for in {_p(rk.get('location'))}, "
             f"ordered by position. <b>{rk.get('top10', 0)} of {rk.get('total', 0)}</b> "
@@ -1208,6 +1237,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         story.append(t)
     elif rk and not rk.get("available"):
         story.append(Paragraph("Keyword Rankings &amp; Industry Benchmarks", S["h2"]))
+        story.append(_rule())
         story.append(Paragraph(
             f"Not collected — {_p(rk.get('reason'))}. This section is omitted rather "
             f"than estimated.", S["small"]))
@@ -1222,6 +1252,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     if summary and summary.get("roadmap"):
         story.append(PageBreak())
         story.append(Paragraph("Our Recommended Plan", S["h2"]))
+        story.append(_rule())
         story.append(Paragraph(
             "The order we would work in, and roughly how much sits in each "
             "phase. Item counts come straight from the findings above.",
@@ -1297,6 +1328,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     # ------------------------------------------------ detailed findings
     story.append(PageBreak())
     story.append(Paragraph("Appendix — Full Checkpoint Detail", S["h2"]))
+    story.append(_rule())
     n_na = sum(1 for f in findings.values() if f.get("status") == "N/A")
     story.append(Paragraph(
         "By area. <b>Reference</b> is a number with no pass or fail attached to "
@@ -1400,6 +1432,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     # No subtitle. The heading is the explanation; a sentence under it saying
     # the section explains things is filler.
     story.append(Paragraph("Methodology & Data Sources", S["h2"]))
+    story.append(_rule())
     story.append(Spacer(1, 8))
 
     # Severity legend — lifted from the template's own scoring key, because a

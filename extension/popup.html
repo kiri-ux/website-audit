@@ -3,7 +3,12 @@
 body{width:360px;margin:0;padding:14px;background:#fcfcfb;color:#0b0b0b;
  font:13px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 @media(prefers-color-scheme:dark){body{background:#1a1a19;color:#fff}}
-h1{font-size:14px;margin:0 0 2px;letter-spacing:-.01em}
+h1{font-size:14.5px;margin:0;letter-spacing:-.012em;font-weight:700}
+/* The mark, at the top, where the old build had a bare string. A popup with
+   no icon is indistinguishable from every other popup at a glance, and this
+   one is opened in the middle of doing something else. */
+.brand{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.brand img{border-radius:6px;flex:none}
 .sub{color:#898781;font-size:11.5px;margin-bottom:12px}
 label{display:block;font-size:10.5px;font-weight:640;color:#52514e;
  text-transform:uppercase;letter-spacing:.06em;margin:9px 0 3px}
@@ -13,23 +18,25 @@ input{width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #e6e5e1;
 @media(prefers-color-scheme:dark){input{background:#0d0d0d;border-color:#2c2c2a}}
 .row{display:flex;gap:8px}.row>div{flex:1}
 button{width:100%;margin-top:12px;padding:9px;border:0;border-radius:6px;
- background:#2a78d6;color:#fff;font:inherit;font-weight:640;cursor:pointer}
+ background:#1c5ba6;color:#fff;font:inherit;font-weight:640;cursor:pointer}
 button:hover{filter:brightness(1.08)}
 button.stop{background:#d03b3b}
 .bar{height:6px;background:#eceae6;border-radius:3px;margin:11px 0 6px;overflow:hidden}
-.bar>i{display:block;height:100%;background:#2a78d6;width:0;border-radius:3px;
+.bar>i{display:block;height:100%;background:#1c5ba6;width:0;border-radius:3px;
  transition:width .3s}
 @media(prefers-color-scheme:dark){.bar{background:#262623}}
 #log{margin-top:8px;max-height:150px;overflow:auto;font:11px ui-monospace,Menlo,monospace;
  color:#52514e;white-space:pre-wrap}
 @media(prefers-color-scheme:dark){#log{color:#c3c2b7}}
 .hint{font-size:11px;color:#898781;margin-top:8px;line-height:1.45}
-  button.alt{background:#fff;color:#12356b;border:1px solid #dfe4ec;
+  button.alt{background:#fff;color:#0c284c;border:1px solid #dfe4ec;
               font-weight:600;margin-top:6px}
-  button.alt:hover{border-color:#12356b}
+  button.alt:hover{border-color:#0c284c}
 </style></head><body>
-<h1>Vici Audit Capture</h1>
-<div class="sub">Captures the real browser render from sites that block server crawlers.</div>
+<div class="brand"><img src="icons/icon32.png" width="26" height="26" alt="">
+<div><h1>Site Scanner</h1>
+<div class="sub" style="margin:0">Scans from this browser, so blocked sites still get measured.</div>
+</div></div>
 
 <label>Audit ID</label>
 <input id="auditId" placeholder="paste from the dashboard">
