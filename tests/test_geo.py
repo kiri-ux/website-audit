@@ -134,6 +134,37 @@ def main():
     check("and the server derives states from markets when none are sent",
           "from engine.geo import summarize" in src)
 
+    print("\nEVERY CONSENT INPUT REACHES THE SERVER")
+    # The rule this file exists to hold: an input the server drops is worse
+    # than no input. `states` and `industries` sat on the scanner's signature
+    # for five builds with nothing setting them, and two checkpoints answered
+    # nothing the whole time while the form looked complete.
+    import inspect as _i
+    from app import api as _api, worker as _wk
+    _sig = set(_i.signature(_api.submit_form).parameters)
+    for f in ("consent_states", "consent_industries", "consent_products",
+              "conversion_urls", "implementation"):
+        check(f"the form accepts {f}", f in _sig)
+    _src = _i.getsource(_api.submit_form)
+    for k in ("consent_products", "conversion_urls", "implementation"):
+        check(f"and stores {k} in the audit options", f'opts["{k}"]' in _src)
+    _w = _i.getsource(_wk._consent)
+    check("products reach the scanner", "products=opts.get" in _w)
+    check("and the conversion pages are scanned too",
+          "conversion_urls" in _w and "site_checks=False" in _w)
+    check("with site-level checks run once, on the homepage",
+          _w.count("site_checks=False") == 1)
+
+    print("\nTHE STATE CONTROL OFFERS EVERY STATE WE CAN CHECK")
+    from engine.consent.state_checks import STATE_CHECKS as _SC
+    check("all twenty are on the form as toggles",
+          all(f"data-st='{c}'" in html for c in _SC), str(len(_SC)))
+    check("and it is no longer a text field someone has to guess into",
+          "id='cstates'" in html and "type='hidden'" in html)
+    from engine.consent.signatures import PRODUCT_PIXELS as _PP
+    check("every product the scanner knows is offered",
+          all(f'data-pr="{k}"' in html for k in _PP), str(len(_PP)))
+
     print("\n" + "=" * 68)
     if FAILED:
         print(f"  {len(FAILED)} FAILED: {FAILED}")

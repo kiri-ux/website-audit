@@ -395,7 +395,34 @@ def _consent(a, audit_id, findings, extras, opts, step):
         scan = scan_site(a["target_url"],
                          prefer_full=not opts.get("skip_consent_browser"),
                          states=opts.get("consent_states") or None,
-                         industries=opts.get("consent_industries") or None)
+                         industries=opts.get("consent_industries") or None,
+                         products=opts.get("consent_products") or None)
+        # CONVERSION PAGES TOO.
+        #
+        # The scan looked at the homepage and said so. But a thank-you page is
+        # where the conversion pixels actually fire, which makes it the page
+        # most likely to carry an ungated one — and the page nobody looked at.
+        # Site-level checks run once, on the homepage, exactly as the
+        # standalone tool does it; the extra pages contribute their pixels.
+        extra = []
+        for url in (opts.get("conversion_urls") or [])[:6]:
+            try:
+                extra.append(scan_site(
+                    url, prefer_full=not opts.get("skip_consent_browser"),
+                    site_checks=False,
+                    products=opts.get("consent_products") or None))
+            except Exception as exc:  # noqa: BLE001
+                print(f"[worker] {audit_id} conversion scan failed for {url}: "
+                      f"{type(exc).__name__}: {exc}", flush=True)
+        if extra and isinstance(scan, dict):
+            # Merge the pixel evidence, keep the homepage's verdict. A pixel
+            # firing pre-consent on ANY scanned page is a pre-consent fire.
+            for other in extra:
+                for key in ("pre_consent", "post_reject", "gpc_fires",
+                            "post_consent"):
+                    if other.get(key):
+                        scan[key] = (scan.get(key) or []) + other[key]
+            scan["pages_scanned"] = 1 + len(extra)
     except Exception as exc:  # noqa: BLE001
         print(f"[worker] {audit_id} consent scan errored: "
               f"{type(exc).__name__}: {exc}", flush=True)

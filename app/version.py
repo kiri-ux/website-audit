@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-38"
-BUILD_NOTES = ("Market pills drive the state checks, AI Overviews go through "
-               "DataForSEO, and a basic scan says what stopped the browser")
+BUILD = "2026.08.20-39"
+BUILD_NOTES = ("State and product toggles, conversion pages, implementation "
+               "owner — the consent inputs the standalone tool always had")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

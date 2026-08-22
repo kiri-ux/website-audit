@@ -150,6 +150,22 @@ code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
 .gp button{background:none;border:0;cursor:pointer;color:inherit;opacity:.55;
  font-size:15px;line-height:1;padding:0 3px;border-radius:50%}
 .gp button:hover{opacity:1;background:rgba(0,0,0,.07)}
+label .note{color:var(--muted);font-weight:400;font-size:12px;
+ margin-left:5px;letter-spacing:0;text-transform:none}
+.tgrow{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
+.tg{padding:4px 11px!important;border-radius:20px;font-size:12.5px!important;
+ font-weight:500!important;border:1px solid var(--line)!important;
+ background:var(--surface)!important;color:var(--ink2)!important;
+ cursor:pointer;line-height:1.4}
+.tg:hover{border-color:var(--blue)!important;color:var(--blue)!important;
+ filter:none!important}
+.tg.on{background:var(--navy)!important;border-color:var(--navy)!important;
+ color:#fff!important}
+/* A state the markets imply but nobody has confirmed reads as a suggestion,
+   not a selection — outlined rather than filled, so "we worked this out" and
+   "you chose this" never look identical. */
+.tg.auto{background:#e8eff8!important;border-color:var(--blue)!important;
+ color:var(--navy)!important}
 .spill{display:inline-flex;align-items:center;gap:5px;font-size:12px;
  font-weight:600;padding:2px 9px;border-radius:20px;margin:0 5px 5px 0;
  background:var(--pill-green);color:var(--pill-green-ink)}
@@ -681,6 +697,25 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
     STATES_JSON = _json.dumps({c: [n, c in (_SC or {})]
                                for c, n in sorted(_GEO_STATES.items())})
     INDOPTS = "".join(f"<option value=\"{e(i)}\">" for i in _IND[:400])
+    # ALL TWENTY, AS TOGGLES.
+    #
+    # The states box was free text, which is the wrong control for a closed
+    # set of twenty: it cannot show what the options ARE, so a state we check
+    # was invisible unless you already knew to type it. The standalone
+    # scanner has always shown them as a toggle row and that is the right
+    # answer — every state we can test, visible, with the ones the markets
+    # imply already on.
+    STATE_TOGGLES = "".join(
+        f"<button type='button' class='tg' data-st='{c}' "
+        f"onclick='stToggle(this)'>{c}</button>"
+        for c in sorted(_SC or {}))
+    try:
+        from engine.consent.signatures import PRODUCT_PIXELS as _PP
+    except Exception:  # noqa: BLE001
+        _PP = {}
+    PRODUCT_TOGGLES = "".join(
+        f"<button type='button' class='tg' data-pr=\"{e(k)}\" "
+        f"onclick='prToggle(this)'>{e(k)}</button>" for k in _PP)
 
     body = f"""
     <div class='sub'>
@@ -849,13 +884,56 @@ banner, Consent Mode and what fires before consent. No crawl.'>
                California's law tested and Tennessee's ignored. The markets
                already say where they sell; the states now follow them, and
                editing this box by hand detaches it. -->
-          <input name='consent_states' form='auditform' id='cstates'
-                 placeholder='derived from Primary markets'>
-          <div class='sm' style='color:var(--muted);margin-top:3px'
+          <div class='tgrow' id='strow'>{STATE_TOGGLES}</div>
+          <input type='hidden' name='consent_states' id='cstates'
+                 form='auditform'>
+          <div class='sm' style='color:var(--muted);margin-top:5px'
                id='cstatenote'>
-            {NSTATES} of the 50 have a law we check. 12 require Global Privacy
-            Control to be honored, and that pass only runs when one is listed.
+            All {NSTATES} states with a law we check. The ones your markets
+            imply are on; click to add or remove.
           </div>
+        </div>
+        <div>
+          <label>Implementation
+            <span class='note'>who owns the tags</span></label>
+          <!-- Decides who a consent finding is addressed to. A pixel firing
+               pre-consent in a container we own is our work queue; the same
+               pixel in a container the client controls is a conversation.
+               Same finding, different owner, and the report could not tell
+               them apart because nothing ever asked. -->
+          <select name='implementation' form='auditform'>
+            <option value=''>Not specified</option>
+            <option value='vici_gtm'>Vici-owned GTM</option>
+            <option value='client_gtm'>Client-owned GTM</option>
+            <option value='client_placement'>Client placement</option>
+            <option value='hardcoded'>Hardcoded in the site</option>
+          </select>
+        </div>
+        <div>
+          <label>Conversion URLs
+            <span class='note'>scanned as well as the homepage</span></label>
+          <!-- The consent scan has only ever looked at the homepage, and said
+               so. But a thank-you page is where the conversion pixels
+               actually fire, so it is the page most likely to carry an
+               ungated one — and the page nobody was looking at. -->
+          <div class='geobox' id='cvbox'>
+            <span id='cvpills'></span>
+            <input id='cvinput' class='geoin' autocomplete='off'
+                   placeholder='https://client.com/thank-you — then Enter'>
+          </div>
+          <input type='hidden' name='conversion_urls' id='conversion_urls'
+                 form='auditform'>
+        </div>
+        <div style='grid-column:1/-1'>
+          <label>Products they bought
+            <span class='note'>which pixels we expect to find</span></label>
+          <!-- Without this the scan reports what IS firing. With it, it can
+               report what is NOT: a product the client pays for whose pixel
+               never fires is invisible otherwise, and it is the finding with
+               money attached. -->
+          <div class='tgrow' id='prrow'>{PRODUCT_TOGGLES}</div>
+          <input type='hidden' name='consent_products' id='consent_products'
+                 form='auditform'>
         </div>
         <div>
           <label>Industry <span class='note'>optional</span></label>
@@ -1026,10 +1104,26 @@ banner, Consent Mode and what fires before consent. No crawl.'>
       if (!box) return;
       box.innerHTML = MARKETS.map(function (label, i) {{
         var st = geoState(label);
+        // "Anderson County, TN" beside a TN tag says TN twice. Strip the
+        // state off the label and let the tag carry it — the full string is
+        // still what gets submitted and still what the tooltip shows.
+        var shown = label;
+        if (st) {{
+          // A CHARACTER CLASS WITH NO BACKSLASH, deliberately. This string
+          // passes through a Python f-string and then a JS string literal, and
+          // '\s' survives neither intact — it arrived as the letter s, so the
+          // class matched commas and esses and stripped nothing. A comma and
+          // a space are all this needs, and they cannot be mangled.
+          shown = label.replace(
+            new RegExp('[, ]+(' + st + '|'
+                       + GEO_STATES[st][0].replace(/ /g, '[ ]+') + ')$', 'i'),
+            '').trim() || label;
+        }}
         return '<span class="gp' + (st ? '' : ' bad') + '" title="'
-             + (st ? geoEsc(GEO_STATES[st][0]) : 'No state found — this market '
-                + 'cannot be matched to a privacy law') + '">'
-             + '<b>' + geoEsc(label) + '</b>'
+             + geoEsc(st ? label + ' — ' + GEO_STATES[st][0]
+                         : 'No state found — this market cannot be matched '
+                           + 'to a privacy law') + '">'
+             + '<b>' + geoEsc(shown) + '</b>'
              + (st ? '<span class="st">' + st + '</span>'
                    : '<span class="st">?</span>')
              + '<button type="button" aria-label="Remove ' + geoEsc(label)
@@ -1069,37 +1163,88 @@ banner, Consent Mode and what fires before consent. No crawl.'>
       codes.sort();
       var check = codes.filter(function (c) {{ return GEO_STATES[c][1]; }});
       var noLaw = codes.filter(function (c) {{ return !GEO_STATES[c][1]; }});
-      var input = document.getElementById('cstates');
       var src = document.getElementById('cstatesrc');
       var note = document.getElementById('cstatenote');
-      // A hand-edited box is a decision and is never overwritten.
-      if (input && !STATES_TOUCHED) input.value = check.join(' ');
-      if (src) src.textContent = STATES_TOUCHED ? 'edited by hand'
+      // Suggest, never overwrite. A state the operator turned on or off by
+      // hand stays that way; the markets only pre-light the ones nobody has
+      // expressed an opinion about.
+      document.querySelectorAll('#strow .tg').forEach(function (b) {{
+        if (b.dataset.pinned) return;
+        b.classList.toggle('auto', check.indexOf(b.dataset.st) >= 0);
+      }});
+      stSync();
+      if (src) src.textContent = STATES_TOUCHED ? 'yours, edited by hand'
                                                 : 'from the markets above';
       if (!note) return;
-      if (!codes.length) {{
-        note.innerHTML = 'Add a market above and the states fill in from it. '
-          + 'Left empty, no state requirement is checked at all.';
-        return;
+      var msg = 'All twenty states with a law we check. '
+              + 'Filled means chosen; outlined means your markets imply it.';
+      if (noLaw.length) {{
+        msg += ' <span style="color:var(--muted)">' + noLaw.join(', ')
+             + ' ' + (noLaw.length === 1 ? 'is' : 'are')
+             + ' in your markets and ' + (noLaw.length === 1 ? 'has' : 'have')
+             + ' no comprehensive law in our map \u2014 nothing to test there,'
+             + ' which is a real answer rather than a gap.</span>';
       }}
-      note.innerHTML =
-        check.map(function (c) {{
-          return '<span class="spill">' + c + '</span>';
-        }}).join('')
-        + noLaw.map(function (c) {{
-            return '<span class="spill none">' + c + '</span>';
-          }}).join('')
-        + '<div style="margin-top:3px">'
-        + (check.length
-             ? '<b>' + check.length + '</b> with a privacy law we check.'
-             : 'None of these states has a law we check.')
-        + (noLaw.length
-             ? ' <span style="color:var(--muted)">' + noLaw.join(', ')
-               + ' ' + (noLaw.length === 1 ? 'has' : 'have')
-               + ' no comprehensive law in our map \u2014 nothing to test '
-               + 'there, which is a real answer rather than a gap.</span>'
-             : '')
-        + '</div>';
+      note.innerHTML = msg;
+    }}
+
+    // ---- state and product toggles ---------------------------------------
+    function stSync() {{
+      var on = [];
+      document.querySelectorAll('#strow .tg').forEach(function (b) {{
+        if (b.classList.contains('on') || b.classList.contains('auto')) {{
+          on.push(b.dataset.st);
+        }}
+      }});
+      var h = document.getElementById('cstates');
+      if (h) h.value = on.join(' ');
+    }}
+    function stToggle(b) {{
+      STATES_TOUCHED = true;
+      b.dataset.pinned = '1';
+      // A suggested state clicked once becomes a chosen one; clicked again it
+      // is off and stays off even if the markets keep implying it.
+      if (b.classList.contains('auto')) {{
+        b.classList.remove('auto'); b.classList.add('on');
+      }} else {{
+        b.classList.toggle('on');
+      }}
+      stSync();
+      var src = document.getElementById('cstatesrc');
+      if (src) src.textContent = 'yours, edited by hand';
+    }}
+    function prToggle(b) {{
+      b.classList.toggle('on');
+      var on = [];
+      document.querySelectorAll('#prrow .tg.on').forEach(function (x) {{
+        on.push(x.dataset.pr);
+      }});
+      var h = document.getElementById('consent_products');
+      if (h) h.value = on.join(',');
+    }}
+
+    // ---- conversion URLs, same pill pattern as the markets ---------------
+    var CONVS = [];
+    function cvRender() {{
+      var box = document.getElementById('cvpills');
+      if (!box) return;
+      box.innerHTML = CONVS.map(function (u, i) {{
+        return '<span class="gp" title="' + geoEsc(u) + '"><b>'
+             + geoEsc(u.replace(/^https?:\/\//, '').slice(0, 42))
+             + '</b><button type="button" aria-label="Remove" onclick="cvDrop('
+             + i + ')">&times;</button></span>';
+      }}).join('');
+      document.getElementById('conversion_urls').value = CONVS.join(' ');
+    }}
+    function cvDrop(i) {{ CONVS.splice(i, 1); cvRender(); }}
+    function cvAdd(raw) {{
+      (raw || '').split(/[\s,;]+/).forEach(function (u) {{
+        u = (u || '').trim();
+        if (!u) return;
+        if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+        if (CONVS.indexOf(u) < 0) CONVS.push(u);
+      }});
+      cvRender();
     }}
 
     function geoInit() {{
@@ -1125,10 +1270,19 @@ banner, Consent Mode and what fires before consent. No crawl.'>
           ev.preventDefault(); geoAdd(t); input.value = '';
         }}
       }});
-      var cs = document.getElementById('cstates');
-      if (cs) cs.addEventListener('input', function () {{
-        STATES_TOUCHED = true; geoSyncStates();
-      }});
+      var cv = document.getElementById('cvinput');
+      if (cv) {{
+        cv.addEventListener('keydown', function (ev) {{
+          if (ev.key === 'Enter' || ev.key === ',') {{
+            ev.preventDefault(); cvAdd(cv.value); cv.value = '';
+          }} else if (ev.key === 'Backspace' && !cv.value && CONVS.length) {{
+            cvDrop(CONVS.length - 1);
+          }}
+        }});
+        cv.addEventListener('blur', function () {{
+          if (cv.value.trim()) {{ cvAdd(cv.value); cv.value = ''; }}
+        }});
+      }}
       var box = document.getElementById('geobox');
       if (box) box.addEventListener('click', function (ev) {{
         if (ev.target === box) input.focus();

@@ -436,6 +436,9 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
                 run_consent: str = Form(""),
                 consent_states: str = Form(""),
                 consent_industries: str = Form(""),
+                consent_products: str = Form(""),
+                conversion_urls: str = Form(""),
+                implementation: str = Form(""),
                 quick: str = Form(""),
                 reuse_crawl: str = Form(""), phases: str = Form(""),
                 gsc_property: str = Form(""), ga4_property_id: str = Form(""),
@@ -501,6 +504,19 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
         ind = [x.strip() for x in consent_industries.split(",") if x.strip()]
         if ind:
             opts["consent_industries"] = ind
+        # WIRED THE SAME DAY THE FIELDS SHIPPED, on purpose. Adding an input
+        # the server drops is the exact failure this codebase spent a day
+        # chasing: states and industries sat on the scanner's signature for
+        # five builds with nothing setting them, and two checkpoints quietly
+        # answered nothing the whole time.
+        prods = [x.strip() for x in consent_products.split(",") if x.strip()]
+        if prods:
+            opts["consent_products"] = prods
+        convs = [u.strip() for u in conversion_urls.split() if u.strip()]
+        if convs:
+            opts["conversion_urls"] = convs[:6]
+        if implementation.strip():
+            opts["implementation"] = implementation.strip()
 
     # A CONSENT CHECK IS A ONE-PAGE AUDIT.
     #

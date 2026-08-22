@@ -1,6 +1,65 @@
-# Changed files — build 2026.08.20-38
+# Changed files — build 2026.08.20-39
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## The consent inputs the standalone tool always had
+
+### The state pill said TN twice
+
+"Anderson County, TN" beside a `TN` tag is the state printed twice. The label
+is stripped now and the tag carries it — `Anderson County · TN`. The full
+string is still what submits and still what the tooltip shows.
+
+### States are a toggle row, not a text field
+
+Free text was the wrong control for a closed set of twenty: it cannot show
+what the options *are*, so a state we can check was invisible unless you
+already knew to type it. All twenty are on the form now.
+
+Two visual states, because they mean different things:
+
+| | |
+|---|---|
+| **Filled** | you chose it |
+| **Outlined** | your markets imply it, nobody has confirmed it |
+
+Click a suggestion and it becomes a choice. Click it again and it is off and
+stays off, even if the markets keep implying it — a decision outranks a
+derivation.
+
+### Products, conversion URLs, implementation
+
+Three inputs the standalone scanner has and the audit never carried:
+
+- **Products** — all eleven the scanner knows, as toggles. Without them the
+  scan reports what *is* firing. With them it can report what is **not**: a
+  product the client pays for whose pixel never fires is invisible otherwise,
+  and it is the finding with money attached.
+- **Conversion URLs** — the scan looked at the homepage and said so. But a
+  thank-you page is where the conversion pixels actually fire, which makes it
+  the page most likely to carry an ungated one, and the page nobody was
+  looking at. Up to six extra pages; site-level checks still run once on the
+  homepage, exactly as the standalone tool does it.
+- **Implementation** — Vici-owned GTM, client-owned GTM, client placement, or
+  hardcoded. This decides who a finding is *addressed to*. A pixel firing
+  pre-consent in a container we own is our work queue; the same pixel in a
+  container the client controls is a conversation. Same finding, different
+  owner, and the report could not tell them apart because nothing ever asked.
+
+**All five wired end to end the same day they shipped**, and `test_geo` now
+asserts it: the form accepts each one, the API stores it, and `_consent`
+passes it to the scanner. Adding an input the server drops is the exact
+failure this codebase spent a day chasing — `states` and `industries` sat on
+the scanner's signature for five builds with nothing setting them, and two
+checkpoints quietly answered nothing while the form looked complete.
+
+Two JavaScript notes, same root cause as the last build: `'[,\\s]+'` survives
+neither a Python f-string nor a JS string literal intact — it arrived as the
+letter `s`, so the strip matched commas and esses and removed nothing. It is a
+plain `[, ]` class now, which cannot be mangled. And `.note` was only styled
+inside `.ph`, so every label ran its hint straight into its text.
 
 ---
 
@@ -764,11 +823,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-38.zip
+unzip -o vici-audit-2026.08.20-39.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-38` in the header before
+Both services redeploy. Confirm `build 2026.08.20-39` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`
