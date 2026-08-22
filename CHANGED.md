@@ -1,4 +1,76 @@
-# Changed files — build 2026.08.20-21
+# Changed files — build 2026.08.20-22
+
+## The analyst work list is down to 8
+
+24 → 16 → **8**, and the eight left are all the same thing: **GEO-23 to GEO-30**,
+AI visibility. Those are automated — by the **monitor**, which is a separate
+scheduled run. From this audit's point of view somebody still has to start it.
+That is the only item on the list that needs a person, and it needs one click,
+not an afternoon.
+
+Everything else got built:
+
+| | How |
+|---|---|
+| **TECH-09** Broken external images | Bounded parallel HEAD sweep over image URLs. HEAD refused with 403/405 falls back to GET — some CDNs refuse HEAD and serve GET perfectly well, and calling that a broken asset would invent a finding |
+| **TECH-10 / TECH-11** Broken internal and third-party JS/CSS | Same sweep over stylesheet and script URLs, which the crawler now records |
+| **TECH-37** AMP issues | **N/A** on a site with no AMP; otherwise the amphtml targets are fetched |
+| **SEC-06** Subdomain HSTS | One TLS handshake per subdomain, reading the response header |
+| **SEC-07** Subdomain encryption | The negotiated protocol version, flagging TLS 1.0/1.1 |
+| **SEC-15** Subdomain SNI | A successful handshake against a name-based virtual host **is** SNI working — the client sent the hostname and got the right certificate back |
+
+**Subdomains are discovered, not guessed.** Every external link, image, script
+and stylesheet under the same registrable domain. Probing invented names —
+`mail.`, `ftp.`, `cpanel.` — would report on hosts the business may not run and
+would take far longer for worse data.
+
+**Both sweeps are bounded and parallel** (60 assets, 8 subdomains, 6s timeouts,
+env-tunable). A check that adds two minutes to every audit gets switched off, and
+a check that is switched off answers nothing.
+
+**And a guard worth naming.** If *every* TLS handshake fails, that is far more
+likely to be our network than every one of a client's subdomains being
+simultaneously broken. All-failed reports as unmeasured, not as a page of
+Critical findings — the worst kind of wrong being the confident, alarming kind
+about the wrong machine.
+
+---
+
+## The Reviewed column is gone
+
+You asked three times. Three times I answered by fixing the number — a corrected
+numerator, then a corrected denominator, then a caption explaining where the
+difference went — and it still read as *"you did not finish"*.
+
+At that point it is the column's fault, not the reader's. **A ratio sitting next
+to a rating invites "why not all of them?" on every single row**, and answering
+that question is what the coverage strip is already for: it splits the whole
+audit into measured, waiting on you, ours to complete, and not applicable —
+once, in one place, where it can be understood.
+
+What is left is what the table was actually for: **Section · Score · Rating ·
+Issues**, worst first. The heading is now "Score by Area" rather than "Coverage
+by Area", because it stopped being about coverage. The width goes to the meter.
+
+The internal report keeps the ratio. Your team knows what it means and benefits
+from it; the client does not and did not.
+
+---
+
+## Smaller
+
+- Phase captions were starting at the page margin, underneath the "Phase 2"
+  chip, hanging left of both the title above and the card below — the one
+  element on the block lined up with nothing. They are captions for the title,
+  so they now start where the title starts.
+- "never counted as zero" removed from both places it appeared.
+- **The internal panel now carries the diagnostic.** A row whose parser missed
+  said "the domain_pages endpoint answered but not in the shape we read" — true,
+  and useless alone. The field names the endpoint actually returned were already
+  recorded in the finding, just not displayed, so every round of this cost a
+  deploy and a rerun to see them. They print under the reason now.
+
+---
 
 ## "Why isn't the analyst work done automatically?"
 

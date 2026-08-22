@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-21"
-BUILD_NOTES = ("Nine more checkpoints answered from data we already had; "
-               "the analyst list is 24 down to 15; a 404 is no longer "
-               "reported as a permission problem")
+BUILD = "2026.08.20-22"
+BUILD_NOTES = ("The analyst list is down to the eight AI-visibility rows; "
+               "asset and TLS sweeps added; the Reviewed column is gone from "
+               "the client report")
 # ---------------------------------------------------------------------------
 
 

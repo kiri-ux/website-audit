@@ -288,11 +288,25 @@ def _todo_panel(findings: dict, catalog: dict) -> list:
         return []
 
     def reasons(ids):
-        c = Counter()
+        """
+        Group by reason, and carry the DIAGNOSTIC with it.
+
+        A row whose parser missed says "the domain_pages endpoint answered but
+        not in the shape we read" — true, and useless on its own. The field
+        names the endpoint actually returned are already recorded in the
+        finding's recommendation, and they were the one thing needed to fix it.
+        Leaving them in a log file meant every round of this cost a deploy and
+        a rerun to see them.
+        """
+        c, detail = Counter(), {}
         for cid in ids:
-            ev = (findings.get(cid) or {}).get("evidence") or "Not run."
-            c[" ".join(str(ev).split())[:110]] += 1
-        return c.most_common(4)
+            f = findings.get(cid) or {}
+            ev = " ".join(str(f.get("evidence") or "Not run.").split())[:110]
+            c[ev] += 1
+            rec = " ".join(str(f.get("recommendation") or "").split())
+            if rec and ev not in detail:
+                detail[ev] = rec[:180]
+        return [(why, n, detail.get(why, "")) for why, n in c.most_common(4)]
 
     out = ["<div class='note' style='border-left-color:var(--seq);"
            "margin:0 0 22px'>"
@@ -307,8 +321,11 @@ def _todo_panel(findings: dict, catalog: dict) -> list:
            "an analyst does during the engagement.</span>"]
 
     if b["vendor"]:
-        items = "".join(f"<li><b>{n}</b> — {e(why)}</li>"
-                        for why, n in reasons(b["vendor"]))
+        items = "".join(
+            f"<li><b>{n}</b> — {e(why)}"
+            + (f"<div class='sm' style='color:var(--muted)'>{e(fix)}</div>"
+               if fix else "") + "</li>"
+            for why, n, fix in reasons(b["vendor"]))
         out.append(
             f"<div style='margin-top:12px'>"
             f"<b style='color:var(--critical)'>Ours to fix &middot; "
@@ -529,7 +546,7 @@ def render_html(meta, sc, findings, catalog, summary=None):
     # SECTION SCORES — magnitude across named categories → horizontal bars, one hue
     P.append("<h2>Audit area snapshot</h2><table><tr><th>Section</th>"
              "<th style='width:190px'>Score</th><th>Rating</th>"
-             "<th class='num'>Checked</th><th class='num'>Failing</th></tr>")
+             "<th class='num'>Reviewed</th><th class='num'>Issues</th></tr>")
     for k in ORDER:
         v = sc["sections"].get(k)
         if not v:

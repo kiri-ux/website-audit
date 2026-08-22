@@ -243,7 +243,7 @@ def main():
     # automated. A checkpoint leaving this bucket is what progress looks like;
     # the test just has to follow it to whatever is still genuinely by hand.
     check("an unautomated checkpoint is ours to do by hand",
-          blocked_on("SEC-06") == "manual")
+          blocked_on("GEO-23") == "manual")
     # THE ONE THAT SHIPPED WRONG. A granted, working Search Console connection
     # still left 27 rows the API does not expose, and bucketing by prefix
     # called every one of them a missing client grant — telling us to email a
@@ -258,7 +258,7 @@ def main():
     check("our own missing credentials are never billed to the client",
           blocked_on("GSC-01", {"source": "gsc_misconfigured"}) == "vendor")
     mixed_cat = {"GSC-01": {"prefix": "GSC"}, "OFF-01": {"prefix": "OFF"},
-                 "SEC-06": {"prefix": "SEC"}, "TECH-01": {"prefix": "TECH"}}
+                 "GEO-23": {"prefix": "GEO"}, "TECH-01": {"prefix": "TECH"}}
     c = _acounts({"TECH-01": {"status": "Pass"}}, mixed_cat)
     check("buckets split three ways over the whole catalog",
           (c["client"], c["vendor"], c["manual"], c["measured"]) == (1, 1, 1, 1),
@@ -284,10 +284,13 @@ def main():
         check(f"{cid} is ours, not a person's", blocked_on(cid) == "vendor",
               blocked_on(cid))
     # The genuinely unautomated ones must NOT be swept up by the same rule.
-    # CANON-03, URL-05 and INTL-08 stood here and have since been automated —
-    # this list shrinking is the whole point, so it follows them down. What is
-    # left needs live TLS handshakes against hosts the crawl never visits.
-    for cid in ("SEC-06", "SEC-07", "SEC-15"):
+    #
+    # This list has been ONP-34, then ONP-43, then CANON-03/URL-05/INTL-08, then
+    # SEC-06/07/15 — every one of them automated in turn. What is left is the AI
+    # visibility rows, which a separate scheduled run answers rather than this
+    # audit. If they ever leave too, this assertion should be deleted, not
+    # weakened: an empty analyst list would be the point of all of it.
+    for cid in ("GEO-23", "GEO-30"):
         check(f"{cid} really is a person's job", blocked_on(cid) == "manual")
 
     print("\nCOVERAGE IS REPORTED AS 'OF WHAT APPLIES', NOT 'OF THE TEMPLATE'")

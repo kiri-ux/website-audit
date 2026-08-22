@@ -847,7 +847,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
              "own."
              if o.get("score") is None else
              "The average of the areas we could score. Areas we couldn't "
-             "measure are left out, never counted as zero.")
+             "measure are left out.")
             + f"<br/><br/><font size=15 color='#0b0b0b'><b>{open_issues}</b></font>"
               f"<font size=8.5 color='#52514e'> open issues, of which </font>"
               f"<font size=15 color='#0b0b0b'><b>{urgent}</b></font>"
@@ -939,8 +939,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                        note="Severity tells you what to fix first, not how much there is.")]
     right = [Paragraph("Audit Coverage", S["h3"]),
              SegmentBar(coverage_segments(*cov), width=3.05 * inch,
-                        note="Unmeasured checks are left out of the "
-                             "score, never counted as zero.")]
+                        note="Unmeasured checks are left out of the score.")]
     grid = Table([[left, right]], colWidths=[3.3 * inch, 3.3 * inch])
     grid.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -1085,22 +1084,30 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                       v.get("rating")) for k, v in ranked], width=6.55 * inch)))
     story.append(Spacer(1, 16))
 
-    story.append(Paragraph("Coverage by Area", S["h3"]))
+    story.append(Paragraph("Score by Area", S["h3"]))
     # "Checked" and "Failing" are two different denominators sitting next to
     # each other with no explanation: 4/12 is "we answered 4 of the 12 in this
     # area", and the 2 beside it is "2 of those 4 came back a problem". Read
     # quickly, "4/12 ... 2" looks like one ratio. Name both, and say so.
+    # THE "REVIEWED x/y" COLUMN IS GONE.
+    #
+    # It went through three rewrites — a corrected numerator, a corrected
+    # denominator, then a caption explaining where the difference went — and it
+    # still read as "you did not finish". That is the column's fault, not the
+    # reader's. A ratio next to a rating invites "why not all of them?" on every
+    # single row, and answering that question is what the coverage strip above
+    # is FOR: it splits the whole audit into measured, waiting on you, ours to
+    # complete, and not applicable, once, where it can be understood.
+    #
+    # What was left after removing it is what a reader actually wants from this
+    # table: how did each area score, and how many problems are in it.
     story.append(Paragraph(
-        "<b>Reviewed</b> is how many of that area's checks we answered, out of "
-        "the checks that apply to a site like yours. Where the two numbers "
-        "differ, the rest are checks we complete by hand during the engagement "
-        "or that need access to your accounts — the panel above breaks that "
-        "down. <b>Issues</b> counts how many came back a problem.", S["small"]))
+        "How each area scored, worst first. <b>Issues</b> is the number of "
+        "checks in that area that came back a problem.", S["small"]))
     story.append(Spacer(1, 6))
     rows = [[Paragraph("<b>Section</b>", S["cellsm"]),
              Paragraph("<b>Score</b>", S["cellsm"]),
              "", Paragraph("<b>Rating</b>", S["cellsm"]),
-             Paragraph("<b>Reviewed</b>", S["cellsm"]),
              Paragraph("<b>Issues</b>", S["cellsm"])]]
     for k, v in secs:
         sc = v.get("score")
@@ -1109,12 +1116,12 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             Paragraph("—" if sc is None else f"<b>{sc}</b>", S["cell"]),
             MiniMeter(sc) if sc is not None else "",
             Paragraph(_p(v.get("rating")), S["cell"]),
-            Paragraph(f"{v.get('reviewed', v.get('checked'))}/"
-                      f"{v.get('applies', v.get('total'))}", S["cellsm"]),
             Paragraph(str(v.get("failing", 0)), S["cellsm"]),
         ])
-    t = Table(rows, colWidths=[2.2 * inch, 0.45 * inch, 1.25 * inch,
-                               1.35 * inch, 0.7 * inch, 0.55 * inch], repeatRows=1)
+    # Five columns now, not six. The width the Reviewed ratio was using goes to
+    # the meter, which is the part of this table that actually communicates.
+    t = Table(rows, colWidths=[2.3 * inch, 0.5 * inch, 1.85 * inch,
+                               1.35 * inch, 0.5 * inch], repeatRows=1)
     t.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LINEBELOW", (0, 0), (-1, -1), 0.4, LINE),
@@ -1244,11 +1251,16 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             ]))
             block = [head]
             if phase.get("rationale"):
-                # Left, aligned with everything else on the page. Centering it
-                # made it float between the header and the card, belonging to
-                # neither.
+                # Indented to the phase NAME, not to the page margin.
+                #
+                # The header is a table whose first column is the 0.72in "Phase
+                # 2" chip, so a paragraph starting at x=0 begins underneath the
+                # chip and hangs to the left of both the title above it and the
+                # card below it — the one element on the block not lined up
+                # with anything. It is a caption for the title; it should start
+                # where the title starts.
                 mid = ParagraphStyle("phasecap", parent=S["small"],
-                                     textColor=INK2)
+                                     textColor=INK2, leftIndent=0.72 * inch)
                 block.append(Paragraph(_p(phase["rationale"]), mid))
             block.append(Spacer(1, 5))
 

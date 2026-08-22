@@ -16,6 +16,7 @@ deliberately NOT here — the crawler does not retain what those need, and
 guessing from `rendered_text` would be exactly that half-answer.
 """
 from __future__ import annotations
+import os
 import re
 from urllib.parse import urlparse
 
@@ -540,3 +541,311 @@ def tech17(a, c):
                    "Unblock CSS and JavaScript in robots.txt — Google needs "
                    "them to render the page as a visitor sees it."
                    if blocked else "")
+
+# =====================================================================
+# THE LAST OF THE ASSET AND TLS ROWS
+#
+# These need the network, which is why they sat on a person's list longest.
+# Both sweeps are BOUNDED and run in parallel: a check that adds two minutes to
+# every audit gets switched off, and a check that is switched off answers
+# nothing at all.
+# =====================================================================
+
+ASSET_SAMPLE = int(os.getenv("ASSET_SAMPLE", "60"))
+ASSET_TIMEOUT = float(os.getenv("ASSET_TIMEOUT", "6"))
+
+
+def _head(url: str):
+    """Status code for a URL, HEAD first, GET only if HEAD is refused."""
+    import urllib.error
+    import urllib.request
+    for method in ("HEAD", "GET"):
+        try:
+            req = urllib.request.Request(
+                url, method=method,
+                headers={"User-Agent": "ViciAuditBot/1.0 (+https://vicimediainc.com/bot)"})
+            with urllib.request.urlopen(req, timeout=ASSET_TIMEOUT) as r:
+                return r.status
+        except urllib.error.HTTPError as e:
+            # Some CDNs refuse HEAD with 403/405 and serve GET perfectly well.
+            # Treating that as a broken asset would invent a finding.
+            if method == "HEAD" and e.code in (403, 405, 501):
+                continue
+            return e.code
+        except Exception:  # noqa: BLE001
+            if method == "HEAD":
+                continue
+            return 0
+    return 0
+
+
+def _sweep(urls, limit=None):
+    """{url: status} for up to `limit` URLs, checked in parallel."""
+    from concurrent.futures import ThreadPoolExecutor
+    urls = list(dict.fromkeys(urls))[:limit or ASSET_SAMPLE]
+    if not urls:
+        return {}
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        return dict(zip(urls, ex.map(_head, urls)))
+
+
+def _asset_finding(cid, label, urls, host, internal, rec):
+    if not urls:
+        return finding("N/A", {}, f"No {label} were found to check.", [], "Low",
+                       confidence=0.8)
+    picked = [u for u in urls if (host in u.lower()) == internal]
+    if not picked:
+        return finding("N/A", {}, f"No {'internal' if internal else 'external'} "
+                                  f"{label} were found to check.", [], "Low",
+                       confidence=0.8)
+    res = _sweep(picked)
+    # A zero means we could not reach it at all — DNS, TLS or a timeout. That is
+    # a real breakage from a visitor's point of view, so it counts, but it is
+    # named separately because the cause is different from a 404.
+    broken = {u: s for u, s in res.items() if s == 0 or s >= 400}
+    scope = (f"{len(res)} of {len(picked)}" if len(res) < len(picked)
+             else f"all {len(res)}")
+    return finding(
+        "Fail" if broken else "Pass",
+        {"checked": len(res), "found": len(picked), "broken": len(broken),
+         "examples": sorted(broken)[:10]},
+        f"{len(broken)} of the {len(res)} {label} checked do not load "
+        f"({scope} sampled)." if broken else
+        f"Every one of the {len(res)} {label} checked loads normally.",
+        sorted(broken)[:10], "Medium" if broken else "Low",
+        rec if broken else "")
+
+
+@check("TECH-09")
+def tech09(a, c):
+    """External images that do not load. A broken image is a visible hole."""
+    host = (a.start_url or "").split("//")[-1].split("/")[0].lower()
+    bare = host[4:] if host.startswith("www.") else host
+    srcs = [i.get("src") for p in OK(a) for i in (p.images or [])
+            if (i.get("src") or "").startswith("http")]
+    return _asset_finding(
+        "TECH-09", "external images", srcs, bare, internal=False,
+        rec="Rehost these images or point them at a URL that works — a visitor "
+            "sees an empty box where each one should be.")
+
+
+def _code_assets(a):
+    return [u for p in OK(a)
+            for u in (list(p.stylesheets or [])
+                      + [s for s in (p.scripts or [])
+                         if isinstance(s, str) and s.startswith("http")])]
+
+
+@check("TECH-10")
+def tech10(a, c):
+    """Internal JavaScript and CSS that 404s. The page renders wrong."""
+    host = (a.start_url or "").split("//")[-1].split("/")[0].lower()
+    bare = host[4:] if host.startswith("www.") else host
+    return _asset_finding(
+        "TECH-10", "stylesheets and scripts on this domain", _code_assets(a),
+        bare, internal=True,
+        rec="Restore or remove these files — the page is rendering without "
+            "styles or behavior that it expects.")
+
+
+@check("TECH-11")
+def tech11(a, c):
+    host = (a.start_url or "").split("//")[-1].split("/")[0].lower()
+    bare = host[4:] if host.startswith("www.") else host
+    return _asset_finding(
+        "TECH-11", "third-party stylesheets and scripts", _code_assets(a),
+        bare, internal=False,
+        rec="Remove the dead third-party references — each one costs a failed "
+            "request on every page load.")
+
+
+@check("TECH-37")
+def tech37(a, c):
+    """AMP. A site with no AMP pages cannot have AMP problems."""
+    amp = {u for p in OK(a) for u in ((p.rel_links or {}).get("amphtml") or [])}
+    if not amp:
+        return finding("N/A", {"amp_pages": 0},
+                       "This site publishes no AMP pages, so AMP issues do not "
+                       "apply.", [], "Low", confidence=1.0)
+    res = _sweep(sorted(amp), limit=20)
+    bad = {u: s for u, s in res.items() if s == 0 or s >= 400}
+    return finding("Fail" if bad else "Pass",
+                   {"amp_pages": len(amp), "checked": len(res),
+                    "broken": len(bad)},
+                   f"{len(bad)} of the {len(res)} AMP pages referenced do not "
+                   f"load." if bad else
+                   f"All {len(res)} AMP pages referenced load normally.",
+                   sorted(bad)[:10], "Medium" if bad else "Low",
+                   "Fix or remove the amphtml references pointing at missing "
+                   "pages." if bad else "")
+
+
+# ---------------------------------------------------------------- subdomains
+SUBDOMAIN_SAMPLE = int(os.getenv("SUBDOMAIN_SAMPLE", "8"))
+
+
+def _subdomains(a) -> list:
+    """
+    Subdomains this site actually references.
+
+    Discovered rather than guessed: every external link, image, script and
+    stylesheet that sits under the same registrable domain. Probing a list of
+    invented names (mail., ftp., cpanel.) would report on hosts the business may
+    not run and would take far longer.
+    """
+    host = (a.start_url or "").split("//")[-1].split("/")[0].lower()
+    bare = host[4:] if host.startswith("www.") else host
+    found = set()
+    for p in OK(a):
+        urls = [l.get("href") for l in (p.links_external or [])]
+        urls += [i.get("src") for i in (p.images or [])]
+        urls += list(p.stylesheets or [])
+        urls += [s for s in (p.scripts or []) if isinstance(s, str)]
+        for u in urls:
+            if not isinstance(u, str) or "://" not in u:
+                continue
+            h = u.split("//")[-1].split("/")[0].lower().split(":")[0]
+            if h.endswith("." + bare) and h != host and h != f"www.{bare}":
+                found.add(h)
+    return sorted(found)[:SUBDOMAIN_SAMPLE]
+
+
+def _tls(host: str) -> dict:
+    """
+    One TLS handshake, reporting what the three SEC rows need.
+
+    SNI is implicit: `server_hostname` sends it, so a successful handshake to a
+    virtual host IS the SNI support the checkpoint asks about.
+    """
+    import socket
+    import ssl
+    out = {"host": host, "ok": False, "proto": None, "hsts": None, "error": None}
+    try:
+        ctx = ssl.create_default_context()
+        with socket.create_connection((host, 443), timeout=ASSET_TIMEOUT) as sock:
+            with ctx.wrap_socket(sock, server_hostname=host) as tls:
+                out["ok"] = True
+                out["proto"] = tls.version()
+                tls.send(f"HEAD / HTTP/1.1\r\nHost: {host}\r\n"
+                         f"User-Agent: ViciAuditBot/1.0\r\nConnection: close\r\n\r\n"
+                         .encode())
+                head = tls.recv(4096).decode("latin-1", "replace").lower()
+                out["hsts"] = "strict-transport-security" in head
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = f"{type(exc).__name__}"
+    return out
+
+
+def _tls_results(a, c):
+    if "_tls" not in c:
+        subs = _subdomains(a)
+        if not subs:
+            c["_tls"] = []
+        else:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=6) as ex:
+                c["_tls"] = list(ex.map(_tls, subs))
+    return c["_tls"]
+
+
+def _no_subdomains():
+    return finding("N/A", {"subdomains": 0},
+                   "This site references no subdomains of its own, so there are "
+                   "none to test.", [], "Low", confidence=0.9)
+
+
+def _all_unreachable(res):
+    """
+    Every handshake failed. That is far more likely to be OUR network than
+    every one of a client's subdomains being simultaneously broken, and a page
+    of Critical TLS failures caused by our own egress would be the worst kind
+    of wrong: confident, alarming, and about the wrong machine.
+    """
+    if not res or any(r["ok"] for r in res):
+        return None
+    return finding("Need Access", {"subdomains": [r["host"] for r in res],
+                                   "errors": sorted({r["error"] for r in res})},
+                   f"None of the {len(res)} subdomains could be reached from "
+                   f"the audit host, so their TLS could not be tested. When "
+                   f"every host fails identically the cause is usually the "
+                   f"network between us and them.", [], "Low",
+                   "Re-run, or test these with an external scanner.", 0.0)
+
+
+@check("SEC-06")
+def sec06(a, c):
+    res = _tls_results(a, c)
+    if not res:
+        return _no_subdomains()
+    dead = _all_unreachable(res)
+    if dead:
+        return dead
+    live = [r for r in res if r["ok"]]
+    if not live:
+        return finding("N/A", {"subdomains": len(res)},
+                       f"None of the {len(res)} subdomains referenced answered "
+                       f"on HTTPS, so HSTS could not be tested.", [], "Low",
+                       confidence=0.6)
+    missing = [r["host"] for r in live if not r["hsts"]]
+    return finding("Fail" if missing else "Pass",
+                   {"tested": len(live), "missing_hsts": missing},
+                   f"{len(missing)} of {len(live)} subdomains do not send an "
+                   f"HSTS header ({', '.join(missing[:5])})." if missing else
+                   f"All {len(live)} subdomains tested send an HSTS header.",
+                   [], "Medium" if missing else "Low",
+                   "Add Strict-Transport-Security on these hosts so a visitor "
+                   "is never sent over plain HTTP." if missing else "")
+
+
+@check("SEC-07")
+def sec07(a, c):
+    res = _tls_results(a, c)
+    if not res:
+        return _no_subdomains()
+    dead = _all_unreachable(res)
+    if dead:
+        return dead
+    live = [r for r in res if r["ok"]]
+    failed = [r["host"] for r in res if not r["ok"]]
+    # TLS 1.0 and 1.1 are deprecated and browsers refuse them outright.
+    weak = [r["host"] for r in live
+            if (r["proto"] or "") in ("TLSv1", "TLSv1.1", "SSLv3")]
+    bad = weak or failed
+    return finding("Fail" if bad else "Pass",
+                   {"tested": len(res), "handshake_failed": failed,
+                    "weak_protocol": weak,
+                    "protocols": sorted({r["proto"] for r in live if r["proto"]})},
+                   (f"{len(weak)} subdomain(s) negotiate a deprecated TLS "
+                    f"version; " if weak else "")
+                   + (f"{len(failed)} would not complete a TLS handshake at all "
+                      f"({', '.join(failed[:5])})." if failed else "")
+                   or f"All {len(live)} subdomains tested negotiate "
+                      f"{', '.join(sorted({r['proto'] for r in live if r['proto']}))}.",
+                   [], "High" if bad else "Low",
+                   "Serve TLS 1.2 or better on every host under this domain."
+                   if bad else "")
+
+
+@check("SEC-15")
+def sec15(a, c):
+    """
+    SNI. A handshake that succeeds against a name-based virtual host IS SNI
+    working — the client sent the hostname and got the right certificate back.
+    """
+    res = _tls_results(a, c)
+    if not res:
+        return _no_subdomains()
+    dead = _all_unreachable(res)
+    if dead:
+        return dead
+    ok = [r["host"] for r in res if r["ok"]]
+    bad = [r["host"] for r in res if not r["ok"]]
+    return finding("Fail" if bad else "Pass",
+                   {"tested": len(res), "sni_ok": ok, "failed": bad},
+                   f"{len(bad)} of {len(res)} subdomains did not return a valid "
+                   f"certificate for their own hostname ({', '.join(bad[:5])})."
+                   if bad else
+                   f"All {len(res)} subdomains return a valid certificate for "
+                   f"their own hostname.",
+                   [], "Medium" if bad else "Low",
+                   "Install a certificate covering these hostnames." if bad else "")
