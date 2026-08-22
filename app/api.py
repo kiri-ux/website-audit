@@ -874,6 +874,12 @@ def _report_meta(a: dict) -> dict:
             "truncated": a.get("crawl_truncated"),
             "capture_method": a.get("capture_method"),
             "extras": _extras(a),
+            # The report page carries a Search Console capture button, and the
+            # extension needs both of these off the page rather than out of a
+            # person's clipboard. Copying an audit id between two tabs is
+            # exactly the step that gets done wrong at 5pm.
+            "audit_id": a.get("id"),
+            "gsc_property": _o.get("gsc_property") or "",
             # A per-audit partner name overrides the firm from the
             # environment. White-labelled work goes out under the partner's
             # name, and that varies per client — an env var is the wrong place

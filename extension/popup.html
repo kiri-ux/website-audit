@@ -43,8 +43,9 @@ button.stop{background:#d03b3b}
 <div class="sub" style="margin:0">Scans from this browser, so blocked sites still get measured.</div>
 </div></div>
 
-<label>Audit ID</label>
-<input id="auditId" placeholder="paste from the dashboard">
+<label>Audit ID <span id="idhint" style="text-transform:none;letter-spacing:0;
+  font-weight:400;color:#898781"></span></label>
+<input id="auditId" placeholder="fills in from the audit page, or paste it">
 <div class="row">
   <div><label>Pages</label><input id="maxPages" type="number" value="30"></div>
   <div><label>Dwell (ms)</label><input id="dwellMs" type="number" value="2500"></div>

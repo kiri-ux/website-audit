@@ -480,7 +480,28 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             f"Read from the Search Console interface by hand, or skipped. "
             f"Nothing to configure and nothing that will change — this is a "
             f"limit of Google's API, not a gap in the run."
-            f"</div><ul style='margin:6px 0 0 18px'>{rows}</ul></div>")
+            f"</div><ul style='margin:6px 0 0 18px'>{rows}</ul>"
+            # ONE BUTTON, NO COPYING.
+            #
+            # The extension can read these reports from a signed-in browser,
+            # and it needs an audit id and a property to do it. Both are on
+            # this page already. Asking someone to copy an id out of the URL
+            # bar and a property string out of Search Console, into a popup in
+            # another tab, is three chances to get it wrong before anything
+            # has been measured.
+            #
+            # The button stays hidden until the extension's content script
+            # marks the element present, so a browser without it sees the
+            # honest instruction rather than a control that does nothing.
+            + (f"<div id='vici-console' style='margin-top:10px'"
+               f" data-audit-id='{e((meta or {}).get('audit_id') or '')}'"
+               f" data-gsc-property="
+               f"'{e((meta or {}).get('gsc_property') or '')}'>"
+               f"<button id='vici-console-go' type='button' class='btn ghost'"
+               f" style='display:none'>Capture these from Search Console"
+               f"</button></div>"
+               if (meta or {}).get("audit_id") else "")
+            + "</div>")
 
     if skipped:
         # Muted, and phrased as a choice. This is not a defect list — it is

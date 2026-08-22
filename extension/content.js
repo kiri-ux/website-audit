@@ -179,6 +179,34 @@ chrome.runtime.onMessage.addListener((msg, _s, respond) => {
   }
 });
 
+(function wireConsoleCapture() {
+  // The finished report carries the audit id and the Search Console property
+  // it used. Reading them off the page is the difference between one click
+  // and two copy-pastes between tabs.
+  const el = document.getElementById("vici-console");
+  if (!el) return;
+  const btn = document.getElementById("vici-console-go");
+  if (!btn) return;
+  btn.style.display = "";                  // revealed only when we are here
+  btn.addEventListener("click", () => {
+    let prop = el.dataset.gscProperty || "";
+    if (!prop) {
+      // No property was pinned on this audit, so ask once rather than guess —
+      // reading the wrong property is worse than reading none.
+      prop = window.prompt(
+        "Search Console property to read.\n\nCopy it exactly as Search " +
+        "Console shows it — usually the site URL with its trailing slash, " +
+        "or sc-domain:example.com for a domain property.", location.origin + "/");
+      if (!prop) return;
+    }
+    btn.disabled = true;
+    btn.textContent = "Reading Search Console — watch the extension popup";
+    chrome.runtime.sendMessage({
+      type: "VICI_CONSOLE", auditId: el.dataset.auditId, property: prop
+    });
+  });
+})();
+
 (function wireAuditPage() {
   const el = document.getElementById("vici-capture");
   if (!el) return;

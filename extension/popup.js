@@ -5,6 +5,26 @@ const F = ["auditId", "maxPages", "dwellMs"];
 const $ = id => document.getElementById(id);
 
 chrome.storage.local.get(null).then(s => F.forEach(k => { if (s[k] != null) $(k).value = s[k]; }));
+
+// READ THE AUDIT ID OFF THE TAB YOU ARE LOOKING AT.
+//
+// "Paste the audit id" was asking someone to copy a sixteen-character hex
+// string out of the URL bar of the tab next door. If that tab IS an audit
+// page, the id is right there — and the report and PDF URLs are the two
+// shapes it appears in.
+(async () => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const m = (tab?.url || "").match(/\/audits\/([0-9a-f]{8,})(?:\.pdf)?(?:[?#]|$)/i);
+    if (!m) return;
+    // Never overwrite something already typed — a pasted id beats a guess.
+    if ($("auditId").value.trim()) return;
+    $("auditId").value = m[1];
+    chrome.storage.local.set({ auditId: m[1] });
+    const hint = document.getElementById("idhint");
+    if (hint) hint.textContent = "filled in from the audit page in this tab";
+  } catch (e) { /* a tab we cannot read is not an error worth showing */ }
+})();
 F.forEach(k => $(k).addEventListener("change", () => {
   const v = ["maxPages", "dwellMs"].includes(k) ? parseInt($(k).value, 10) : $(k).value.trim();
   chrome.storage.local.set({ [k]: v });

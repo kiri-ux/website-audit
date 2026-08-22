@@ -1,6 +1,29 @@
-# Changed files — build 2026.08.20-42
+# Changed files — build 2026.08.20-43
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## Nothing is pasted any more
+
+"Paste the audit id" was asking someone to copy a sixteen-character hex string
+out of the URL bar of the tab next door — three chances to get it wrong before
+anything has been measured. Two changes, so it is never typed:
+
+**A button on the report itself.** The *"Google publishes no API for this"*
+panel now carries **Capture these from Search Console**, sitting directly under
+the eight rows it fills. The audit id and the Search Console property are
+already on that page, so the extension reads both off it and asks for nothing.
+The button stays hidden until the extension's content script marks the element
+present — a browser without it sees the honest instruction rather than a
+control that does nothing.
+
+**And the popup fills itself in.** Open it on any audit page or PDF URL and the
+id is already there, with the field saying where it came from. A pasted id is
+never overwritten: a typed value beats a guess.
+
+If an audit never had a Search Console property pinned, the button asks once
+rather than guessing — reading the wrong property is worse than reading none.
 
 ---
 
@@ -1034,11 +1057,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-42.zip
+unzip -o vici-audit-2026.08.20-43.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-42` in the header before
+Both services redeploy. Confirm `build 2026.08.20-43` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`

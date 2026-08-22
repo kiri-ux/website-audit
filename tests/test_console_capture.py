@@ -109,6 +109,47 @@ def main():
     check("and the draft is editable in the popup, not read-only",
           "collectDraft" in pop and "data-k=" in pop)
 
+    print("\nTHE AUDIT ID IS NEVER TYPED BY HAND")
+    # "Paste the audit id" was asking someone to copy a sixteen-character hex
+    # string out of the URL bar of the tab next door — three chances to get it
+    # wrong before anything has been measured.
+    con = open(os.path.join(root, "extension", "content.js")).read()
+    html = open(os.path.join(root, "extension", "popup.html")).read()
+    check("the report page carries the id and the property",
+          "vici-console" in con and "gscProperty" in con)
+    check("and the button is hidden until the extension is actually there",
+          "btn.style.display" in con)
+    from engine.report import _todo_panel
+    from engine.scoring import load_catalog
+    cat = load_catalog("seed/checkpoints.csv")
+    F2 = {c: {"status": "Pass", "value": {}, "evidence": "ok",
+              "affected_pages": [], "severity": "Low", "recommendation": "",
+              "confidence": 1.0, "source": "crawl"} for c in cat}
+    for cid in [c for c in cat if c.startswith("GSC-")][:8]:
+        F2[cid] = {"status": "Need Access", "value": {},
+                   "evidence": "Google publishes this in Search Console.",
+                   "affected_pages": [], "severity": "Low",
+                   "recommendation": "", "confidence": 0.0,
+                   "source": "gsc_ui_only"}
+    panel = "".join(_todo_panel(F2, cat, {
+        "audit_id": "abc123def456", "gsc_property": "https://example.com/",
+        "extras": {"phases_run": {"run_consent": True, "run_aivis": True}}}))
+    check("the boundary panel offers the capture",
+          "vici-console-go" in panel and "abc123def456" in panel)
+    check("carrying the property so nobody is asked for it",
+          "https://example.com/" in panel)
+    check("and no button at all when there is no audit to attach it to",
+          "vici-console-go" not in "".join(_todo_panel(F2, cat, {"extras": {}})))
+    # The path appears inside a regex literal, so the slashes are escaped —
+    # searching for the plain string finds nothing and says the feature is
+    # missing when it is right there.
+    _pop = open(os.path.join(root, "extension", "popup.js")).read()
+    check("the popup fills the id from the tab it was opened on",
+          "audits" in _pop and "chrome.tabs.query" in _pop)
+    check("and never overwrites one already typed", "beats a guess" in _pop)
+    check("so the field no longer says 'paste from the dashboard'",
+          "paste from the dashboard" not in html)
+
     print("\n" + "=" * 68)
     if FAILED:
         print(f"  {len(FAILED)} FAILED: {FAILED}")
