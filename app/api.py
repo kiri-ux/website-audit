@@ -478,6 +478,24 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
         # tested, and unreachable.
         st = [x.strip().upper() for x in consent_states.replace(",", " ").split()
               if x.strip()]
+        # DERIVE FROM THE MARKETS WHEN THE FORM DID NOT SEND A LIST.
+        #
+        # The states box used to be prefilled `CA CO CT TX VA OR` — a
+        # reasonable guess, and wrong for every client who does not sell
+        # there. A Knoxville law firm had California's law tested and
+        # Tennessee's ignored, and nothing in the report said so.
+        #
+        # The markets already say where they sell. Reading the states off them
+        # makes the guess unnecessary, and keeps a hand-typed list authoritative
+        # when someone does override it. Filtered to the states we actually
+        # have checks for, because listing one we cannot test is a promise the
+        # scan does not keep.
+        if not st and primary_markets.strip():
+            try:
+                from engine.geo import summarize as _geo
+                st = _geo(primary_markets)["checkable"]
+            except Exception:  # noqa: BLE001
+                st = []
         if st:
             opts["consent_states"] = st
         ind = [x.strip() for x in consent_industries.split(",") if x.strip()]

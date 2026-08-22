@@ -130,6 +130,32 @@ code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
 .topbar .burger{color:#5c6673}
 .topbar .right{color:var(--ink2)}
 
+/* ---- market pills ---- */
+.geobox{display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+ border:1px solid var(--line);border-radius:4px;background:var(--surface);
+ padding:6px 8px;min-height:41px}
+.geobox:focus-within{border-color:var(--blue);
+ box-shadow:0 0 0 3px rgba(28,91,166,.12)}
+.geoin{flex:1;min-width:150px;border:0!important;outline:none;padding:3px 2px!important;
+ font:inherit;font-size:14px;background:transparent;box-shadow:none!important}
+.gp{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;
+ padding:3px 5px 3px 10px;border-radius:20px;white-space:nowrap;
+ background:#e8eff8;color:var(--navy);border:1px solid #cfe0f4}
+/* A market with no state gets amber, not red. It is not invalid input — it is
+   input we cannot attribute to a body of law, which is a smaller and more
+   accurate claim, and the person may well not care about that one. */
+.gp.bad{background:#fdf3e2;color:#8a6212;border-color:var(--gold)}
+.gp .st{font-weight:600;opacity:.75;font-size:11px}
+.gp b{font-weight:500}
+.gp button{background:none;border:0;cursor:pointer;color:inherit;opacity:.55;
+ font-size:15px;line-height:1;padding:0 3px;border-radius:50%}
+.gp button:hover{opacity:1;background:rgba(0,0,0,.07)}
+.spill{display:inline-flex;align-items:center;gap:5px;font-size:12px;
+ font-weight:600;padding:2px 9px;border-radius:20px;margin:0 5px 5px 0;
+ background:var(--pill-green);color:var(--pill-green-ink)}
+.spill.none{background:var(--surface-2,#eef1f5);color:var(--muted);
+ font-weight:500}
+
 /* ---- forms ---- */
 form#auditform{display:grid;grid-template-columns:2fr 1.4fr 1fr .7fr auto;
  gap:10px;align-items:end}
@@ -480,6 +506,16 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
             "gsc_property": o.get("gsc_property") or "",
             "ga4_property_id": o.get("ga4_property_id") or "",
             "gtm_container": o.get("gtm_container") or "",
+            # THE TWO FIELDS THAT WERE NOT SAVING.
+            #
+            # They were never in this dict, so "Settings used" never showed
+            # them and the prefill button never restored them. Every re-run
+            # started with a blank industry and blank states — and a blank
+            # states box means no state requirement is checked at all, so the
+            # cost of forgetting was a silently thinner audit rather than a
+            # visible gap.
+            "consent_states": " ".join(o.get("consent_states") or []),
+            "consent_industries": ", ".join(o.get("consent_industries") or []),
             "render_js": bool(o.get("render_js")),
             "browser_ua": bool(o.get("user_agent")),
         }
@@ -494,6 +530,8 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
                  ("Search Console property", st["gsc_property"] or "auto"),
                  ("GA4 property", st["ga4_property_id"] or "auto"),
                  ("Tag Manager container", st["gtm_container"] or "auto"),
+                 ("Consent states", st["consent_states"] or "none checked"),
+                 ("Industry", st["consent_industries"] or "—"),
                  ("Render JavaScript", "yes" if st["render_js"] else "no"),
                  ("Browser user-agent", "yes" if st["browser_ua"] else "no")]
         rows = "".join(f"<tr><td class='hw'>{e(k)}</td><td>{e(v)}</td></tr>"
@@ -630,12 +668,18 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
     except Exception:  # noqa: BLE001
         _SC, _IND = {}, []
     NSTATES = len(_SC) or 20
-    # Default to the states that actually carry a GPC duty plus the big
-    # comprehensive-law states. Prefilled rather than blank because a blank
-    # box is how this ended up unset for six builds — and an empty list is not
-    # "check nothing", it is "silently answer nothing".
-    DEFAULT_STATES = " ".join([x for x in ("CA", "CO", "CT", "TX", "VA", "OR")
-                               if not _SC or x in _SC])
+    # The state vocabulary goes to the browser so a market can be validated as
+    # it is typed, with no round trip. Two facts per code: the full name, and
+    # whether we have a law to check there. The second is the one that makes
+    # the answer honest — a market in Georgia is perfectly valid and there is
+    # nothing for the consent scan to test, which is a real finding rather
+    # than a silent omission.
+    try:
+        from engine.geo import STATES as _GEO_STATES
+    except Exception:  # noqa: BLE001
+        _GEO_STATES = {}
+    STATES_JSON = _json.dumps({c: [n, c in (_SC or {})]
+                               for c, n in sorted(_GEO_STATES.items())})
     INDOPTS = "".join(f"<option value=\"{e(i)}\">" for i in _IND[:400])
 
     body = f"""
@@ -704,9 +748,27 @@ banner, Consent Mode and what fires before consent. No crawl.'>
 
     <div style='margin-top:14px;display:grid;
                 grid-template-columns:1fr 1fr;gap:10px'>
-      <div><label>Primary markets</label>
-        <input name='primary_markets' form='auditform'
-               placeholder='Roanoke VA, Knoxville TN'></div>
+      <div><label>Primary markets
+          <span class='note'>where they actually sell</span></label>
+        <!-- A PILL EDITOR, not a free-text box, because this field feeds the
+             consent scan. Typed as one long string, "Anderson County, TN ×
+             Blount County, TN × …" is unreadable and unverifiable: nobody can
+             see at a glance that all thirteen resolved, and a market that
+             resolves to no state contributes nothing to the state-law checks
+             while looking exactly like one that does.
+             The visible input builds pills; the hidden field carries the
+             canonical string, so the server contract is unchanged. -->
+        <div class='geobox' id='geobox'>
+          <span id='geopills'></span>
+          <input id='geoinput' class='geoin' autocomplete='off'
+                 placeholder='Knox County, TN — then Enter'>
+        </div>
+        <input type='hidden' name='primary_markets' id='primary_markets'
+               form='auditform'>
+        <div class='sm' id='geonote' style='color:var(--muted);margin-top:4px'>
+          Type a market and press Enter. Each one needs a state — that is what
+          decides which privacy laws get checked.</div>
+      </div>
       <div><label>Primary conversion</label>
         <input name='primary_conversion' form='auditform'
                placeholder='Book an appointment'></div>
@@ -779,13 +841,21 @@ banner, Consent Mode and what fires before consent. No crawl.'>
       <div id='consentopts' style='margin-top:10px;display:grid;
            grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:12px'>
         <div>
-          <label>States to check <span class='note'>consent scan</span></label>
+          <label>States to check
+            <span class='note' id='cstatesrc'>from the markets above</span></label>
+          <!-- DERIVED, NOT DEFAULTED. This was prefilled `CA CO CT TX VA OR`,
+               which is a reasonable guess and wrong for every client who does
+               not sell in those states. A Knoxville law firm was having
+               California's law tested and Tennessee's ignored. The markets
+               already say where they sell; the states now follow them, and
+               editing this box by hand detaches it. -->
           <input name='consent_states' form='auditform' id='cstates'
-                 value='{DEFAULT_STATES}'
-                 placeholder='CA CO CT …'>
-          <div class='sm' style='color:var(--muted);margin-top:3px'>
-            {NSTATES} supported. 12 of them require Global Privacy Control to be
-            honored, and that pass only runs when one of those is listed.</div>
+                 placeholder='derived from Primary markets'>
+          <div class='sm' style='color:var(--muted);margin-top:3px'
+               id='cstatenote'>
+            {NSTATES} of the 50 have a law we check. 12 require Global Privacy
+            Control to be honored, and that pass only runs when one is listed.
+          </div>
         </div>
         <div>
           <label>Industry <span class='note'>optional</span></label>
@@ -909,15 +979,187 @@ banner, Consent Mode and what fires before consent. No crawl.'>
 
     // Re-audit a client without retyping their intake. The button carries the
     // whole settings object, so nothing is read off an old report by eye.
+    // ---- market pills, and the states they imply -------------------------
+    //
+    // Mirrors engine/geo.py deliberately. The server is still the authority —
+    // it re-parses on submit — but a market that resolves to no state has to
+    // be visible WHILE it is being typed, because that is the only moment
+    // anyone can fix it. Finding out afterwards means finding out from a
+    // report that quietly checked nothing.
+    var GEO_STATES = {STATES_JSON};
+    var GEO_BYNAME = {{}};
+    Object.keys(GEO_STATES).forEach(function (c) {{
+      GEO_BYNAME[GEO_STATES[c][0].toLowerCase()] = c;
+    }});
+    GEO_BYNAME['washington dc'] = 'DC';
+    GEO_BYNAME['district of columbia'] = 'DC';
+    var MARKETS = [];
+    var STATES_TOUCHED = false;
+
+    function geoState(label) {{
+      var t = (label || '').trim().replace(/,+$/, '');
+      if (!t) return null;
+      if (GEO_STATES[t.toUpperCase()]) return t.toUpperCase();
+      if (GEO_BYNAME[t.toLowerCase()]) return GEO_BYNAME[t.toLowerCase()];
+      var m = t.match(/[,\s]+([A-Za-z.\s]{{2,30}})$/);
+      if (m) {{
+        var tail = m[1].trim().replace(/\.+$/, '');
+        if (GEO_STATES[tail.toUpperCase()]) return tail.toUpperCase();
+        if (GEO_BYNAME[tail.toLowerCase()]) return GEO_BYNAME[tail.toLowerCase()];
+      }}
+      var parts = t.split(',');
+      for (var i = 0; i < parts.length; i++) {{
+        var p = parts[i].trim();
+        if (GEO_STATES[p.toUpperCase()]) return p.toUpperCase();
+        if (GEO_BYNAME[p.toLowerCase()]) return GEO_BYNAME[p.toLowerCase()];
+      }}
+      return null;
+    }}
+
+    function geoEsc(t) {{
+      return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                      .replace(/"/g, '&quot;');
+    }}
+
+    function geoRender() {{
+      var box = document.getElementById('geopills');
+      if (!box) return;
+      box.innerHTML = MARKETS.map(function (label, i) {{
+        var st = geoState(label);
+        return '<span class="gp' + (st ? '' : ' bad') + '" title="'
+             + (st ? geoEsc(GEO_STATES[st][0]) : 'No state found — this market '
+                + 'cannot be matched to a privacy law') + '">'
+             + '<b>' + geoEsc(label) + '</b>'
+             + (st ? '<span class="st">' + st + '</span>'
+                   : '<span class="st">?</span>')
+             + '<button type="button" aria-label="Remove ' + geoEsc(label)
+             + '" onclick="geoDrop(' + i + ')">&times;</button></span>';
+      }}).join('');
+      document.getElementById('primary_markets').value = MARKETS.join(' \u00d7 ');
+      geoSyncStates();
+    }}
+
+    function geoDrop(i) {{ MARKETS.splice(i, 1); geoRender(); }}
+
+    function geoAdd(raw) {{
+      // One paste can carry a whole list, so split on the same separators the
+      // server does rather than making someone re-enter thirteen counties.
+      // The newline escape below is DOUBLED on purpose. This JS lives
+      // Python f-string, so a single backslash-n is a real newline by the
+      // time the page is written — which closed the regex literal
+      // mid-expression and took the whole script down with
+      // "Invalid regular expression: missing /".
+      (raw || '').split(/[\u00d7\u2715\u2716;|\\n]|\s[xX]\s/).forEach(function (c) {{
+        var label = c.replace(/\s+/g, ' ').trim().replace(/^,|,$/g, '').trim();
+        if (!label) return;
+        var dupe = MARKETS.some(function (m) {{
+          return m.toLowerCase() === label.toLowerCase();
+        }});
+        if (!dupe) MARKETS.push(label);
+      }});
+      geoRender();
+    }}
+
+    function geoSyncStates() {{
+      var codes = [], seen = {{}};
+      MARKETS.forEach(function (m) {{
+        var st = geoState(m);
+        if (st && !seen[st]) {{ seen[st] = 1; codes.push(st); }}
+      }});
+      codes.sort();
+      var check = codes.filter(function (c) {{ return GEO_STATES[c][1]; }});
+      var noLaw = codes.filter(function (c) {{ return !GEO_STATES[c][1]; }});
+      var input = document.getElementById('cstates');
+      var src = document.getElementById('cstatesrc');
+      var note = document.getElementById('cstatenote');
+      // A hand-edited box is a decision and is never overwritten.
+      if (input && !STATES_TOUCHED) input.value = check.join(' ');
+      if (src) src.textContent = STATES_TOUCHED ? 'edited by hand'
+                                                : 'from the markets above';
+      if (!note) return;
+      if (!codes.length) {{
+        note.innerHTML = 'Add a market above and the states fill in from it. '
+          + 'Left empty, no state requirement is checked at all.';
+        return;
+      }}
+      note.innerHTML =
+        check.map(function (c) {{
+          return '<span class="spill">' + c + '</span>';
+        }}).join('')
+        + noLaw.map(function (c) {{
+            return '<span class="spill none">' + c + '</span>';
+          }}).join('')
+        + '<div style="margin-top:3px">'
+        + (check.length
+             ? '<b>' + check.length + '</b> with a privacy law we check.'
+             : 'None of these states has a law we check.')
+        + (noLaw.length
+             ? ' <span style="color:var(--muted)">' + noLaw.join(', ')
+               + ' ' + (noLaw.length === 1 ? 'has' : 'have')
+               + ' no comprehensive law in our map \u2014 nothing to test '
+               + 'there, which is a real answer rather than a gap.</span>'
+             : '')
+        + '</div>';
+    }}
+
+    function geoInit() {{
+      var input = document.getElementById('geoinput');
+      if (!input) return;
+      input.addEventListener('keydown', function (ev) {{
+        if (ev.key === 'Enter' || ev.key === ',') {{
+          ev.preventDefault();
+          geoAdd(input.value);
+          input.value = '';
+        }} else if (ev.key === 'Backspace' && !input.value && MARKETS.length) {{
+          geoDrop(MARKETS.length - 1);
+        }}
+      }});
+      // Typing a market and submitting without pressing Enter is the obvious
+      // way to lose one, so commit whatever is in the box on blur too.
+      input.addEventListener('blur', function () {{
+        if (input.value.trim()) {{ geoAdd(input.value); input.value = ''; }}
+      }});
+      input.addEventListener('paste', function (ev) {{
+        var t = (ev.clipboardData || window.clipboardData).getData('text');
+        if (t && /[\u00d7;|\\n]/.test(t)) {{
+          ev.preventDefault(); geoAdd(t); input.value = '';
+        }}
+      }});
+      var cs = document.getElementById('cstates');
+      if (cs) cs.addEventListener('input', function () {{
+        STATES_TOUCHED = true; geoSyncStates();
+      }});
+      var box = document.getElementById('geobox');
+      if (box) box.addEventListener('click', function (ev) {{
+        if (ev.target === box) input.focus();
+      }});
+      geoRender();
+    }}
+    geoInit();
+
     function prefill(btn) {{
       var st = JSON.parse(btn.dataset.prefill);
       var f = document.getElementById('auditform');
       ['target_url', 'client_name', 'vertical', 'max_pages',
-       'primary_markets', 'primary_conversion', 'partner'].forEach(function (k) {{
+       'primary_conversion', 'partner',
+       'consent_industries'].forEach(function (k) {{
         var el = f.querySelector('[name=' + k + ']')
               || document.querySelector('[name=' + k + ']');
         if (el && st[k] !== undefined && st[k] !== '') el.value = st[k];
       }});
+      // Markets are pills now, so they are rebuilt rather than assigned. The
+      // hidden field follows from them, never the other way round.
+      MARKETS = [];
+      var gi = document.getElementById('geoinput');
+      if (gi) gi.value = '';
+      if (st.primary_markets) geoAdd(st.primary_markets);
+      // States last: restoring a saved list counts as a hand edit, so the
+      // markets do not immediately overwrite what was chosen last time.
+      if (st.consent_states) {{
+        var cs = document.getElementById('cstates');
+        if (cs) {{ cs.value = st.consent_states; STATES_TOUCHED = true; }}
+        geoSyncStates();
+      }}
       [['render_js', st.render_js], ['browser_ua', st.browser_ua]].forEach(
         function (p) {{
           var el = document.querySelector('[name=' + p[0] + ']');

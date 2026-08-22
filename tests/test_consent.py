@@ -365,8 +365,13 @@ def main():
     _html = _ui.dashboard_html([], _N(name="V", email="e"), 0,
                                caps={"consent": True, "aivis": True})
     check("the form offers a states field", "consent_states" in _html)
-    check("prefilled, because blank silently checked nothing",
-          "value='CA CO CT TX VA OR'" in _html)
+    # WAS: asserted the box was prefilled `CA CO CT TX VA OR`. That was right
+    # while a guess beat a blank — an empty list is not "check nothing", it is
+    # "silently answer nothing". It is wrong now: the states are derived from
+    # the markets, which is where the answer actually lives. A Knoxville firm
+    # was having California's law tested because of that prefill.
+    check("the states box is derived rather than guessed",
+          "consent_states" in _html and "value='CA CO CT TX VA OR'" not in _html)
     check("and an industry field", "consent_industries" in _html)
     import app.api as _api
     # submit_form, not create_audit — create_audit is the JSON API and the

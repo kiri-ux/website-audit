@@ -1,6 +1,73 @@
-# Changed files — build 2026.08.20-37
+# Changed files — build 2026.08.20-38
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## Markets are pills, and they decide which laws get checked
+
+Three things you asked for, and they turn out to be one thing.
+
+### The states were a guess, and it was wrong for this client
+
+The states box was prefilled `CA CO CT TX VA OR` — defensible in the abstract,
+and wrong for every client who does not sell in those states. **A Knoxville law
+firm was having California's law tested and Tennessee's ignored**, and nothing
+in the report said so.
+
+The markets field already knew the answer. `engine/geo.py` reads the state off
+each market, and the consent scan now follows:
+
+```
+Anderson County, TN × Blount County, TN × Knox County, TN × …
+                        ↓
+                     states: TN
+```
+
+Type into the states box by hand and it detaches — an override is a decision
+and is never overwritten.
+
+### A state we cannot test is said out loud
+
+Thirty states have no comprehensive law in the scanner's map. Dropping them
+silently would leave a client in Georgia unable to tell *"we looked and there
+is nothing to check"* from *"we forgot to look"*. Derived states render as
+pills: green for the twenty we check, grey for the rest, with the count and a
+sentence naming which is which.
+
+### Markets are validated as you type
+
+A pill per market, each stamped with its state code. A market that resolves to
+no state — `Boise`, with no `, ID` — goes **amber**, not red: it is not invalid
+input, it is input we cannot attribute to a body of law, which is a smaller and
+more accurate claim. The hidden field still submits the same canonical string,
+so the server contract is unchanged, and the server re-parses on submit rather
+than trusting the browser.
+
+Pasting a whole list still works — it splits on the same separators the server
+does, so thirteen counties go in at once.
+
+> **A separator that eats real data is worse than one that misses.** The first
+> cut treated a bare `x` as a separator and turned "Knox County, TN" into "Kno"
+> and "County, TN". Fairfax, Essex, Lennox and Bronx would all have gone the
+> same way. `x` now separates only with whitespace on both sides, and
+> `test_geo` holds each of those names as a single market.
+
+### And the two fields that were not saving
+
+`consent_states` and `consent_industries` were never in the settings dict, so
+"Settings used" never showed them and the prefill button never restored them.
+Every re-run started blank — and a blank states box means no state requirement
+is checked at all, so forgetting cost a quietly thinner audit rather than a
+visible gap. Both are now stored, displayed and restored.
+
+Two JavaScript bugs worth recording, because they have the same cause: this
+script lives inside a Python f-string, so a single `\n` is a real newline by
+the time the page is written. One closed a regex literal mid-expression
+("Invalid regular expression: missing /"); the other split a `//` comment in
+half so its second line parsed as code. Escapes in that block have to be
+doubled, and the rendered script is now syntax-checked with `node --check`
+before it ships.
 
 ---
 
@@ -645,11 +712,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-37.zip
+unzip -o vici-audit-2026.08.20-38.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-37` in the header before
+Both services redeploy. Confirm `build 2026.08.20-38` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`

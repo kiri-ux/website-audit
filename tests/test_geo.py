@@ -1,0 +1,147 @@
+"""
+Markets, and the states they imply.
+
+The consent scan checks state privacy law, and until now the state list was a
+hardcoded guess — `CA CO CT TX VA OR`, prefilled on the form. For a Knoxville
+law firm selling in thirteen Tennessee counties that guess tested California's
+law and ignored Tennessee's, and nothing in the report said so.
+
+The markets field already knew the answer. These tests hold the two things
+that make reading it off safe: a market must never be silently mangled, and a
+state we have no checks for must be reported as such rather than dropped.
+
+Run:  python3 -m tests.test_geo
+"""
+from __future__ import annotations
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+FAILED: list[str] = []
+
+
+def check(label, ok, detail=""):
+    print(f"  {'PASS' if ok else 'FAIL'}  {label}" + (f"  ({detail})" if detail else ""))
+    if not ok:
+        FAILED.append(label)
+
+
+OOTEN = ("Anderson County, TN × Blount County, TN × Knox County, TN × "
+         "Loudon County, TN × Roane County, TN × Sevier County, TN × "
+         "Campbell County, TN × Jefferson County, TN × Scott County, TN × "
+         "Morgan County, TN × Union County, TN × Cocke County, TN × "
+         "Meigs County, TN")
+
+
+def main():
+    from engine.geo import (state_of, split_markets, summarize,
+                            states_from_markets, STATES)
+
+    print("\nA SEPARATOR MUST NEVER EAT A REAL NAME")
+    # The first cut treated a bare "x" as a separator, so "Knox County, TN"
+    # became "Kno" and "County, TN" — and the same would have happened to
+    # Fairfax, Essex, Lennox and every other name ending in x. A separator
+    # that misses is recoverable; one that cuts a market in half leaves
+    # something neither readable nor attributable to a state.
+    for name in ("Knox County, TN", "Fairfax County, VA", "Essex County, NJ",
+                 "Lennox, SD", "Bronx, NY"):
+        got = split_markets(name)
+        check(f"{name!r} stays one market", got == [name], str(got))
+    check("but a spaced x still separates",
+          len(split_markets("Knoxville, TN x Nashville, TN")) == 2)
+    check("and so does the multiplication sign the data actually uses",
+          len(split_markets("Knoxville, TN × Nashville, TN")) == 2)
+
+    print("\nTHE REAL CLIENT'S MARKETS, PARSED WHOLE")
+    s = summarize(OOTEN)
+    check("all thirteen markets survive", len(s["markets"]) == 13,
+          str(len(s["markets"])))
+    check("none of them fails to resolve", s["unparsed"] == [],
+          str(s["unparsed"]))
+    check("and they name exactly one state", s["states"] == ["TN"],
+          str(s["states"]))
+    check("which we do have checks for", s["checkable"] == ["TN"])
+    # The point of the whole exercise.
+    check("so the scan tests Tennessee, not the old CA CO CT TX VA OR guess",
+          states_from_markets(OOTEN) == ["TN"])
+
+    print("\nEVERY WAY A PERSON WRITES A STATE")
+    for text, want in (("Knoxville, TN", "TN"), ("Nashville, Tennessee", "TN"),
+                       ("Memphis TN", "TN"), ("TN", "TN"), ("Tennessee", "TN"),
+                       ("Washington DC", "DC"), ("Puerto Rico", "PR"),
+                       ("Portland, OR", "OR"), ("New York, NY", "NY")):
+        check(f"{text!r} -> {want}", state_of(text) == want, str(state_of(text)))
+    check("a market with no state is None, not a guess",
+          state_of("Boise") is None and state_of("somewhere") is None)
+    check("the vocabulary covers 50 states, DC and the territories",
+          len(STATES) >= 56, str(len(STATES)))
+
+    print("\nA STATE WITH NO LAW WE CHECK IS SAID OUT LOUD")
+    # Thirty states have no comprehensive law in the scanner's map. Dropping
+    # them silently would leave a client in Georgia unable to tell "we looked
+    # and there is nothing to check" from "we forgot to look".
+    s = summarize("Atlanta, GA × Boise, ID × Knoxville, TN")
+    check("all three states are recognised", s["states"] == ["GA", "ID", "TN"],
+          str(s["states"]))
+    check("only the one we can test is sent to the scan",
+          s["checkable"] == ["TN"], str(s["checkable"]))
+    check("and the other two are reported, not dropped",
+          s["unchecked"] == ["GA", "ID"], str(s["unchecked"]))
+    none = summarize("Atlanta, GA")
+    check("a client wholly in an unchecked state gets an empty check list",
+          none["checkable"] == [] and none["unchecked"] == ["GA"])
+
+    print("\nAN UNRESOLVED MARKET IS FLAGGED, NOT DISCARDED")
+    s = summarize("Knoxville, TN × Boise × Springfield")
+    check("it is still carried as a market",
+          len(s["markets"]) == 3, str(len(s["markets"])))
+    check("named in `unparsed` so the form can flag it",
+          s["unparsed"] == ["Boise", "Springfield"], str(s["unparsed"]))
+    check("and it contributes no state rather than a wrong one",
+          s["states"] == ["TN"], str(s["states"]))
+
+    print("\nMESSY INPUT STILL PARSES")
+    s = summarize("Los Angeles, CA; Miami, FL | Boise, ID\nAtlanta, GA")
+    check("semicolons, pipes and newlines all separate",
+          s["states"] == ["CA", "FL", "GA", "ID"], str(s["states"]))
+    check("duplicates collapse",
+          len(summarize("Knoxville, TN × knoxville, tn")["markets"]) == 1)
+    check("empty input is empty, not an error", summarize("")["markets"] == [])
+
+    print("\nTHE FORM AND THE SERVER AGREE")
+    # The browser validates as you type; the server re-parses on submit. If
+    # they disagree, the pills are decoration.
+    import app.ui as ui
+    from types import SimpleNamespace as N
+    html = ui.dashboard_html([], N(name="V", email="e"), 0,
+                             caps={"consent": True, "aivis": True})
+    check("the state vocabulary is shipped to the browser",
+          '"TN"' in html and "Tennessee" in html)
+    check("the markets field submits a hidden canonical string",
+          "id='primary_markets'" in html and "type='hidden'" in html)
+    # Assert on the INPUT, not the page. The old guess is still named in a
+    # comment explaining why it went — searching the whole document for it
+    # fails on the explanation rather than on the behavior.
+    import re as _re
+    _m = _re.search(r"id='cstates'[^>]*", html)
+    check("the states box ships with no value at all",
+          _m is not None and "value=" not in _m.group(0),
+          _m.group(0) if _m else "field not found")
+    import inspect
+    from app import api
+    src = inspect.getsource(api.submit_form)
+    check("and the server derives states from markets when none are sent",
+          "from engine.geo import summarize" in src)
+
+    print("\n" + "=" * 68)
+    if FAILED:
+        print(f"  {len(FAILED)} FAILED: {FAILED}")
+    else:
+        print("  ALL CHECKS PASSED — markets decide which laws get checked")
+    print("=" * 68 + "\n")
+    return 1 if FAILED else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
