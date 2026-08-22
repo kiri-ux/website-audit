@@ -1,4 +1,38 @@
-# Changed files — build 2026.08.20-25
+# Changed files — build 2026.08.20-26
+
+## "Do I need to recrawl?" — the run tells you now
+
+**For AI visibility, no.** That phase reads the business context, which is
+derived from the stored crawl at run time, not frozen into it. A reused crawl
+works.
+
+**For everything else, it depends on how old the stored crawl is** — and that is
+a question nobody should have to bring to me.
+
+The page record has grown over the last few builds: the **footer** (which is
+where the address is), **stylesheet URLs**, **rel=next/prev/amphtml**, and **meta
+refresh**. A crawl taken before a field existed cannot contain it, so reusing it
+leaves the checks that read it empty with nothing to explain why. That is
+precisely the shape of every "why is this blank?" in this thread.
+
+So the artifact now records **which fields the crawler knew how to capture**
+when it ran, and the reuse path compares:
+
+- **During the run**, the progress line says it: *"reusing the crawl from
+  abc123 (118 pages) — NOTE: this crawl predates fields the current build reads
+  (schema 1 of 3), so the footer, pagination, AMP, meta-refresh and asset checks
+  will be unanswered."*
+- **After the run**, the internal panel repeats it, names the run it came from,
+  and says what to do — because the progress line is gone by the time anyone
+  reads the report and wonders why it looks thinner than the last one.
+
+A current crawl with nothing outstanding shows no panel at all. One that appears
+on every run stops being read.
+
+`CRAWL_SCHEMA` gets bumped whenever a field is added that a check reads. That is
+the whole maintenance cost.
+
+---
 
 ## "Are we set up to run this?" — now the form answers it
 

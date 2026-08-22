@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-25"
-BUILD_NOTES = ("The worker publishes what it can do, so the audit form "
-               "answers 'are we set up to run this' before you run it")
+BUILD = "2026.08.20-26"
+BUILD_NOTES = ("A reused crawl says when it is too old for the current "
+               "checks, during the run and in the panel afterwards")
 # ---------------------------------------------------------------------------
 
 

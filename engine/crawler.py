@@ -27,6 +27,10 @@ from urllib.robotparser import RobotFileParser
 import requests
 from bs4 import BeautifulSoup
 
+# Fields the page record carries. 1 = the original set; 2 added footer_text;
+# 3 added stylesheets, rel_links and meta_refresh.
+CRAWL_SCHEMA = 3
+
 USER_AGENT = "ViciAuditBot/0.1 (+https://vicimediainc.com/bot; SEO audit crawler)"
 
 SKIP_EXT = re.compile(
@@ -140,6 +144,19 @@ class SiteArtifact:
     www_resolve: dict = field(default_factory=dict)
     http_to_https: dict = field(default_factory=dict)
     crawled_at: float = 0.0
+    # WHAT THE CRAWLER KNEW HOW TO RECORD WHEN THIS RAN.
+    #
+    # Reusing a stored crawl is the right default — it is the slow, rude part
+    # and re-running it because a key was missing is inexcusable. But the page
+    # record has GROWN: the footer (which is where the address is), stylesheet
+    # URLs, rel=next/prev/amphtml, meta refresh. A crawl taken before a field
+    # existed cannot contain it, and reusing it silently means the checks that
+    # depend on it come back empty with no explanation — which is exactly the
+    # question "do I need to recrawl?" that nobody should have to ask us.
+    #
+    # Bump SCHEMA whenever a field is added that a check reads. The reuse path
+    # compares and says so.
+    crawl_schema: int = 0
     # `truncated` means ONE thing: we did not reach every page we intended to,
     # so coverage-dependent findings must be gated. It is NOT set when a
     # post-crawl verification pass runs out of time — that costs us link
@@ -482,6 +499,7 @@ class Crawler:
     # ---------------- main loop ----------------
     def crawl(self) -> SiteArtifact:
         self.art.crawled_at = time.time()
+        self.art.crawl_schema = CRAWL_SCHEMA
         self._deadline = time.time() + self.max_seconds
         self.progress("probing robots.txt / sitemap / TLS", 0, self.max_pages)
         self.probe_robots()

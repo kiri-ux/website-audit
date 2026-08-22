@@ -108,11 +108,33 @@ def run_audit_job(audit_id: str):
         if blob:
             from engine.crawler import artifact_from_json
             art = artifact_from_json(blob.decode())
+            # IS THIS CRAWL OLD ENOUGH TO BE MISSING FIELDS WE NOW READ?
+            #
+            # The page record has grown — the footer, stylesheet URLs,
+            # rel=next/prev/amphtml, meta refresh — and a crawl taken before a
+            # field existed cannot contain it. Reusing it silently leaves the
+            # checks that read those fields empty with nothing to explain why,
+            # which turns into "do I need to recrawl?" every single time.
+            #
+            # Say it here, in the progress line, where the person watching the
+            # run will actually see it.
+            from engine.crawler import CRAWL_SCHEMA
+            have = getattr(art, "crawl_schema", 0) or 0
+            stale = have < CRAWL_SCHEMA
+            note = ("" if not stale else
+                    f" — NOTE: this crawl predates fields the current build "
+                    f"reads (schema {have} of {CRAWL_SCHEMA}), so the footer, "
+                    f"pagination, AMP, meta-refresh and asset checks will be "
+                    f"unanswered. Re-crawl to fill them.")
             step("checking", f"reusing the crawl from {src} "
                              f"({len(art.pages)} pages) — the site was not "
-                             f"re-crawled")
+                             f"re-crawled{note}")
             print(f"[worker] {audit_id} reusing crawl artifact from {src} "
-                  f"({len(art.pages)} pages)", flush=True)
+                  f"({len(art.pages)} pages, schema {have}/{CRAWL_SCHEMA})"
+                  + (" STALE SCHEMA" if stale else ""), flush=True)
+            if stale:
+                opts["_stale_crawl"] = {"have": have, "want": CRAWL_SCHEMA,
+                                        "from": src}
         else:
             print(f"[worker] {audit_id} asked to reuse {src} but its artifact "
                   f"is gone — crawling instead", flush=True)
@@ -256,6 +278,8 @@ def _after_crawl(a, opts, audit_id, art, findings, step):
     from engine.context import extract as extract_context
     bc = extract_context(art)
     extras = {"context": {**bc.to_dict(), "describe": bc.describe()}}
+    if opts.get("_stale_crawl"):
+        extras["stale_crawl"] = opts["_stale_crawl"]
 
     if dataforseo.configured() and not opts.get("skip_dataforseo"):
         # Lighthouse via DataForSEO FILLS GAPS ONLY. Where PageSpeed Insights

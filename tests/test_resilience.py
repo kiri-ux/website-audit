@@ -152,13 +152,44 @@ def main():
               _lamp("EEAT-01", status) == "" and not _judged("EEAT-01", status))
     check("an answered row is marked", _lamp("EEAT-01", "Warning") != "")
 
+    print("\nA REUSED CRAWL SAYS WHEN IT IS TOO OLD FOR THE CURRENT CHECKS")
+    from app import worker as _w
+    # Reusing a stored crawl is the right default — it is the slow, rude part.
+    # But the page record has GROWN (the footer, stylesheet URLs, pagination
+    # links, meta refresh), and a crawl taken before a field existed cannot
+    # contain it. Reusing it silently leaves those checks empty with nothing to
+    # explain why, which is the question "do I need to recrawl?" arriving once
+    # per build forever.
+    from engine.crawler import CRAWL_SCHEMA, SiteArtifact
+    from engine.report import _todo_panel
+    check("the crawler stamps what it knew how to record",
+          CRAWL_SCHEMA >= 3, str(CRAWL_SCHEMA))
+    check("an artifact defaults to schema 0, so old ones read as old",
+          SiteArtifact(start_url="x", host="x", scheme="https").crawl_schema == 0)
+    check("the worker compares on reuse",
+          "crawl_schema" in inspect.getsource(_w.run_audit_job))
+
+    warned = "".join(_todo_panel(
+        {"TECH-01": {"status": "Pass"}}, {"TECH-01": {"prefix": "TECH"}},
+        {"extras": {"stale_crawl": {"from": "abc123", "have": 1,
+                                    "want": CRAWL_SCHEMA}}}))
+    check("and the panel says so after the run, not only during it",
+          "reused an older" in warned)
+    check("it names the run it came from",
+          "abc123" in warned)
+    check("and what to do", "reuse the last crawl" in warned.lower())
+    # A current crawl with nothing outstanding must stay silent. A panel that
+    # appears on every run stops being read.
+    check("a current crawl with nothing outstanding shows no panel",
+          _todo_panel({"TECH-01": {"status": "Pass"}},
+                      {"TECH-01": {"prefix": "TECH"}}, {}) == [])
+
     print("\nTHE FORM KNOWS WHAT THE WORKER CAN DO")
     # Every AI platform key lives on the WORKER; the audit form is served by the
     # API, a different container with a different environment. An API-side
     # os.getenv check would answer confidently about the wrong machine, so the
     # worker publishes what it holds and the form reads that.
     from app.ui import dashboard_html
-    from app import worker as _w
     import re as _re
 
     class _P:

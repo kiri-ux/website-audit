@@ -269,7 +269,7 @@ def _brand_head() -> str:
         return "<meta name='theme-color' content='#002D58'>"
 
 
-def _todo_panel(findings: dict, catalog: dict) -> list:
+def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list:
     """
     "Action needed" — what is unfinished, and crucially WHOSE MOVE IT IS.
 
@@ -284,7 +284,11 @@ def _todo_panel(findings: dict, catalog: dict) -> list:
     from collections import Counter, defaultdict
 
     b = buckets(findings, catalog)
-    if not (b["client"] or b["vendor"] or b["manual"]):
+    stale = ((meta or {}).get("extras") or {}).get("stale_crawl")
+    # A reused crawl too old for the current checks is worth saying even when
+    # nothing else is outstanding — it is the reason a run looks thinner than
+    # the last one, and the only place anyone would look for that reason.
+    if not (b["client"] or b["vendor"] or b["manual"] or stale):
         return []
 
     def reasons(ids):
@@ -406,7 +410,21 @@ def _todo_panel(findings: dict, catalog: dict) -> list:
             f"checkpoints</summary>"
             f"<ul style='margin:6px 0 0 18px'>{items}</ul></details></div>")
 
-    if not b["manual"] and not b["vendor"]:
+    if stale:
+        out.append(
+            f"<div style='margin-top:12px'>"
+            f"<b style='color:var(--warning)'>This run reused an older "
+            f"crawl</b>"
+            f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
+            f"It came from <code>{e(stale.get('from'))}</code>, taken before "
+            f"the crawler recorded the page footer, stylesheet URLs, "
+            f"pagination links and meta refresh (schema "
+            f"{e(stale.get('have'))} of {e(stale.get('want'))}). The checks "
+            f"that read those fields are unanswered — re-run without "
+            f"&lsquo;reuse the last crawl&rsquo; to fill them."
+            f"</div></div>")
+
+    if not b["manual"] and not b["vendor"] and not stale:
         # Both lists empty. Saying nothing looks like the panel failed to
         # render; saying so is a small piece of good news at the top of a
         # review.
@@ -451,7 +469,7 @@ def render_html(meta, sc, findings, catalog, summary=None):
     # is how a report ships with a section quietly empty for the third run in a
     # row. This panel is the worklist, and it is internal-only — the client PDF
     # never carries it.
-    P.extend(_todo_panel(findings, catalog))
+    P.extend(_todo_panel(findings, catalog, meta))
 
     # Only a shortfall in PAGES warrants a document-level banner. A link-sample
     # that ran short is noted on the two rows it affects instead — see TECH-07.
