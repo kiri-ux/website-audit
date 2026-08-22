@@ -1,6 +1,21 @@
-# Changed files — build 2026.08.20-29
+# Changed files — build 2026.08.20-30
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## 0. Three lines of chrome off the top of the dashboard
+
+Gone: the `Site Scanner` breadcrumb, the `Vici Media (internal) · mode internal`
+line, and the build-notes sentence. The build chip stays.
+
+The breadcrumb was a one-item trail reading "Site Scanner" directly under a
+heading reading "Site Scanner" — the page name printed twice with a font
+change, not navigation. The audit detail page keeps its trail, because there
+the first item is a link back.
+
+`BUILD_NOTES` still exists and still shows in `/healthz`; it just stopped being
+the third thing above the first number anyone opens the page to read.
 
 ---
 
@@ -218,11 +233,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-29.zip
+unzip -o vici-audit-2026.08.20-30.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-29` in the header before
+Both services redeploy. Confirm `build 2026.08.20-30` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`

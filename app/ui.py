@@ -621,10 +621,8 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
                       "or GEMINI_API_KEY there")
 
     body = f"""
-    <div class='sub'>{e(principal.name)} · mode <code>{e(cfg.mode)}</code>
-      <span class='chip build' style='margin-left:6px'>{e(version.label())}</span></div>
-    <div style='color:var(--muted);font-size:11.5px;margin-top:4px'>
-      {e(version.BUILD_NOTES)}</div>
+    <div class='sub'>
+      <span class='chip build'>{e(version.label())}</span></div>
     {stats}
 
     <h2>New audit</h2>
@@ -872,9 +870,12 @@ banner, Consent Mode and what fires before consent. No crawl.'>
     }}
     </script>
     """
+    # NO BREADCRUMB HERE. A one-item trail reading "Site Scanner" directly
+    # under a heading reading "Site Scanner" is not navigation — it is the
+    # page name printed twice with a font change. The audit detail page keeps
+    # its trail, because there the first item is a link back to this one.
     return _shell("Site Scanner", body, refresh=8 if running else None,
-                  heading="Site Scanner",
-                  crumbs=[("Site Scanner", None)])
+                  heading="Site Scanner")
 
 
 def audit_html(a):
