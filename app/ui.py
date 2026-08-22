@@ -309,14 +309,30 @@ td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .chip.hold{background:var(--pill-purple);color:var(--pill-purple-ink)}
 .chip.build{background:var(--navy);color:#fff}
 
-.vrow{display:flex;gap:9px;align-items:baseline;margin-top:6px;flex-wrap:wrap}
-.vpill{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;
- padding:5px 14px;border-radius:20px;white-space:nowrap}
-.vpill b{font-size:11px;line-height:1}
-.vpill.good{background:var(--pill-green);color:var(--pill-green-ink)}
-.vpill.warn{background:#fbecc8;color:#8a5d05}
-.vpill.bad{background:var(--pill-pink);color:var(--pill-pink-ink)}
-.vdet{font-size:13.5px;color:var(--ink2)}
+/* `.vrow` / `.vpill` / `.vdet` were the access pills' own block. The status
+   moved onto the field it describes, so the rules went with it — leaving dead
+   CSS behind is how the next person restores the duplication by accident. */
+
+/* ---- access badge, worn by the picker it describes ----
+   The three access pills used to sit in their own block above the three
+   dropdowns, naming the same property twice on the same screen. The status
+   belongs to the field, so it is worn by the field: the mark and one word on
+   the label, the explanation under the select when there is anything to
+   explain, and nothing at all when the answer is simply yes. */
+.amark{display:inline-flex;align-items:center;gap:5px;font-size:11px;
+ font-weight:600;letter-spacing:.02em;padding:2px 9px;border-radius:20px;
+ white-space:nowrap;vertical-align:middle;margin-left:7px;text-transform:none}
+.amark b{font-size:10px;line-height:1}
+/* NAMESPACED ON PURPOSE. The first cut used `.amark.good/.warn/.bad`, and
+   `.warn` is already a callout box elsewhere in this stylesheet — 8px of
+   padding and a 3px gold border — so the amber badge silently rendered 14px
+   taller than the green one and knocked its whole column out of alignment
+   with the other two. A shared generic class name is a collision waiting for
+   the next person; these three cannot be reused by accident. */
+.amark--ok{background:var(--pill-green);color:var(--pill-green-ink)}
+.amark--hold{background:#fbecc8;color:#8a5d05}
+.amark--no{background:var(--pill-pink);color:var(--pill-pink-ink)}
+.anote{font-size:12.5px;color:var(--ink2);margin-top:5px;line-height:1.5}
 
 /* ---- stat strip ---- */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;
@@ -870,12 +886,15 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
     </div>
     <div id='pickers' style='display:none;margin-top:10px;
          grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:12px'>
-      <div><label>Search Console property</label>
-        <select name='gsc_property' id='gscsel' form='auditform'></select></div>
-      <div><label>GA4 property</label>
-        <select name='ga4_property_id' id='ga4sel' form='auditform'></select></div>
-      <div><label>Tag Manager container</label>
-        <select name='gtm_container' id='gtmsel' form='auditform'></select></div>
+      <div><label>Search Console property<span id='gscmark'></span></label>
+        <select name='gsc_property' id='gscsel' form='auditform'></select>
+        <div class='anote' id='gscnote'></div></div>
+      <div><label>GA4 property<span id='ga4mark'></span></label>
+        <select name='ga4_property_id' id='ga4sel' form='auditform'></select>
+        <div class='anote' id='ga4note'></div></div>
+      <div><label>Tag Manager container<span id='gtmmark'></span></label>
+        <select name='gtm_container' id='gtmsel' form='auditform'></select>
+        <div class='anote' id='gtmnote'></div></div>
     </div>
 
     <!-- WHAT TO RUN -------------------------------------------------------
@@ -991,36 +1010,52 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
         var r = await fetch('/api/access-check?target_url=' + encodeURIComponent(u));
         var d = await r.json();
         if (!r.ok) {{ throw new Error(d.detail || r.status); }}
-        // Pills, so the shape of the answer reads before the words do. Three
-        // states, three colors: found, ours to fix, and "the quick check
-        // could not tell" — which is NOT the same as no.
-        function esc(t) {{
-          return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
-        }}
-        function pill(name, st) {{
-          // FOUR states now, not three. `ours` marks a gap on OUR side — an
+        // THE STATUS IS WORN BY THE FIELD IT DESCRIBES.
+        //
+        // This used to render three pills in a block of their own, directly
+        // above three dropdowns that already named the same three properties.
+        // "https://ootenlawfirm.com/ \u00b7 via reporting-zone" appeared twice
+        // on one screen, six inches apart, and the reader had to work out that
+        // the two halves were the same fact.
+        //
+        // So the mark and one word go on the label, and the sentence that
+        // explains a miss goes under the select that can fix it. When the
+        // answer is simply yes, the dropdown below IS the answer and nothing
+        // else is printed.
+        function badge(which, st) {{
+          // FOUR states, not three. `ours` marks a gap on OUR side \u2014 an
           // env var we have not set, or a scope our logins have not approved.
           // It renders amber rather than red on purpose: a red cross next to
           // "Tag Manager" reads as the client withholding access, and sends
           // someone to write an email about a problem that is two minutes of
           // our own re-consent.
-          var cls  = st.ok ? 'good'
-                   : (st.ours || st.partial) ? 'warn' : 'bad';
-          var mark = st.ok ? '\u2713'
+          st = st || {{ok: false}};
+          var cls  = st.ok ? 'amark--ok'
+                   : (st.ours || st.partial) ? 'amark--hold' : 'amark--no';
+          var sym  = st.ok ? '\u2713'
                    : (st.ours || st.partial) ? '!' : '\u2717';
-          var text = st.ok
-            ? (st.name ? st.name + ' \u00b7 ' + st.property : st.property)
-              + ' \u00b7 via ' + st.login
-            : (st.detail || (st.partial
-                 ? 'no quick match \u2014 the audit looks wider'
-                 : 'not found'));
-          return '<div class="vrow"><span class="vpill ' + cls + '"><b>' + mark +
-                 '</b>' + esc(name) + '</span><span class="vdet">' + esc(text) +
-                 '</span></div>';
+          var word = st.ok ? 'found'
+                   : st.ours ? 'ours to fix'
+                   : st.partial ? 'no quick match' : 'not found';
+          var m = document.getElementById(which + 'mark');
+          if (m) {{
+            m.className = 'amark ' + cls;
+            m.innerHTML = '<b>' + sym + '</b>' + word;
+          }}
+          // The note carries only what the dropdown cannot. On a match the
+          // selected option already reads "property \u00b7 login", so saying it
+          // again here would be the same duplication one level down.
+          var n = document.getElementById(which + 'note');
+          if (n) {{
+            n.textContent = st.ok ? '' : (st.detail || (st.partial
+              ? 'No quick match \u2014 the audit looks wider than this URL. '
+                + 'Pick the right one below.'
+              : 'Pick it below if it is listed, or ask the client for access.'));
+          }}
         }}
         out.style.color = '';
-        out.innerHTML = pill('Search Console', d.gsc) + pill('GA4', d.ga4)
-                      + pill('Tag Manager', d.gtm || {{ok: false}});
+        out.innerHTML = '';
+        badge('gsc', d.gsc); badge('ga4', d.ga4); badge('gtm', d.gtm);
         loadProperties(d);
       }} catch (e) {{
         out.style.color = 'var(--serious)';

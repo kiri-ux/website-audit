@@ -1,7 +1,79 @@
-# Changed files — build 2026.08.20-50
+# Changed files — build 2026.08.20-51
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
-Extension is **1.4.4** — reload it at `chrome://extensions`.
+Extension is **1.4.4** — unchanged since ‑50, reload it if you have not.
+
+---
+
+## The status is worn by the field it describes
+
+Three pills in a block of their own, sitting directly above three dropdowns
+that already named the same three properties. `https://ootenlawfirm.com/ · via
+reporting-zone` printed twice on one screen, six inches apart, and the reader
+had to work out that the two halves were the same fact.
+
+The mark and one word now sit on the label; the block is gone.
+
+```
+Search Console property  ✓ found        GA4 property  ✓ found
+[ https://ootenlawfirm.com/ · reporting-zone ▾ ]
+```
+
+On a match nothing else is printed — the selected option already reads
+`property · login`, so a note under it would be the same duplication one level
+down. On a miss the sentence that explains it goes under the select that can
+fix it:
+
+```
+Search Console property  ! no quick match
+[ https://ootenlawfirm.com/ · reporting-zone ▾ ]
+No quick match — the audit looks wider than this URL. Pick the right one below.
+```
+
+All four states survive the move, including the one that matters most: `ours
+to fix` stays amber rather than red, because a red cross next to "Tag Manager"
+reads as the client withholding access and sends someone to write an email
+about two minutes of our own re-consent.
+
+## A CSS collision that only appeared in the failure state
+
+The first cut named the modifiers `.amark.good` / `.amark.warn` / `.amark.bad`.
+**`.warn` is already a callout box in this stylesheet** — 8px of padding and a
+3px gold left border — so the amber badge inherited both, rendered 34.6px tall
+against the green one's 21px, and pushed its whole column 22px out of line with
+the other two.
+
+Nothing errored. The green state looked perfect, which is the state anyone
+would screenshot. I only caught it because I rendered the page in a headless
+browser and measured the boxes:
+
+```
+gsc mark_h 34.6   sel_y 795.8      <- amber
+ga4 mark_h 34.6   sel_y 795.8      <- amber
+gtm mark_h 21.0   sel_y 774.3      <- red, and 22px higher than its neighbours
+```
+
+The classes are namespaced now (`.amark--ok`, `.amark--hold`, `.amark--no`) and
+all three measure 21.0 with their selects at the same y. A test extracts the
+badge's modifier class names out of the rendered page and fails if any of them
+is also a bare selector elsewhere in the stylesheet — the guard catches the
+exact bug I shipped, verified by replaying it:
+
+```
+mods: ['bad', 'good', 'warn']
+clash the guard would have caught: ['warn']
+```
+
+## And the dashboard's JavaScript is now checked by a test, not by memory
+
+This script is built inside a Python f-string, so `\n` becomes a real newline
+before the browser ever sees it. That has broken twice — once closing a regex
+literal mid-expression, once splitting a `//` comment so its second half parsed
+as code. Both shipped. Neither was visible from Python: the page rendered fine
+and the script was dead.
+
+`node --check` on the rendered output now runs in `tests/test_manage.py`, and
+skips loudly rather than silently if node is missing.
 
 ---
 

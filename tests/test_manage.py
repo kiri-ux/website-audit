@@ -350,6 +350,69 @@ def main():
     check("the rule lives in rerun_audit, not only in this test",
           "run_consent" in _src and "did not exist" in _src.lower())
 
+    print("\nTHE DASHBOARD'S JAVASCRIPT ACTUALLY PARSES")
+    # This has broken twice, both times the same way: the script is built
+    # inside a Python f-string, so `\\n` becomes a real newline before the
+    # browser ever sees it. Once that closed a regex literal mid-expression
+    # ("Invalid regular expression: missing /") and once it split a `//`
+    # comment so its second half parsed as code. Both shipped. Neither was
+    # visible in Python — the page rendered fine and the script was dead.
+    #
+    # `node --check` on the rendered output is the only thing that catches it,
+    # so it runs here rather than in someone's memory.
+    import re as _re, subprocess as _sp, shutil as _sh, tempfile as _tf
+    _scripts = _re.findall(r"<script[^>]*>(.*?)</script>", _h, _re.S)
+    check("the dashboard ships exactly one inline script", len(_scripts) == 1,
+          f"{len(_scripts)} found")
+    if _sh.which("node"):
+        _bad = []
+        for _i, _s in enumerate(_scripts):
+            with _tf.NamedTemporaryFile("w", suffix=".js", delete=False) as _fh:
+                _fh.write(_s)
+                _path = _fh.name
+            _r = _sp.run(["node", "--check", _path], capture_output=True, text=True)
+            os.unlink(_path)
+            if _r.returncode:
+                _bad.append(_r.stderr.strip().splitlines()[-1][:120])
+        check("and every line of it is valid JavaScript", not _bad,
+              "; ".join(_bad))
+    else:
+        print("  SKIP  node is not installed here — rendered JS unchecked")
+
+    print("\nACCESS STATUS IS WORN BY THE FIELD IT DESCRIBES")
+    # The three access pills sat in a block above three dropdowns that already
+    # named the same three properties: "https://ootenlawfirm.com/ · via
+    # reporting-zone" printed twice on one screen, six inches apart.
+    check("each picker carries its own status mark",
+          all(f"{k}mark" in _h for k in ("gsc", "ga4", "gtm")))
+    check("and its own note for the case the dropdown cannot explain",
+          all(f"{k}note" in _h for k in ("gsc", "ga4", "gtm")))
+    check("the separate block of access pills is gone",
+          "pill('Search Console'" not in _h and 'class="vpill' not in _h
+          and ".vpill{" not in _h)
+    check("a match prints no note at all — the selected option IS the answer",
+          "st.ok ? '' : (st.detail" in _h)
+    check("all four states still reach the mark",
+          "'ours to fix'" in _h and "'no quick match'" in _h
+          and "'not found'" in _h and "'found'" in _h)
+
+    # THE BADGE'S MODIFIER CLASSES MUST NOT BE GENERIC.
+    #
+    # The first cut styled them `.amark.good` / `.amark.warn` / `.amark.bad`,
+    # and `.warn` is already a callout box in this stylesheet — 8px padding
+    # and a 3px gold border. The amber badge inherited both, rendered 14px
+    # taller than the green one, and pushed its entire column 22px out of line
+    # with the other two. Nothing errored; it just looked broken, and only in
+    # the state nobody screenshots.
+    _mods = sorted(set(_re.findall(r"\.amark\.([A-Za-z0-9_-]+)\{", _h))
+                   | set(_re.findall(r"\.(amark--[A-Za-z0-9_-]+)\{", _h)))
+    check("the badge has its three state classes", len(_mods) == 3, str(_mods))
+    _clash = [m for m in _mods
+              if _re.search(r"(?:^|[\n,;}])\." + _re.escape(m) + r"\{", _h)
+              and not m.startswith("amark--")]
+    check("and none of them is a bare class name used elsewhere", not _clash,
+          str(_clash))
+
     print("\n" + "=" * 68)
     print(f"  {len(FAILURES)} FAILED: {FAILURES}" if FAILURES
           else "  ALL CHECKS PASSED — delete is complete and scoped; grouping is safe")
