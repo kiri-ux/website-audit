@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-47"
-BUILD_NOTES = ("One press covers every Search Console report, and the SERP "
-               "failure finally names its own cause")
+BUILD = "2026.08.20-48"
+BUILD_NOTES = ("The capture waited for a byte count instead of the table, "
+               "so it read the page furniture and stopped")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

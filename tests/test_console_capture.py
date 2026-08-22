@@ -123,8 +123,17 @@ def main():
           "already" in open(os.path.join(root, "extension", "popup.html")).read())
     check("the scrape scrolls, because the exclusion table is below the fold",
           "scrollHeight" in bg and "scrollTo" in bg)
-    check("one press covers every report, Enhancements included",
-          "enhancements" in bg and bg.count("scUrl(") >= 4)
+    # WAS: asserted an Enhancements step. `/search-console/enhancements` 404s
+    # — Search Console has no single Enhancements page; each type has its own
+    # URL and exists only for a site with that markup. Opening a URL that
+    # cannot exist cost thirty seconds and a Google 404, which is worse than
+    # not trying: it looks like the capture is broken.
+    check("no request is made to a Search Console path that cannot exist",
+          'scUrl("enhancements"' not in bg)
+    check("the read waits for the report, not for a byte count",
+          "wantText" in bg and "why aren't pages indexed" in bg)
+    check("and a hand-closed tab is not reported as a crash",
+          "No tab with id" in bg and "changing their mind" in bg)
     check("and a partial capture reports the labels it DID see",
           "Labels seen on the page" in bg)
 

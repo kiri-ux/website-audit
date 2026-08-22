@@ -502,8 +502,16 @@ function _scScrape(reasons) {
   // Walk every element that holds a short, leaf-level string. Search Console
   // renders each figure as its own node beside its label, so the reliable
   // move is to find the LABEL and then look at its row.
-  const nodes = Array.from(document.querySelectorAll("div,span,td,th,a"))
-    .filter(el => el.children.length === 0 && (el.textContent || "").trim());
+  // Not just strict leaves. Search Console wraps a label in one or two more
+  // elements than you would expect, and `children.length === 0` skipped every
+  // one of them — the previous read returned sixteen strings, all page
+  // furniture, on a report with a full table on screen.
+  const nodes = Array.from(
+    document.querySelectorAll("div,span,td,th,a,li,p"))
+    .filter(el => {
+      const t = (el.textContent || "").trim();
+      return t && t.length < 90 && el.querySelectorAll("*").length <= 2;
+    });
 
   const rowNumberFor = (el) => {
     // Walk up until an ancestor also contains a number, then read it.
@@ -580,14 +588,28 @@ function _scDenied() {
   return { denied: false };
 }
 
-async function scOpen(tabId, url) {
+async function scOpen(tabId, url, wantText) {
   await chrome.tabs.update(tabId, { url });
-  // Search Console is a single-page app that renders well after load fires, so
-  // waiting on the tab status is not enough — poll for content instead.
-  for (let i = 0; i < 30; i++) {
+  // WAIT FOR THE THING WE CAME FOR, not for a byte count.
+  //
+  // This polled until innerText passed 400 characters, which the page shell
+  // clears on its own — "Feedback · Google Search Console · Search property ·
+  // Privacy · Terms · Page indexing · EXPORT" is already past the threshold
+  // with none of the report in it. So every read landed on a rendered frame
+  // around an empty table, and reported two numbers and no reasons.
+  //
+  // `wantText` is a string that only exists once the report itself has
+  // rendered. Absent, the byte count is still the fallback.
+  for (let i = 0; i < 40; i++) {
     await settle(1000);
     const [{ result } = {}] = await chrome.scripting.executeScript({
-      target: { tabId }, func: () => document.body.innerText.length
+      target: { tabId },
+      func: (want) => {
+        const t = document.body.innerText || "";
+        if (want) return t.toLowerCase().includes(want.toLowerCase()) ? 9999 : 0;
+        return t.length;
+      },
+      args: [wantText || ""]
     });
     if ((result || 0) > 400) {
       // The exclusion table renders below the fold and Search Console builds
@@ -624,7 +646,7 @@ async function consoleCapture(auditId, property, returnTabId) {
   // whether anything happened.
   state.consoleReturnTab = returnTabId || null;
   let lastSeen = [];
-  state.running = true; state.done = 0; state.total = 3; keepAlive(true);
+  state.running = true; state.done = 0; state.total = 2; keepAlive(true);
   const draft = { property, captured_at: new Date().toISOString(), reasons: {} };
   let tab;
   try {
@@ -632,7 +654,10 @@ async function consoleCapture(auditId, property, returnTabId) {
 
     say(auth ? `Opening Indexing → Pages as ${auth}…`
              : "Opening Indexing → Pages…");
-    if (await scOpen(tab.id, scUrl("index", property, auth))) {
+    // "Why aren't pages indexed" is the heading directly above the exclusion
+    // table, so its presence means the table is there to read.
+    if (await scOpen(tab.id, scUrl("index", property, auth),
+                     "why aren't pages indexed")) {
       const [{ result: denied } = {}] = await chrome.scripting.executeScript({
         target: { tabId: tab.id }, func: _scDenied
       });
@@ -675,23 +700,20 @@ async function consoleCapture(auditId, property, returnTabId) {
     }
     state.done = 2;
 
-    // ENHANCEMENTS TOO — one press, every report we can read.
-    // Rich results, breadcrumbs, FAQ and video each get their own row in
-    // Search Console, and each answers a checkpoint. Leaving them out meant
-    // "capture these" quietly meant "capture some of these".
-    say("Opening Enhancements…");
-    if (await scOpen(tab.id, scUrl("enhancements", property, auth))) {
-      const [{ result } = {}] = await chrome.scripting.executeScript({
-        target: { tabId: tab.id }, func: _scScrape, args: [SC_REASONS]
-      });
-      if (result?.seen?.length) {
-        draft.enhancements_seen = result.seen;
-        say(`Enhancements: read ${result.seen.length} labels.`);
-      }
-    }
-    state.total = 3; state.done = 3;
+    // NO ENHANCEMENTS STEP. `/search-console/enhancements` 404s — Search
+    // Console has no single Enhancements page; each type (breadcrumbs,
+    // FAQ, videos, review snippets) has its own URL and only exists for a
+    // site that actually has that markup. Opening a URL that cannot exist
+    // cost thirty seconds and a Google 404 screen, which is worse than not
+    // trying: it looks like the capture is broken.
+    state.total = 2; state.done = 2;
   } catch (e) {
-    say(`Console capture failed: ${e.message}`);
+    // A tab closed by hand mid-run is not a failure worth alarming about —
+    // it is someone changing their mind, and "No tab with id: 972028235" is
+    // a stack trace pretending to be a message.
+    say(/No tab with id/i.test(e.message || "")
+        ? "The Search Console tab was closed before the read finished."
+        : `Console capture failed: ${e.message}`);
   }
 
   // WHEN THE EXCLUSION TABLE DID NOT RESOLVE, SAY WHAT WAS ON THE PAGE.

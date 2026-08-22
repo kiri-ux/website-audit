@@ -1,6 +1,57 @@
-# Changed files — build 2026.08.20-47
+# Changed files — build 2026.08.20-48
 
 Cumulative delta since **2026.08.18-16**. Unzip over the repo root, commit, push.
+
+---
+
+## What the log said, and the three things it exposed
+
+The diagnostic paid for itself on its first run:
+
+```
+No exclusion reasons found. Labels seen on the page:
+Feedback | | | 154 | Google Search Console | Search property | |
+Privacy | Terms | Page indexing | | EXPORT | | Google Sheets |
+Download Excel | Download CSV
+```
+
+Sixteen strings, every one of them page furniture, on a report with a full
+table on screen. Three separate faults, none of which was guessable from here.
+
+### 1. It waited for a byte count, and the shell cleared it
+
+`scOpen` polled until `innerText` passed 400 characters. That list above is
+already past 400 with **none of the report in it** — the chrome renders first
+and the table lands seconds later. So every read caught a rendered frame around
+an empty table and dutifully reported two numbers and no reasons.
+
+It now waits for **the thing it came for**: the string *"Why aren't pages
+indexed"*, which is the heading directly above the exclusion table. Present
+means the table is there to read. The byte count survives only as a fallback
+for reports with no known anchor.
+
+### 2. The scrape only looked at strict leaf nodes
+
+`children.length === 0` skipped every label Search Console wraps in one or two
+more elements than you would expect — which is most of them. It now takes any
+element holding a short string with at most two descendants.
+
+### 3. `/search-console/enhancements` does not exist
+
+That is the 404 you hit. Search Console has **no single Enhancements page**:
+breadcrumbs, FAQ, videos and review snippets each have their own URL, and each
+exists only for a site that actually has that markup. The step is gone.
+Opening a URL that cannot exist cost thirty seconds and a Google error screen,
+which is worse than not trying — it looks like the capture is broken.
+
+Also: a tab closed by hand mid-run now says so, instead of surfacing
+`No tab with id: 972028235`, which is a stack trace pretending to be a message.
+
+> **If the reasons still do not come**, the log will now show a much longer
+> label list — that is the next clue, and it is one edit away rather than one
+> guess. There is also a `Download CSV` in that export menu, which is Google's
+> own supported path to the same numbers and the obvious fallback if reading
+> the rendered table keeps disappointing.
 
 ---
 
@@ -1274,11 +1325,11 @@ wrong rather than the code:
 ## Deploy
 
 ```
-unzip -o vici-audit-2026.08.20-47.zip
+unzip -o vici-audit-2026.08.20-48.zip
 git add -A && git commit -m "no analyst section; gradient PDF; adtini chrome matched" && git push
 ```
 
-Both services redeploy. Confirm `build 2026.08.20-47` in the header before
+Both services redeploy. Confirm `build 2026.08.20-48` in the header before
 trusting a run.
 
 The extension is not deployed by Render — reload it in `chrome://extensions`
