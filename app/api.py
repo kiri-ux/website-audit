@@ -120,6 +120,35 @@ def create_audit(req: AuditRequest, x_api_key: str | None = Header(None)):
             "poll": f"/api/audits/{aid}", "report": f"/audits/{aid}"}
 
 
+@app.get("/api/capabilities")
+def capabilities():
+    """
+    What the WORKER can do, as the worker last reported it.
+
+    Not what this service can do. Every credential that matters lives on the
+    worker, so an API-side `os.getenv` check would answer confidently about the
+    wrong container.
+    """
+    return _worker_caps()
+
+
+def _worker_caps() -> dict:
+    from .worker import CAPS_KEY
+    try:
+        blob = db.get_blob(CAPS_KEY, "capabilities.json")
+        if not blob:
+            return {"known": False,
+                    "why": "The worker has not reported in since its last "
+                           "deploy. Redeploy it, or start any audit — it "
+                           "publishes on startup."}
+        d = json.loads(blob)
+        d["known"] = True
+        d["age_s"] = round(time.time() - (d.get("at") or 0))
+        return d
+    except Exception as exc:  # noqa: BLE001
+        return {"known": False, "why": f"{type(exc).__name__}: {exc}"}
+
+
 @app.get("/api/audits")
 def list_audits(x_api_key: str | None = Header(None)):
     p = principal(x_api_key)
@@ -356,7 +385,8 @@ from .ui_aivis import visibility_html, visibility_index_html  # noqa: E402
 @app.get("/", response_class=HTMLResponse)
 def home(x_api_key: str | None = Header(None)):
     p = principal(x_api_key)
-    return dashboard_html(db.list_audits(p.scope), p, Q.depth())
+    return dashboard_html(db.list_audits(p.scope), p, Q.depth(),
+                          caps=_worker_caps())
 
 
 @app.post("/audits")

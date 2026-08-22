@@ -152,6 +152,44 @@ def main():
               _lamp("EEAT-01", status) == "" and not _judged("EEAT-01", status))
     check("an answered row is marked", _lamp("EEAT-01", "Warning") != "")
 
+    print("\nTHE FORM KNOWS WHAT THE WORKER CAN DO")
+    # Every AI platform key lives on the WORKER; the audit form is served by the
+    # API, a different container with a different environment. An API-side
+    # os.getenv check would answer confidently about the wrong machine, so the
+    # worker publishes what it holds and the form reads that.
+    from app.ui import dashboard_html
+    from app import worker as _w
+    import re as _re
+
+    class _P:
+        name = "Vici"
+        scope = None
+
+    def _box(caps):
+        h = dashboard_html([], _P(), 0, caps=caps)
+        m = _re.search(r"name='run_aivis'.*?</label>", h, _re.S)
+        return " ".join(m.group(0).split()) if m else ""
+
+    check("the worker publishes its capabilities on startup",
+          "_publish_capabilities" in inspect.getsource(_w.main))
+    check("it records which AI platforms it can reach",
+          "ai_platforms" in inspect.getsource(_w._publish_capabilities))
+
+    ready = _box({"known": True, "ai_platforms": ["chatgpt", "claude"]})
+    check("with keys, the box names the assistants that will answer",
+          "ChatGPT, Claude" in ready and "disabled" not in ready, ready[:80])
+    none = _box({"known": True, "ai_platforms": []})
+    check("with no keys, the box is disabled rather than merely discouraged",
+          "disabled" in none, none[:80])
+    check("and it names the variables to set, on the right service",
+          "OPENAI_API_KEY" in none and "worker" in none)
+    unknown = _box({})
+    # Never disable on ignorance. A worker that has not reported since its last
+    # deploy may be perfectly well configured, and locking the box would be a
+    # confident answer we do not have.
+    check("an unreported worker leaves the box usable",
+          "disabled" not in unknown, unknown[:80])
+
     print("\nEVERY STATUS STATES A VERDICT, NOT A METHOD")
     # The column's other values are Pass, Fail, Warning, N/A — results. "Manual"
     # answered how the check gets done and "Info" named a category of finding,

@@ -1,4 +1,52 @@
-# Changed files — build 2026.08.20-24
+# Changed files — build 2026.08.20-25
+
+## "Are we set up to run this?" — now the form answers it
+
+You had to ask, which is the problem. Every AI platform key lives on the
+**worker**; the audit form is served by the **API**, a different container with a
+different environment. So the form could offer a checkbox with no idea whether a
+single key was set, and the only way to find out was to run an audit and read
+eight unanswered rows afterwards.
+
+An API-side `os.getenv` check would have been worse than nothing — a confident
+answer about the wrong machine.
+
+So the worker **publishes what it holds** on startup, into the database, which is
+the one thing both services demonstrably share (same reason crawl artifacts live
+there). The checkbox then has three honest states:
+
+| | |
+|---|---|
+| Keys present | *"ChatGPT, Claude · ~2 min · paid per question"* — it names which assistants will actually answer |
+| No keys | **Disabled**, and it names the variables to set and the service to set them on. A ticked box that cannot do anything is worse than a greyed-out one that explains why |
+| Worker has not reported since its last deploy | Left usable. It may be perfectly well configured, and locking it would be a confident answer we do not have |
+
+`GET /api/capabilities` returns the same thing as JSON, along with whether the
+judgment layer, DataForSEO and Google are configured — the deployment checklist,
+answered by the machine that actually runs the work.
+
+### What to set, on `vici-audit-worker`
+
+Any one of these turns the box on; each adds one platform:
+
+| Variable | Fills |
+|---|---|
+| `OPENAI_API_KEY` | GEO-27 ChatGPT |
+| `ANTHROPIC_API_KEY` | GEO-30 Claude *(also powers the judgment layer)* |
+| `PERPLEXITY_API_KEY` | GEO-28 Perplexity |
+| `GEMINI_API_KEY` | GEO-29 Gemini |
+| `SERP_API_KEY` + `SERP_ENDPOINT` | GEO-23 Google AI Overviews |
+| `COPILOT_ENDPOINT` + `COPILOT_API_KEY` | GEO-26 Bing Copilot |
+
+The last two were undeclared in the blueprint and are now in it. **Copilot has no
+public consumer API** — it needs Azure OpenAI with Bing grounding — so if that
+row stays unmeasured, that is the honest answer and not a gap to chase.
+
+A platform without a key is always reported as *not measured*, never as zero
+visibility. That distinction is the whole point of the monitor: "we did not ask
+Gemini" and "Gemini has never heard of this client" are opposite findings.
+
+---
 
 ## GEO-24 and GEO-25 — built, and it needed no new anything
 

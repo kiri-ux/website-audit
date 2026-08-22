@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-24"
-BUILD_NOTES = ("Featured snippets and passage ranking answered from the "
-               "keyword call we already make; every GEO row now has a source")
+BUILD = "2026.08.20-25"
+BUILD_NOTES = ("The worker publishes what it can do, so the audit form "
+               "answers 'are we set up to run this' before you run it")
 # ---------------------------------------------------------------------------
 
 

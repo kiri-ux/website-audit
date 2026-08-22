@@ -354,7 +354,7 @@ def _del_form(audit_id, label="Delete", confirm="Delete this audit?"):
             f"<button class='del' type='submit'>{label}</button></form>")
 
 
-def dashboard_html(audits, principal, queue_depth):
+def dashboard_html(audits, principal, queue_depth, caps=None):
     """
     Grouped by CLIENT, not one row per run.
 
@@ -500,6 +500,33 @@ def dashboard_html(audits, principal, queue_depth):
         _stat(queue_depth, "queue depth"),
     ]) + "</div>"
 
+    # CAN THE WORKER ACTUALLY RUN THIS?
+    #
+    # Every AI platform key lives on the worker; this page is served by the API.
+    # Offering a checkbox the worker has no keys for is how you find out by
+    # running an audit and reading eight unanswered rows afterwards. The worker
+    # publishes what it holds on startup, so the box can say up front which
+    # assistants will answer — and disable itself when the answer is none.
+    caps = caps or {}
+    plats = caps.get("ai_platforms") or []
+    _NICE = {"chatgpt": "ChatGPT", "claude": "Claude", "gemini": "Gemini",
+             "perplexity": "Perplexity", "ai_overview": "AI Overviews",
+             "copilot": "Copilot"}
+    if not caps.get("known"):
+        AIVIS_ATTR = ""
+        AIVIS_NOTE = "(asks each assistant; the worker has not reported its keys)"
+    elif plats:
+        names = ", ".join(_NICE.get(x, x) for x in plats)
+        AIVIS_ATTR = ""
+        AIVIS_NOTE = f"({names} &middot; ~2 min &middot; paid per question)"
+    else:
+        # Disabled rather than merely discouraged. A ticked box that cannot do
+        # anything is worse than one that explains why it is greyed out.
+        AIVIS_ATTR = "disabled"
+        AIVIS_NOTE = ("no AI platform keys on the worker &mdash; set "
+                      "OPENAI_API_KEY, ANTHROPIC_API_KEY, PERPLEXITY_API_KEY "
+                      "or GEMINI_API_KEY there")
+
     body = f"""
     <div class='sub'>{e(principal.name)} · mode <code>{e(cfg.mode)}</code>
       <span class='chip build' style='margin-left:6px'>{e(version.label())}</span></div>
@@ -593,9 +620,9 @@ def dashboard_html(audits, principal, queue_depth):
                  form='auditform' style='width:auto'> Evidence screenshots
           <span style='color:var(--muted)'>(~30s)</span></label>
         <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
-          <input type='checkbox' name='run_aivis' value='1'
+          <input type='checkbox' name='run_aivis' value='1' {AIVIS_ATTR}
                  form='auditform' style='width:auto'> AI visibility
-          <span style='color:var(--muted)'>(asks each assistant; ~2 min)</span></label>
+          <span style='color:var(--muted)'>{AIVIS_NOTE}</span></label>
         <label style='display:flex;gap:6px;align-items:center;margin:0;font-weight:400'>
           <input type='checkbox' name='reuse_crawl' value='1'
                  form='auditform' style='width:auto'> Reuse the last crawl of

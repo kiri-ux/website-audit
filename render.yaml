@@ -101,9 +101,18 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      # AI Overviews needs a SERP provider (SerpAPI-shaped: ?q=&api_key=&engine=).
+      # Without it GEO-23 reports "not measured" rather than zero visibility.
       - key: SERP_API_KEY
         sync: false
       - key: SERP_ENDPOINT
+        sync: false
+      # Microsoft Copilot has no public consumer API. Route it through Azure
+      # OpenAI with Bing grounding if you want GEO-26; leave unset and that row
+      # says the platform was not measured, which is the truth.
+      - key: COPILOT_ENDPOINT
+        sync: false
+      - key: COPILOT_API_KEY
         sync: false
       # Phase 3 judgment layer (E-E-A-T + GEO assessment). Absent = those 29
       # rows report Need Access rather than being guessed at.

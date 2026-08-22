@@ -541,6 +541,51 @@ def run_ai_monitor_job(run_id: str):
 HANDLERS = {"audit": run_audit_job, "ai_monitor": run_ai_monitor_job}
 
 
+# ---------------------------------------------------------------------------
+# WHAT THIS WORKER CAN ACTUALLY DO, WRITTEN DOWN WHERE THE FORM CAN READ IT.
+#
+# Every credential that matters runs HERE, on the worker, and the audit form is
+# served by the API — a different container with a different environment. So the
+# form could offer "AI visibility" as a checkbox with no way of knowing whether
+# a single platform key was set, and the honest answer to "are we set up to run
+# this?" was "start a run and find out".
+#
+# The worker publishes its own capability set on startup instead. The database
+# is the one thing both services demonstrably share, which is the same reason
+# crawl artifacts live there.
+# ---------------------------------------------------------------------------
+CAPS_KEY = "_worker"
+
+
+def _publish_capabilities():
+    try:
+        from engine.aivis.providers import active_providers
+        avail, skipped = active_providers()
+        caps = {
+            "at": time.time(),
+            "build": version.BUILD,
+            "service": os.getenv("RENDER_SERVICE_NAME", "local"),
+            "ai_platforms": sorted(p.name for p in avail),
+            "ai_missing": sorted(skipped),
+            "judgment": bool(os.getenv("ANTHROPIC_API_KEY")),
+            "dataforseo": dataforseo.configured(),
+            "google": bool(os.getenv("GOOGLE_TOKENS")
+                           and os.getenv("GOOGLE_CLIENT_ID")
+                           and os.getenv("GOOGLE_CLIENT_SECRET")),
+            "psi_key": bool(os.getenv("PSI_API_KEY")),
+        }
+        db.put_blob(CAPS_KEY, "capabilities.json",
+                    json.dumps(caps).encode())
+        print(f"[worker] capabilities published: "
+              f"AI {caps['ai_platforms'] or 'none'} · "
+              f"judgment {caps['judgment']} · DataForSEO {caps['dataforseo']} · "
+              f"Google {caps['google']}", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        # A worker that cannot advertise itself must still take jobs.
+        print(f"[worker] could not publish capabilities: "
+              f"{type(exc).__name__}: {exc}", flush=True)
+
+
 def main():
     # Graceful shutdown matters in production: Render sends SIGTERM on deploy,
     # and we want the in-flight crawl to finish rather than be killed mid-job.
@@ -554,6 +599,7 @@ def main():
     q = get_queue()
     from .config import warn_startup
     warn_startup()
+    _publish_capabilities()
     print(f"[worker] up · {version.label()} · {cfg.summary()} · waiting for jobs",
           flush=True)
 
