@@ -40,6 +40,30 @@ def _sig(signum, frame):
     print("[worker] shutdown requested; finishing current job…", flush=True)
 
 
+class Cancelled(Exception):
+    """Someone pressed Stop. Not an error, and not a failure to report."""
+
+
+def _stop_if_cancelled(audit_id: str):
+    """
+    Raise if a stop was requested. Called from every progress step.
+
+    COOPERATIVE, BECAUSE THERE IS NO OTHER KIND HERE. The API runs in a
+    different container from the worker; it cannot signal this process, and
+    killing the worker would take whatever ELSE it is doing down with it. So
+    Stop writes a timestamp and the worker checks it - between phases, and
+    inside the collector heartbeat, which is the longest anything runs without
+    reporting in.
+
+    A cancelled run keeps its findings. Everything answered before the stop is
+    already written, and throwing that away would make Stop a destructive
+    button - people would stop using it and let bad runs finish instead.
+    """
+    row = db.get_audit(audit_id) or {}
+    if row.get("cancel_at"):
+        raise Cancelled()
+
+
 def run_audit_job(audit_id: str):
     """
     Idempotent: re-running for the same audit_id overwrites its findings and
@@ -56,6 +80,11 @@ def run_audit_job(audit_id: str):
         # a run whose container was killed mid-judgment stops updating this, and
         # the page can say so instead of auto-refreshing forever against a job
         # nothing is working on.
+        #
+        # It is also where a cancel lands. The API cannot interrupt this
+        # process, so it writes a flag and this reads it - which makes every
+        # step a checkpoint, and the worst case one phase of latency.
+        _stop_if_cancelled(audit_id)
         db.update_audit(audit_id, status=status, progress=progress,
                         heartbeat_at=time.time())
         print(f"[worker] {audit_id} :: {progress}", flush=True)
@@ -73,36 +102,44 @@ def run_audit_job(audit_id: str):
     # The evidence is a snapshot, and the report says as much: pages_crawled and
     # every sitewide count describe the site AS OF that crawl, not today. That is
     # a fair trade for re-scoring, and a bad one for "has the fix landed yet" —
-    # which is why this is opt-in per run rather than a default.
+    # so the progress line always states which of the two happened.
     art = None
     src = opts.get("reuse_artifact_from")
+    reused_note = ""
     if not src and opts.get("reuse_crawl"):
         src = _newest_artifact_for(a["target_url"])
         if not src:
-            # Do NOT quietly crawl instead. Someone ticked this box because the
-            # site blocks crawlers, or because 150 requests to a client's server
-            # is not free. Doing the expensive, rude thing after being told not
-            # to is worse than stopping and saying why.
-            # Name what was considered. "No stored crawl" reads as a lie when
-            # the dashboard is showing three earlier runs of the same client —
-            # the reason is that those runs were blocked or their artifact was
-            # pruned, and saying so is the difference between a useful error
-            # and an argument.
+            # NOW THAT THIS BOX IS TICKED BY DEFAULT, A MISSING CRAWL IS NOT
+            # A CONTRADICTION.
+            #
+            # This used to fail the run outright, and the reasoning was sound
+            # while the box was opt-in: someone ticked it because the site
+            # blocks crawlers or because 150 requests to a client's server is
+            # not free, so crawling anyway was doing the expensive, rude thing
+            # after being told not to.
+            #
+            # Default-on changes what the tick MEANS. It is now "don't crawl
+            # again if you already have this site", which on a first run of a
+            # new client is a preference with nothing to apply it to - and
+            # failing the very first audit of every new client with "there is
+            # none to reuse" is the worse of the two mistakes.
+            #
+            # So: crawl, and say so - loudly, in the progress line and the
+            # worker log, because a silent fallback here is exactly the
+            # failure this codebase keeps re-learning.
             seen = [r for r in db.list_audits()
                     if (r.get("target_url") or "").rstrip("/").lower()
                     == (a["target_url"] or "").rstrip("/").lower()
                     and r["id"] != audit_id]
-            detail = (f"{len(seen)} earlier run(s) of this URL exist, but none "
-                      f"has a stored crawl — a run that was blocked, failed or "
-                      f"had its artifact pruned has nothing to reuse."
-                      if seen else "There are no earlier runs of this URL.")
-            msg = ("Asked to reuse a previous crawl, and there is none to "
-                   f"reuse. {detail} Nothing was crawled. Untick 'Reuse the "
-                   "last crawl' to run a fresh one.")
-            print(f"[worker] {audit_id} {msg}", flush=True)
-            db.update_audit(audit_id, status="failed", progress=msg, error=msg,
-                            completed_at=time.time())
-            return
+            reused_note = (
+                "No stored crawl to reuse, so this run crawled the site. "
+                + (f"{len(seen)} earlier run(s) of this URL exist, but none "
+                   f"has a stored crawl - a run that was blocked, failed or "
+                   f"had its artifact pruned has nothing to reuse."
+                   if seen else
+                   "This is the first run of this URL."))
+            print(f"[worker] {audit_id} {reused_note}", flush=True)
+            step("crawling", reused_note)
     if src:
         blob = get_artifact(src, "crawl_artifact.json")
         if blob:
@@ -213,6 +250,12 @@ def _crawl(a, opts, audit_id, db, step):
 
     def crawl_progress(msg, done, total):
         # Live progress is what makes "slow" distinguishable from "hung".
+        #
+        # And it is the only place a stop can land during the longest phase in
+        # the run. 150 pages at a polite delay is minutes; checking only
+        # between phases would mean pressing Stop and watching the crawl
+        # continue to the end.
+        _stop_if_cancelled(audit_id)
         db.update_audit(audit_id, progress=f"crawling — {msg}")
 
     cr = Crawler(
@@ -258,9 +301,10 @@ def _after_crawl(a, opts, audit_id, art, findings, step):
         step("checking", "assessing E-E-A-T and GEO checkpoints")
         j = run_judgment(
             art, business_model=a.get("vertical"), client=a.get("client_name"),
-            progress=lambda d, t: db.update_audit(
-                audit_id, progress=f"judgment {d}/{t}",
-                heartbeat_at=time.time()))
+            progress=lambda d, t: (_stop_if_cancelled(audit_id),
+                                   db.update_audit(
+                                       audit_id, progress=f"judgment {d}/{t}",
+                                       heartbeat_at=time.time()))[-1])
         findings.update(j)
         # Same reasoning as the DataForSEO line below: when the LLM key is
         # missing every row degrades to a tidy "Need Access" and the report
@@ -297,6 +341,7 @@ def _after_crawl(a, opts, audit_id, art, findings, step):
     # loop inside a phase has to touch it, or the detector reports the phase
     # rather than the fault.
     def _beat(done, total):
+        _stop_if_cancelled(audit_id)
         db.update_audit(audit_id,
                         progress=f"Search Console: inspecting URL "
                                  f"{done + 1} of {total}",
@@ -505,6 +550,8 @@ def _consent(a, audit_id, findings, extras, opts, step):
                     if other.get(key):
                         scan[key] = (scan.get(key) or []) + other[key]
             scan["pages_scanned"] = 1 + len(extra)
+    except Cancelled:
+        raise                       # a Stop is not a phase failure
     except Exception as exc:  # noqa: BLE001
         print(f"[worker] {audit_id} consent scan errored: "
               f"{type(exc).__name__}: {exc}", flush=True)
@@ -672,6 +719,15 @@ def _ai_visibility(a, audit_id, findings, extras, step):
             "questions": len(queries), "from_audit": True}
         print(f"[worker] {audit_id} AI visibility answered {answered}/"
               f"{len(rows)} GEO rows", flush=True)
+    except Cancelled:
+        # A BROAD HANDLER MUST NOT EAT A STOP.
+        #
+        # Every phase in here swallows its own failures on purpose - one dead
+        # collector should not take the audit down. Cancelled is an Exception
+        # too, so without this the run would log "AI visibility errored:
+        # Cancelled" and carry straight on to the next phase, and Stop would
+        # look like it did nothing.
+        raise
     except Exception as exc:  # noqa: BLE001
         print(f"[worker] {audit_id} AI visibility errored: "
               f"{type(exc).__name__}: {exc}", flush=True)
@@ -1003,6 +1059,16 @@ def _reap_abandoned():
         if not hb or float(hb) > cutoff:
             continue
         mins = int((time.time() - float(hb)) // 60)
+        # A run somebody asked to stop, whose worker then went away before it
+        # could notice, is CANCELLED and not failed. Reporting it as a crash
+        # would blame the site for a decision a person made.
+        if row.get("cancel_at"):
+            db.update_audit(row["id"], status="cancelled", error=None,
+                            progress="stopped on request",
+                            completed_at=time.time())
+            print(f"[worker] closed cancelled audit {row['id']}", flush=True)
+            n += 1
+            continue
         msg = (f"The worker running this stopped responding {mins} minutes "
                f"ago, at \u201c{row.get('progress') or 'an early step'}\u201d, "
                f"and recorded no error. That combination means the process "
@@ -1055,6 +1121,18 @@ def main():
             if handler is None:
                 raise RuntimeError(f"unknown job_type {jtype!r}")
             handler(aid)
+            q.complete(job)
+        except Cancelled:
+            # A STOP IS NOT A FAILURE, AND MUST NOT BE RETRIED.
+            #
+            # Falling through to the handler below would mark it failed with a
+            # traceback and put it back on the queue twice - so pressing Stop
+            # would start the run again, which is the opposite of Stop.
+            print(f"[worker] job {job['job_id']} cancelled on request",
+                  flush=True)
+            db.update_audit(aid, status="cancelled",
+                            progress="stopped on request",
+                            error=None, completed_at=time.time())
             q.complete(job)
         except Exception as e:
             tb = traceback.format_exc()

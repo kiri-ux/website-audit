@@ -181,6 +181,17 @@ code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
  background:var(--plane);border:1px solid var(--line-2)}
 .joblet.on{display:block}
 .ph-wrap{display:flex;flex-wrap:wrap;gap:8px}
+/* Crawl settings, beside Max pages. Same control, deliberately lighter: a
+   dashed edge and a smaller body so the row reads as "leave these alone"
+   rather than as two more phases to decide about. */
+.crawlrow{display:flex;flex-wrap:wrap;gap:22px;align-items:flex-start;
+ margin-top:14px}
+.ph--set{padding:6px 12px 6px 9px;border-radius:9px;font-size:12.5px;
+ font-weight:400;border-style:dashed;gap:6px}
+.ph--set .tick{width:13px;height:13px;border-radius:4px}
+.ph--set .tick svg{width:8px;height:8px}
+.ph--set .note{font-size:11.5px}
+.ph--set:has(input:checked){border-style:solid}
 
 /* ---- market pills ---- */
 .geobox{display:flex;flex-wrap:wrap;gap:6px;align-items:center;
@@ -413,12 +424,15 @@ from .brand import HEAD_TAGS as HEAD
 STATUS_COLOR = {"ready": "var(--good)", "failed": "var(--critical)",
                 "queued": "var(--muted)", "crawling": "var(--warning)",
                 "checking": "var(--warning)", "scoring": "var(--warning)",
-                "needs_capture": "var(--serious)"}
+                "needs_capture": "var(--serious)",
+                # Stopped on purpose. Grey, never red: it is not a failure and
+                # it should not read like one in a list of runs.
+                "cancelled": "var(--muted)"}
 
 # adtini states are pastel pills with dark text, not a dot beside grey text.
 STATUS_PILL = {"ready": "ready", "failed": "stop", "queued": "",
                "crawling": "run", "checking": "run", "scoring": "run",
-               "needs_capture": "hold"}
+               "needs_capture": "hold", "cancelled": ""}
 
 
 def e(x):
@@ -863,7 +877,8 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
         <div><label>Client name</label>
           <input name='client_name' placeholder='Grand Furniture' required></div>
         <div><label>Client website</label>
-          <input name='target_url' id='turl'
+          <input name='target_url' id='turl' onchange='accessAuto()'
+                 onblur='accessAuto()'
                  placeholder='https://www.example.com/' required></div>
       </div>
       <div class='fgrid'>
@@ -976,20 +991,37 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
             {AIVIS_ATTR} form='auditform'><span class='tick'>{TICK}</span>
             Ask the AI assistants <span class='note'>{AIVIS_NOTE}</span></label>
           <label class='ph'><input type='checkbox' name='reuse_crawl' value='1'
-            form='auditform'><span class='tick'>{TICK}</span>
+            checked form='auditform'><span class='tick'>{TICK}</span>
             Reuse the last crawl
-            <span class='note'>no new requests to their site</span></label>
-          <label class='ph'><input type='checkbox' name='browser_ua' value='1'
-            form='auditform'><span class='tick'>{TICK}</span>
-            Browser user-agent <span class='note'>auto \u2014 tick to force</span></label>
-          <label class='ph'><input type='checkbox' name='render_js' value='1'
-            form='auditform'><span class='tick'>{TICK}</span>
-            Render JavaScript <span class='note'>auto \u2014 tick to force</span></label>
+            <span class='note'>if we have one \u2014 no new requests</span></label>
         </div>
-        <div style='margin-top:10px;max-width:200px'>
-          <label>Max pages</label>
-          <input name='max_pages' type='number' value='150' min='1' max='500'
-                 form='auditform'>
+
+        <!-- CRAWL SETTINGS ARE NOT PHASES.
+             The two override toggles sat in the same pill row as "Read and
+             judge the pages" and "Ask the AI assistants", which are decisions
+             about what this audit COVERS. These two are decisions about how
+             the crawler talks to one server, they are both on auto, and most
+             runs should never touch them - so they sit down here with Max
+             pages, smaller and quieter, as settings rather than choices. -->
+        <div class='crawlrow'>
+          <div style='max-width:170px'>
+            <label>Max pages</label>
+            <input name='max_pages' type='number' value='150' min='1' max='500'
+                   form='auditform'>
+          </div>
+          <div>
+            <label>Crawl overrides</label>
+            <div class='ph-wrap' style='margin-top:6px'>
+              <label class='ph ph--set'><input type='checkbox' name='browser_ua'
+                value='1' form='auditform'><span class='tick'>{TICK}</span>
+                Browser user-agent
+                <span class='note'>auto</span></label>
+              <label class='ph ph--set'><input type='checkbox' name='render_js'
+                value='1' form='auditform'><span class='tick'>{TICK}</span>
+                Render JavaScript
+                <span class='note'>auto</span></label>
+            </div>
+          </div>
         </div>
 
       </div>
@@ -998,7 +1030,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
         <div class='fgrid'>
           <div>
             <label>States to check
-              <span class='note' id='cstatesrc'>from the markets above</span></label>
+              <span class='note' id='cstatesrc'></span></label>
             <div class='tgrow' id='strow'>{STATE_TOGGLES}</div>
             <input type='hidden' name='consent_states' id='cstates'
                    form='auditform'>
@@ -1033,6 +1065,25 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
     // Preflight, not a gate. It never blocks submission — a probe that is
     // wrong about GA4 (it scans by name only, for speed) must not stop a real
     // audit from running.
+    // THE ACCESS CHECK RUNS ITSELF AGAIN.
+    //
+    // It used to fire as soon as there was a URL to check, and somewhere in
+    // the move to per-dropdown pills that call was lost - so the pickers
+    // stayed empty until somebody thought to press a button, which is exactly
+    // the state the button exists to rescue you FROM.
+    //
+    // Fires on the URL field losing focus or changing, once per URL, and only
+    // when the URL is plausible. The button stays for a retry after fixing a
+    // login on Google's side, where nothing about this form has changed.
+    var _ckFor = '';
+    function accessAuto() {{
+      var el = document.getElementById('turl');
+      var u = (el && el.value || '').trim();
+      if (!u || !/\.[a-z]{{2,}}/i.test(u) || u === _ckFor) return;
+      _ckFor = u;
+      checkAccess();
+    }}
+
     async function checkAccess() {{
       var u = document.getElementById('turl').value.trim();
       var out = document.getElementById('ckout');
@@ -1264,13 +1315,19 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
         b.classList.toggle('auto', check.indexOf(b.dataset.st) >= 0);
       }});
       stSync();
-      if (src) src.textContent = STATES_TOUCHED ? 'yours, edited by hand'
-                                                : 'from the markets above';
+      // NO CAPTION ABOUT WHERE THE SELECTION CAME FROM.
+      // "yours, edited by hand" narrated a thing the operator had just done,
+      // in a voice nobody uses. The chips already show what is on.
+      if (src) src.textContent = '';
       if (!note) return;
-      var msg = 'All twenty states with a law we check. '
-              + 'Filled means chosen; outlined means your markets imply it.';
+      // WAS: "All twenty states with a law we check. Filled means chosen;
+      // outlined means your markets imply it." A legend for a control the
+      // reader is already operating. What is left is the only part that
+      // carries information they cannot see on the chips - a market of theirs
+      // that has no law to test.
+      var msg = '';
       if (noLaw.length) {{
-        msg += ' <span style="color:var(--muted)">' + noLaw.join(', ')
+        msg += '<span style="color:var(--muted)">' + noLaw.join(', ')
              + ' ' + (noLaw.length === 1 ? 'is' : 'are')
              + ' in your markets and ' + (noLaw.length === 1 ? 'has' : 'have')
              + ' no comprehensive law in our map \u2014 nothing to test there,'
@@ -1302,7 +1359,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
       }}
       stSync();
       var src = document.getElementById('cstatesrc');
-      if (src) src.textContent = 'yours, edited by hand';
+      if (src) src.textContent = '';
     }}
     function prToggle(b) {{
       b.classList.toggle('on');
@@ -1527,6 +1584,23 @@ def audit_html(a):
                  f"<p class='sub'>{e(a.get('error'))}</p>"
                  f"</div>")
         refresh = None
+    elif cur == "cancelled":
+        # Not an error page. Nothing went wrong; somebody decided this run was
+        # not worth finishing, and the offer is to start it again cheaply -
+        # from the stored pages, so the client's server is left alone.
+        done = a.get("pages_crawled") or 0
+        inner = (f"<div class='card'><b>Stopped</b>"
+                 f"<p class='sub'>{e(a.get('progress') or 'stopped on request')}"
+                 + (f" {done} pages were crawled before it stopped, and every "
+                    f"checkpoint answered up to that point is kept."
+                    if done else "")
+                 + f"</p>"
+                 f"<form method='post' action='/audits/{e(a['id'])}/rerun' "
+                 f"style='margin-top:12px'>"
+                 f"<input type='hidden' name='reuse_crawl' value='1'>"
+                 f"<button class='btn' type='submit'>Run it again from the "
+                 f"stored pages</button></form></div>")
+        refresh = None
     elif cur == "needs_capture":
         # One button, no copying. The extension's content script finds
         # #vici-capture, reads the id and target off it, and wires the button
@@ -1634,11 +1708,30 @@ def audit_html(a):
                      f"pages</button></form></div>")
             refresh = None
         else:
+            # STOP, WHERE THE RUN IS.
+            #
+            # There was no way to end a run except waiting for it or deleting
+            # the row, and deleting takes the findings with it. The button
+            # writes a flag the worker reads at its next progress step; the
+            # copy says that rather than implying an instant kill, because a
+            # control that claims to be immediate and takes ten seconds reads
+            # as broken.
+            stopping = bool(a.get("cancel_at"))
+            act = ("<p class='sub' style='margin-top:12px'><b>Stopping.</b> "
+                   "Waiting for the worker to reach its next step; everything "
+                   "answered so far is kept.</p>" if stopping else
+                   f"<form method='post' action='/audits/{e(a['id'])}/stop' "
+                   f"style='margin-top:12px'>"
+                   f"<button class='btn ghost' type='submit'>Stop this run"
+                   f"</button>"
+                   f"<span class='sm' style='color:var(--muted);"
+                   f"margin-left:9px'>keeps whatever has been answered"
+                   f"</span></form>")
             inner = (rail + f"<div class='marks'>{marks}</div>"
                      f"<div class='card' style='margin-top:16px'>"
                      f"<span class='spin'></span> <b>{e(a.get('progress') or cur)}</b>"
                      f"<p class='sub'>This page refreshes automatically. A full crawl "
-                     f"of 150 pages typically takes 2–5 minutes.</p></div>")
+                     f"of 150 pages typically takes 2–5 minutes.</p>{act}</div>")
             # Six seconds, not four. Every refresh is a full page render and a
             # fresh database connection, and the phase this page is most often
             # watching is now the longest one in the run.

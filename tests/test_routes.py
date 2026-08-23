@@ -52,6 +52,15 @@ def GET(path, timeout=60):
         return e.code, e.headers.get("content-type", ""), e.read()
 
 
+def POST(path, data=b"", timeout=60):
+    req = urllib.request.Request(API + path, data=data, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, r.headers.get("content-type", ""), r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers.get("content-type", ""), e.read()
+
+
 class _FakeReq:
     """Just enough of a Starlette Request for _redirect_uri()."""
 
@@ -304,6 +313,44 @@ def main():
     # drawn from extras and an older audit has extras but no artifact.
     st, _, body = GET("/audits/doesnotexist/consent")
     check("an unknown audit is still a 404", st == 404, str(st))
+
+    print("\nA RUN CAN BE STOPPED WHILE IT IS RUNNING")
+    # STOP IS COOPERATIVE, so what this asserts is the contract between the
+    # two processes: the API marks the row, the worker's checkpoint raises,
+    # and a stop is never reported as a failure or put back on the queue.
+    import time as _t
+    from app import db as _db, worker as _w
+    rid = _db.create_audit(partner_id="vici", client_name="Stoppable",
+                           target_url="https://stopme.test/",
+                           vertical="local_service", options={})
+    _db.update_audit(rid, status="crawling", heartbeat_at=_t.time())
+    st, _, body = POST(f"/api/audits/{rid}/stop")
+    check("the stop endpoint answers", st == 200, str(st))
+    check("and it records the request", json.loads(body)["stopping"] is True,
+          body[:120])
+    row = _db.get_audit(rid)
+    check("the row is flagged, not force-failed", bool(row.get("cancel_at"))
+          and row["status"] == "crawling", str(row["status"]))
+    try:
+        _w._stop_if_cancelled(rid)
+        check("the worker's checkpoint raises", False, "no raise")
+    except _w.Cancelled:
+        check("the worker's checkpoint raises", True)
+    # A queued run has no worker to notice, so the API closes it itself.
+    qid = _db.create_audit(partner_id="vici", client_name="Queued",
+                           target_url="https://queued.test/",
+                           vertical="local_service", options={})
+    POST(f"/api/audits/{qid}/stop")
+    check("a queued run is stopped outright, not left 'stopping'",
+          _db.get_audit(qid)["status"] == "cancelled",
+          _db.get_audit(qid)["status"])
+    # And a finished run has nothing to stop.
+    st, _, body = POST(f"/api/audits/{aid}/stop")
+    check("stopping a finished run is a no-op with an explanation",
+          st == 200 and json.loads(body)["stopping"] is False, body[:120])
+    _, _, page = GET(f"/audits/{rid}")
+    check("the running page offers the button",
+          b"/stop" in page, str(page[:0]))
 
     print("\nEVERY LINK THE REPORT PAGE ADVERTISES RESOLVES")
     _, _, html = GET(f"/audits/{aid}")

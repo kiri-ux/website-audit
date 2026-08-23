@@ -684,6 +684,56 @@ def rerun_audit_api(audit_id: str, x_api_key: str | None = Header(None)):
             "poll": f"/api/audits/{new_id}", "report": f"/audits/{new_id}"}
 
 
+# ------------------------------------------------------------------ stop
+#
+# STOP IS A REQUEST, NOT A KILL.
+#
+# The worker is a separate container. This process cannot signal it and must
+# not try - the worker may be three phases into someone else's job by the time
+# a signal arrives. So a stop writes a timestamp the worker reads at every
+# progress step, and the run ends at the next one: within seconds during the
+# crawl or the judgment pass, at worst one phase later.
+#
+# The row keeps everything it had already answered. A cancelled audit with 180
+# findings is more useful than no audit, and a Stop button that also destroys
+# the work is one nobody presses.
+_STOPPABLE = {"queued", "crawling", "checking", "scoring", "capturing"}
+
+
+def _request_stop(audit_id: str, scope):
+    a = db.get_audit(audit_id, scope)
+    if not a:
+        raise HTTPException(404, "audit not found")
+    if a.get("status") not in _STOPPABLE:
+        return a, False
+    db.update_audit(audit_id, cancel_at=time.time(),
+                    progress="stopping — waiting for the worker to notice")
+    # A run still sitting in the queue has no worker to notice anything, so
+    # nothing would ever move it out of "stopping". Close it here instead.
+    if a.get("status") == "queued":
+        db.update_audit(audit_id, status="cancelled",
+                        progress="stopped before it started",
+                        completed_at=time.time())
+    return a, True
+
+
+@app.post("/api/audits/{audit_id}/stop")
+def stop_audit_api(audit_id: str, x_api_key: str | None = Header(None)):
+    p = principal(x_api_key)
+    a, stopped = _request_stop(audit_id, p.scope)
+    return {"audit_id": audit_id, "stopping": stopped,
+            "status": db.get_audit(audit_id, p.scope).get("status"),
+            "note": ("the worker stops at its next step" if stopped else
+                     f"nothing to stop — this run is {a.get('status')}")}
+
+
+@app.post("/audits/{audit_id}/stop")
+def stop_audit_form(audit_id: str, x_api_key: str | None = Header(None)):
+    p = principal(x_api_key)
+    _request_stop(audit_id, p.scope)
+    return RedirectResponse(f"/audits/{audit_id}", status_code=303)
+
+
 # ------------------------------------------------------------------ delete
 @app.delete("/api/audits/{audit_id}")
 def delete_audit_api(audit_id: str, x_api_key: str | None = Header(None)):

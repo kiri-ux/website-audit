@@ -282,6 +282,14 @@ MIGRATIONS = [
     # cheerfully auto-refreshing against a job that no longer exists. The page
     # cannot tell "working on it" from "died twenty minutes ago" without this.
     ("audits", "heartbeat_at", "DOUBLE PRECISION" if cfg.is_postgres else "REAL"),
+    # WHEN SOMEONE ASKED THIS RUN TO STOP.
+    #
+    # A flag rather than a status, because the worker is in another process
+    # and cannot be interrupted - it has to notice. Writing status='cancelled'
+    # directly would be overwritten by the worker's very next progress update,
+    # and the run would appear to resurrect itself. The worker reads this at
+    # every step and stops at the next one, which is at worst one phase away.
+    ("audits", "cancel_at", "DOUBLE PRECISION" if cfg.is_postgres else "REAL"),
 ]
 
 
