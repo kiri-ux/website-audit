@@ -735,7 +735,8 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
         # panel whose whole job is to be copied back into a form that no
         # longer has them.
         shown = [("Max pages", st["max_pages"]),
-                 ("Primary markets", st["primary_markets"] or "—"),
+                 ("Geographic targeting areas",
+                  st["primary_markets"] or "—"),
                  ("Partner name", st["partner"] or "—"),
                  ("Industry", st["consent_industries"] or "—"),
                  ("Products", st["consent_products"] or "—"),
@@ -927,6 +928,18 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
         _GEO_STATES = {}
     STATES_JSON = _json.dumps({c: [n, c in (_SC or {})]
                                for c, n in sorted(_GEO_STATES.items())})
+    # THE SAME TABLE THE SCANNER USES, NOT A SECOND COPY OF IT.
+    #
+    # The pills are validated in the browser and the laws are decided in
+    # Python. Two hand-maintained copies of a ZIP-to-state table would agree
+    # right up until one of them was edited, and the failure would be a
+    # market that looks fine on the form and gets no state checks - which is
+    # silent, and legal. Generated from engine/geo.ZIP3_RANGES.
+    try:
+        from engine.geo import ZIP3_RANGES as _Z3
+    except Exception:  # noqa: BLE001
+        _Z3 = ()
+    ZIP3_JSON = _json.dumps([[lo, hi, c] for lo, hi, c in _Z3])
     INDOPTS = "".join(f"<option value=\"{e(i)}\">" for i in _IND[:400])
     # ALL TWENTY, AS TOGGLES.
     #
@@ -981,12 +994,12 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
           <datalist id='indlist'>{INDOPTS}</datalist>
 
         </div>
-        <div><label>Partner name<i class='tip' tabindex='0' data-tip="Printed on the report cover. Leave it blank to use the configured firm name.">i</i></label>
+        <div><label>Partner name</label>
           <input name='partner' form='auditform' placeholder='Vici Media'></div>
       </div>
 
       <div style='margin-top:14px'>
-        <label>Primary markets<i class='tip' tabindex='0' data-tip="Where they actually sell. Each market needs a state — that is what decides which privacy laws get checked.">i</i></label>
+        <label>Geographic targeting areas<i class='tip' tabindex='0' data-tip="Where the campaign runs. Cities, counties, states or ZIP codes - the state is what decides which privacy laws get checked, and a ZIP names its own.">i</i></label>
         <div class='geobox' id='geobox'>
           <span id='geopills'></span>
           <input id='geoinput' class='geoin' autocomplete='off'
@@ -1295,6 +1308,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
     // anyone can fix it. Finding out afterwards means finding out from a
     // report that quietly checked nothing.
     var GEO_STATES = {STATES_JSON};
+    var ZIP3 = {ZIP3_JSON};
     var GEO_BYNAME = {{}};
     Object.keys(GEO_STATES).forEach(function (c) {{
       GEO_BYNAME[GEO_STATES[c][0].toLowerCase()] = c;
@@ -1304,9 +1318,21 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
     var MARKETS = [];
     var STATES_TOUCHED = false;
 
+    function zipState(t) {{
+      var m = String(t || '').trim().match(/^(\d{{5}})(?:-\d{{4}})?$/);
+      if (!m) return null;
+      var z = parseInt(m[1].slice(0, 3), 10);
+      for (var i = 0; i < ZIP3.length; i++) {{
+        if (z >= ZIP3[i][0] && z <= ZIP3[i][1]) return ZIP3[i][2];
+      }}
+      return null;
+    }}
+
     function geoState(label) {{
       var t = (label || '').trim().replace(/,+$/, '');
       if (!t) return null;
+      var z = zipState(t);
+      if (z) return z;
       if (GEO_STATES[t.toUpperCase()]) return t.toUpperCase();
       if (GEO_BYNAME[t.toLowerCase()]) return GEO_BYNAME[t.toLowerCase()];
       var m = t.match(/[,\s]+([A-Za-z.\s]{{2,30}})$/);
@@ -1373,7 +1399,28 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
       // time the page is written — which closed the regex literal
       // mid-expression and took the whole script down with
       // "Invalid regular expression: missing /".
-      (raw || '').split(/[\u00d7\u2715\u2716;|\\n]|\s[xX]\s/).forEach(function (c) {{
+      var parts = (raw || '').split(/[\u00d7\u2715\u2716;|\\n]|\s[xX]\s/);
+      // A COMMA IS PART OF "Knox County, TN" AND A SEPARATOR IN "37314, 37354".
+      //
+      // Splitting on every comma turned one market into two pills - "Knox
+      // County" with no state, and a stray "TN" - which is exactly what the
+      // placeholder tells people to type. Not splitting at all leaves a
+      // pasted list of eighty ZIPs as a single pill. The test that tells them
+      // apart is whether EVERY piece stands on its own as a market: two ZIPs
+      // do, a county and its state do not.
+      var out = [];
+      parts.forEach(function (p) {{
+        var bits = p.split(',').map(function (x) {{ return x.trim(); }})
+                    .filter(Boolean);
+        if (bits.length > 1 && bits.every(function (b) {{
+              return geoState(b) !== null;
+            }})) {{
+          out = out.concat(bits);
+        }} else {{
+          out.push(p);
+        }}
+      }});
+      out.forEach(function (c) {{
         var label = c.replace(/\s+/g, ' ').trim().replace(/^,|,$/g, '').trim();
         if (!label) return;
         var dupe = MARKETS.some(function (m) {{
@@ -1522,7 +1569,11 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
       var input = document.getElementById('geoinput');
       if (!input) return;
       input.addEventListener('keydown', function (ev) {{
-        if (ev.key === 'Enter' || ev.key === ',') {{
+        // NOT ON A COMMA. "Knox County, TN" is one market and the comma is
+        // inside it - committing on the keystroke split it in half before the
+        // state had been typed.
+        if (ev.key === 'Enter' || ev.key === 'Tab') {{
+          if (!input.value.trim()) return;
           ev.preventDefault();
           geoAdd(input.value);
           input.value = '';

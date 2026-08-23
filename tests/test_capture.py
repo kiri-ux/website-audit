@@ -179,6 +179,41 @@ def main():
     st, a3 = GET(f"/api/audits/{aid2}")
     check("degenerate capture flagged on the audit", bool(a3.get("crawl_blocked")))
 
+    print("\nA SHOT THAT PROMISES A RED MARK HAS TO CARRY ONE")
+    # THE BUG, REPLAYED - THREE TIMES.
+    #
+    # The caption says "the thing each check flagged outlined in red". Three
+    # separate DOM checks were added to keep that true: does the selector
+    # match, is the element visible, is its rectangle in the viewport. All
+    # three passed and the picture still came back with no red on it, because
+    # a clip, a sticky header or a transform is invisible to the DOM.
+    #
+    # The picture is the deliverable, so the picture is what gets checked.
+    from engine.screenshots import has_mark, MARK_RGB, _rows
+    import struct as _st, zlib as _zl
+
+    def _png(w, h, rgb):
+        def _chunk(tag, data):
+            c = tag + data
+            return _st.pack(">I", len(data)) + c + _st.pack(">I",
+                                                            _zl.crc32(c))
+        raw = b"".join(b"\x00" + bytes(rgb) * w for _ in range(h))
+        return (b"\x89PNG\r\n\x1a\n"
+                + _chunk(b"IHDR", _st.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+                + _chunk(b"IDAT", _zl.compress(raw))
+                + _chunk(b"IEND", b""))
+
+    check("a picture painted in the mark colour is recognised",
+          has_mark(_png(40, 40, MARK_RGB)))
+    check("a picture with none of it is not",
+          not has_mark(_png(40, 40, (255, 255, 255))))
+    check("nor is one in a different red",
+          not has_mark(_png(40, 40, (255, 0, 0))))
+    check("an undecodable blob is not thrown away",
+          has_mark(b"not a png"))
+    check("the decoder reads what Chromium emits",
+          (_rows(_png(8, 4, MARK_RGB)) or [None])[0] == 8)
+
     print("\n" + "=" * 68)
     print(f"  {len(FAILURES)} FAILED: {FAILURES}" if FAILURES
           else "  ALL CHECKS PASSED — browser capture is equivalent to a server crawl")

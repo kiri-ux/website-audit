@@ -73,6 +73,51 @@ _SPLIT = re.compile(r"[×✕✖]|\sx\s|[;|\n\r]+|\s{2,}")
 _TRAILING = re.compile(r"[,\s]+([A-Za-z.\s]{2,30})$")
 
 
+# ---------------------------------------------------------------- ZIP codes
+#
+# A ZIP IS A MARKET, AND IT NAMES ITS OWN STATE.
+#
+# Pasting a media plan's targeting list produces eighty ZIP codes, and every
+# one of them came back with a "?" against it - no state, so no privacy law,
+# so a scan that skipped the state checks entirely and said nothing about it.
+# The operator's reaction was the right one: we should be able to work out
+# which state a ZIP is in.
+#
+# The first three digits are the sectional center facility, and USPS assigns
+# those in contiguous per-state ranges. That is a table, not a lookup service:
+# forty lines, no network call, no key, and it does not go stale in any way
+# that matters (a new ZIP lands inside an existing range).
+ZIP3_RANGES = (
+    (5, 5, "NY"), (10, 27, "MA"), (28, 29, "RI"), (30, 38, "NH"),
+    (39, 49, "ME"), (50, 59, "VT"), (60, 69, "CT"), (70, 89, "NJ"),
+    (100, 149, "NY"), (150, 196, "PA"), (197, 199, "DE"), (200, 200, "DC"),
+    (201, 201, "VA"), (202, 205, "DC"), (206, 219, "MD"), (220, 246, "VA"),
+    (247, 268, "WV"), (270, 289, "NC"), (290, 299, "SC"), (300, 319, "GA"),
+    (320, 349, "FL"), (350, 369, "AL"), (370, 385, "TN"), (386, 397, "MS"),
+    (398, 399, "GA"), (400, 427, "KY"), (430, 459, "OH"), (460, 479, "IN"),
+    (480, 499, "MI"), (500, 528, "IA"), (530, 549, "WI"), (550, 567, "MN"),
+    (570, 577, "SD"), (580, 588, "ND"), (590, 599, "MT"), (600, 629, "IL"),
+    (630, 658, "MO"), (660, 679, "KS"), (680, 693, "NE"), (700, 714, "LA"),
+    (716, 729, "AR"), (730, 749, "OK"), (750, 799, "TX"), (800, 816, "CO"),
+    (820, 831, "WY"), (832, 838, "ID"), (840, 847, "UT"), (850, 865, "AZ"),
+    (870, 884, "NM"), (889, 898, "NV"), (900, 961, "CA"), (967, 968, "HI"),
+    (970, 979, "OR"), (980, 994, "WA"), (995, 999, "AK"),
+)
+
+
+def zip_state(text: str) -> str | None:
+    """The state a five-digit ZIP is in, or None if it is not a ZIP."""
+    s = (text or "").strip()
+    m = re.match(r"^(\d{5})(?:-\d{4})?$", s)
+    if not m:
+        return None
+    z3 = int(m.group(1)[:3])
+    for lo, hi, code in ZIP3_RANGES:
+        if lo <= z3 <= hi:
+            return code
+    return None
+
+
 def state_of(market: str) -> str | None:
     """
     The two-letter state code a market string names, or None.
@@ -85,6 +130,10 @@ def state_of(market: str) -> str | None:
     s = (market or "").strip().strip(",")
     if not s:
         return None
+    # A ZIP code names a state without naming it.
+    z = zip_state(s)
+    if z:
+        return z
     # The whole string is a state.
     if s.upper() in STATES:
         return s.upper()

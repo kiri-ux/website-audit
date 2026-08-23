@@ -248,6 +248,32 @@ def main():
     check("with what to record once it opens",
           "exclusion reasons by page count" in _asrc)
 
+    print("\nA ZIP CODE NAMES ITS OWN STATE")
+    # THE BUG, REPLAYED.
+    #
+    # A media plan's targeting list is eighty ZIP codes. Every one came back
+    # with a "?" against it - no state, so no privacy law, so a scan that
+    # skipped the state checks and said nothing about having done so. USPS
+    # assigns the first three digits in contiguous per-state ranges, which is
+    # a forty-line table rather than a lookup service.
+    from engine.geo import zip_state, state_of
+    for z, want in (("37314", "TN"), ("37901", "TN"), ("90210", "CA"),
+                    ("10001", "NY"), ("99501", "AK"), ("02134", "MA"),
+                    ("60601", "IL"), ("37314-1234", "TN")):
+        check(f"{z} resolves to {want}", zip_state(z) == want, str(zip_state(z)))
+    check("a market that is only a ZIP still gets its state",
+          state_of("37314") == "TN")
+    check("and a written market still works",
+          state_of("Knox County, TN") == "TN")
+    check("something that is not a ZIP is not guessed at",
+          zip_state("Knoxville") is None and zip_state("123") is None)
+    # The browser validates the pills and Python decides the laws; two copies
+    # of this table would agree until one was edited.
+    from app import ui as _ui2
+    import inspect as _in2
+    check("the form builds its copy from the scanner's table",
+          "ZIP3_RANGES" in _in2.getsource(_ui2.dashboard_html))
+
     print("\n" + "=" * 68)
     if FAILED:
         print(f"  {len(FAILED)} FAILED: {FAILED}")

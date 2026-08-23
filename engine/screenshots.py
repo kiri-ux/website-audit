@@ -66,6 +66,107 @@ def available() -> bool:
         return False
 
 
+# The red the outline is painted in, and the tolerance a screenshot needs.
+# PNG is lossless, so the pixels come back exactly as painted - the tolerance
+# is only for anti-aliased edges.
+MARK_RGB = (0xD0, 0x3B, 0x3B)
+
+
+def _rows(png: bytes):
+    """
+    Decode a PNG into (width, scanline_bytes, bytes_per_pixel, rows).
+
+    Written by hand because the worker has no image library and is not getting
+    one for this: Pillow is a build dependency and a security surface, and all
+    that is needed here is "does this picture contain the colour we painted".
+    Handles what Chromium actually emits - 8-bit RGB or RGBA, no interlace.
+    """
+    import struct
+    import zlib
+    if png[:8] != b"\x89PNG\r\n\x1a\n":
+        return None
+    pos, w, h, depth, ctype, idat = 8, 0, 0, 0, 0, bytearray()
+    while pos + 8 <= len(png):
+        ln = struct.unpack(">I", png[pos:pos + 4])[0]
+        tag = png[pos + 4:pos + 8]
+        body = png[pos + 8:pos + 8 + ln]
+        if tag == b"IHDR":
+            w, h, depth, ctype, _c, _f, interlace = struct.unpack(
+                ">IIBBBBB", body)
+            if depth != 8 or ctype not in (2, 6) or interlace:
+                return None
+        elif tag == b"IDAT":
+            idat += body
+        elif tag == b"IEND":
+            break
+        pos += 12 + ln
+    if not idat or not w:
+        return None
+    bpp = 3 if ctype == 2 else 4
+    raw = zlib.decompress(bytes(idat))
+    stride = w * bpp
+    out, prev = [], bytearray(stride)
+    at = 0
+    for _y in range(h):
+        if at >= len(raw):
+            break
+        f = raw[at]
+        line = bytearray(raw[at + 1:at + 1 + stride])
+        at += 1 + stride
+        for i in range(stride):
+            a = line[i - bpp] if i >= bpp else 0
+            b = prev[i]
+            c = prev[i - bpp] if i >= bpp else 0
+            if f == 1:
+                line[i] = (line[i] + a) & 255
+            elif f == 2:
+                line[i] = (line[i] + b) & 255
+            elif f == 3:
+                line[i] = (line[i] + ((a + b) >> 1)) & 255
+            elif f == 4:
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                pr = a if (pa <= pb and pa <= pc) else (b if pb <= pc else c)
+                line[i] = (line[i] + pr) & 255
+        out.append(line)
+        prev = line
+    return w, stride, bpp, out
+
+
+def has_mark(png: bytes, tol: int = 26, need: int = 40) -> bool:
+    """
+    Is the outline colour actually in these pixels?
+
+    THE ONLY CHECK THAT CANNOT BE FOOLED.
+    #
+    Every earlier attempt asked the DOM a question and believed the answer:
+    does the selector match, is the element visible, is its rectangle inside
+    the viewport. All three said yes and the picture still came back with no
+    red on it - an ancestor with `overflow:hidden` clips an outline, a sticky
+    header covers it, a transform moves it, and the DOM reports none of that.
+    #
+    The picture is the deliverable, so the picture is what gets checked. If
+    the red we painted is not in it, there is no evidence shot.
+    """
+    dec = _rows(png)
+    if not dec:
+        return True          # cannot decode: do not throw away a real shot
+    _w, stride, bpp, rows = dec
+    r0, g0, b0 = MARK_RGB
+    hits = 0
+    # Every second row and every second pixel: an outline is three pixels
+    # thick and hundreds long, so half resolution finds it and costs half.
+    for y in range(0, len(rows), 2):
+        line = rows[y]
+        for x in range(0, stride - bpp, bpp * 2):
+            if (abs(line[x] - r0) <= tol and abs(line[x + 1] - g0) <= tol
+                    and abs(line[x + 2] - b0) <= tol):
+                hits += 1
+                if hits >= need:
+                    return True
+    return False
+
+
 def capture(url: str, selector: str = "", width: int = 1280, height: int = 820,
             timeout_ms: int = 10000) -> bytes | None:
     """
@@ -133,9 +234,25 @@ def capture(url: str, selector: str = "", width: int = 1280, height: int = 820,
                               f"matched nothing visible — no evidence shot",
                               flush=True)
                         return None
+                    # THREE MARKS, NOT ONE.
+                    #
+                    # An `outline` is drawn OUTSIDE the element's box, so an
+                    # ancestor with `overflow:hidden` clips it away and the
+                    # element looks untouched. The inset shadow is painted
+                    # inside the box and cannot be clipped by an ancestor; the
+                    # Between them something red lands on the pixels almost
+                    # however the page is built, which is what has_mark() then
+                    # checks for.
+                    #
+                    # NO BACKGROUND TINT. It was in this rule for one build and
+                    # it works too well: `background-color !important` repaints
+                    # the element, so a navy footer came back pink. The caption
+                    # says "pages as they loaded", and a mark that recolors the
+                    # page makes that untrue.
                     page.add_style_tag(content=(
                         f"{selector} {{ outline: 3px solid #d03b3b !important; "
-                        f"outline-offset: 2px !important; }}"))
+                        f"outline-offset: 2px !important; "
+                        f"box-shadow: inset 0 0 0 3px #d03b3b !important; }}"))
                     try:
                         target.scroll_into_view_if_needed(timeout=2500)
                         page.wait_for_timeout(200)
@@ -179,8 +296,27 @@ def capture(url: str, selector: str = "", width: int = 1280, height: int = 820,
                                   flush=True)
                             return None
                     except Exception:  # noqa: BLE001
-                        pass
+                        # FAIL CLOSED. A swallowed exception here is how a
+                        # check that exists to prevent an unmarked picture
+                        # ends up permitting one.
+                        print(f"[screenshot] {url}: could not confirm "
+                              f"{selector!r} was in frame — no evidence shot",
+                              flush=True)
+                        return None
                 png = page.screenshot(type="png")
+                # THE PICTURE IS THE DELIVERABLE, SO CHECK THE PICTURE.
+                #
+                # Three DOM checks passed and the shot still came back with no
+                # red on it, twice. Whatever the reason - a clip, a sticky
+                # header, a transform - the pixels are the only thing that
+                # settles it, and a caption promising a red outline over a
+                # picture without one is the report lying about its own
+                # evidence.
+                if selector and png and not has_mark(png):
+                    print(f"[screenshot] {url}: {selector!r} was marked but no "
+                          f"red reached the picture — no evidence shot",
+                          flush=True)
+                    return None
             finally:
                 browser.close()
     except Exception as e:

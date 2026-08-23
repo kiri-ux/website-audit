@@ -707,17 +707,22 @@ def _ai_visibility(a, audit_id, findings, extras, step):
             q = qtext.get(r.get("query_id"))
             if not q:
                 continue
-            if r.get("cited") and len(wins) < 3:
+            # STORE MORE THAN THE REPORT SHOWS.
+            #
+            # The renderer picks three that are ABOUT different things, and it
+            # can only do that if it has a pool to choose from - three stored
+            # examples of the same service leave it nothing to spread.
+            if r.get("cited") and len(wins) < 8:
                 wins.append({"question": q, "platform": r.get("platform"),
                              "answer": answers.get((r.get("query_id"),
                                                     r.get("platform")), "")})
-            elif not r.get("cited") and len(losses) < 3:
+            elif not r.get("cited") and len(losses) < 8:
                 others = [d for d in (r.get("other_domains") or [])][:3]
                 losses.append({"question": q, "platform": r.get("platform"),
                                "cited_instead": others,
                                "answer": answers.get((r.get("query_id"),
                                                       r.get("platform")), "")})
-            if len(wins) >= 3 and len(losses) >= 3:
+            if len(wins) >= 8 and len(losses) >= 8:
                 break
         # THE WHOLE RUN, ON DISK, BEFORE WE DERIVE ANYTHING FROM IT.
         #

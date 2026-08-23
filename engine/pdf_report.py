@@ -1012,6 +1012,47 @@ def _ai_examples(v, S, brand=""):
     _SHOW_FIRST = {"ai_overview": 0, "chatgpt": 1, "perplexity": 2,
                    "gemini": 3, "claude": 4, "copilot": 5}
 
+    def _spread(items, n):
+        """
+        Different questions, not the same question three ways.
+
+        THREE EXAMPLES ABOUT ONE SERVICE IS ONE EXAMPLE.
+        #
+        The misses came back as "Who should I hire for estate planning...",
+        "How much does estate planning cost...", "Who is best for estate
+        planning..." - the panel asks three shapes per service, so taking the
+        first three in order takes one service three times. Worse, it made a
+        side practice look like the firm's whole business.
+        #
+        Greedy, on the words the questions do not share. Cheap, and it cannot
+        pick the same subject twice while a different one is available.
+        """
+        STOP = {"who", "what", "how", "much", "does", "is", "are", "the", "a",
+                "an", "in", "for", "should", "i", "hire", "best", "good",
+                "find", "cost", "do", "of", "to", "my", "me", "and", "with",
+                "when", "choosing", "before", "look"}
+
+        def words(x):
+            import re as _re
+            return {w for w in _re.findall(r"[a-z]+",
+                                           str(x.get("question") or "").lower())
+                    if w not in STOP and len(w) > 2}
+
+        out, used = [], set()
+        pool = list(items or [])
+        while pool and len(out) < n:
+            best, best_overlap = None, None
+            for it in pool:
+                overlap = len(words(it) & used)
+                if best_overlap is None or overlap < best_overlap:
+                    best, best_overlap = it, overlap
+                if overlap == 0:
+                    break
+            out.append(best)
+            used |= words(best)
+            pool.remove(best)
+        return out
+
     def _pref(items):
         # Google's AI answers and ChatGPT first - see the same list in
         # app/worker.py, which decides which examples get STORED. This orders
@@ -1086,9 +1127,9 @@ def _ai_examples(v, S, brand=""):
         ]))
         return KeepTogether([t])
 
-    for w in wins[:2]:
+    for w in _spread(wins, 2):
         out.append(block(w, True))
-    for m in miss[:3]:
+    for m in _spread(miss, 3):
         out.append(block(m, False))
     return out
 
