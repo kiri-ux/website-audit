@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-80"
-BUILD_NOTES = ("A town is no longer treated as a service, examples come "
-               "from Google and ChatGPT, named-then-linked tile order")
+BUILD = "2026.08.20-81"
+BUILD_NOTES = ("A phase you did not re-run keeps its previous answers, "
+               "and the browser tab shows the scan running")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

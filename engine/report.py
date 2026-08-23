@@ -380,11 +380,17 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
     from collections import Counter, defaultdict
 
     b = buckets(findings, catalog)
-    stale = ((meta or {}).get("extras") or {}).get("stale_crawl")
+    _ex = ((meta or {}).get("extras") or {})
+    stale = _ex.get("stale_crawl")
+    # Answers taken from an earlier run belong in this panel for the same
+    # reason a stale crawl does: they are why a run looks different from the
+    # last one, and this is the only place anyone would look for that reason.
+    carried = _ex.get("carried_forward") or {}
     # A reused crawl too old for the current checks is worth saying even when
     # nothing else is outstanding — it is the reason a run looks thinner than
     # the last one, and the only place anyone would look for that reason.
-    if not (b["client"] or b["vendor"] or b["manual"] or stale):
+    if not (b["client"] or b["vendor"] or b["manual"] or stale
+            or carried.get("count")):
         return []
 
     def reasons(ids):
@@ -553,6 +559,25 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             f"A credential we have not set, or a call we have not written. "
             f"Nothing to ask anyone for.</div>"
             f"<ul style='margin:6px 0 0 18px'>{items}</ul></div>")
+
+    # ANSWERS BROUGHT FORWARD FROM AN EARLIER RUN.
+    #
+    # A quiet carry-forward would be worse than none: the score would move for
+    # a reason nobody could see, and a row dated last week would read as today.
+    # Loud, counted, and dated - the same rule as the reused crawl.
+    if carried.get("count"):
+        _carried = carried
+        _from = ", ".join(_carried.get("from") or []) or "an earlier run"
+        out.append(
+            f"<div style='margin-top:12px'>"
+            f"<b style='color:var(--seq)'>Carried over from an earlier run "
+            f"&middot; {_carried['count']}</b>"
+            f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
+            f"Phases this run did not repeat, answered from "
+            f"<code>{e(_from)}</code> instead of left blank. They are scored "
+            f"as measured, and they describe the site as of that run - "
+            f"re-tick the phase to refresh them."
+            f"</div></div>")
 
     if unreadable:
         rows = bullets(reasons(unreadable))

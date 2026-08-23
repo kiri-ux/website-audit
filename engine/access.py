@@ -203,11 +203,32 @@ def owner(cid: str) -> str:
 # This is the analyst-list mistake wearing a different hat: a list that fills
 # up with things needing no action is a list people stop reading, and the one
 # genuine failure hiding among the fifteen goes with it.
+# EVERY BOX ON THE FORM, NOT JUST THE TWO OPT-IN ONES.
+#
+# Only consent and AI visibility were listed, so unticking "Read and judge the
+# pages" produced forty-four rows filed under "a credential we have not set,
+# or a call we have not written" - and unticking the collectors added another
+# thirty-one. Nothing was broken and nothing was missing: the operator had
+# those answers from an earlier run and deliberately did not pay for them
+# again. A panel that reports a deliberate choice as seventy-six defects is
+# the same failure this list was created to fix, one build later.
 OPTIONAL_PHASES = (
     ("run_consent", "engine.consent.checks", "CONS_IDS",
      "Consent &amp; privacy", "tick 'Consent &amp; privacy' on the next run"),
     ("run_aivis", "engine.aivis.geo_checks", "GEO_IDS",
      "Ask the AI assistants", "tick 'Ask the AI assistants' on the next run"),
+    ("run_judgment", "engine.judgment", "CHECKPOINT_IDS",
+     "Read and judge the pages",
+     "tick 'Read and judge the pages' on the next run"),
+    ("run_collectors", "engine.collectors", "OFF_IDS",
+     "Search Console, Analytics, off-page",
+     "tick 'Search Console, Analytics, off-page' on the next run"),
+    ("run_collectors", "engine.collectors", "GSC_IDS",
+     "Search Console, Analytics, off-page",
+     "tick 'Search Console, Analytics, off-page' on the next run"),
+    ("run_collectors", "engine.collectors", "GA4_IDS",
+     "Search Console, Analytics, off-page",
+     "tick 'Search Console, Analytics, off-page' on the next run"),
 )
 
 
@@ -224,7 +245,14 @@ def unrequested(ids, phases_run: dict | None) -> tuple:
         return [], list(ids)
     off = {}
     for key, mod, attr, name, fix in OPTIONAL_PHASES:
-        if phases_run.get(key):
+        # ABSENT IS UNKNOWN, NEVER "OFF".
+        #
+        # A stamp written before a phase was added to this list carries no key
+        # for it, and reading that as "not requested" would file every
+        # judgment and collector row of every older audit under "nobody asked
+        # for these" - which is a lie in the reassuring direction, and hides
+        # real failures. Only an explicit False counts.
+        if key not in phases_run or phases_run.get(key):
             continue
         try:
             src = getattr(__import__(mod, fromlist=[attr]), attr)

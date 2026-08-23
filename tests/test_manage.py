@@ -469,6 +469,53 @@ def main():
     check("and the card says stalled instead of spinning",
           "stalled" in _t2 and "<span class='spin'>" not in _h2)
 
+    print("\nWHAT AN UNTICKED PHASE ALREADY KNEW COMES FORWARD")
+    # THE BUG, REPLAYED.
+    #
+    # A re-run with the judgment layer and the collectors switched off - the
+    # answers already existed from the run before - produced seventy-six
+    # unanswered rows and a lower score. Unticking a box meant throwing the
+    # earlier answer away, which makes the cheap re-run strictly worse than
+    # the expensive one and moves the score for a reason nobody can see.
+    import time as _t3
+    from app import db as _db3, worker as _wk3
+    _old = _db3.create_audit("vici", "Carry Co", "https://carry.test/",
+                             None, None, {})
+    _db3.save_findings(_old, {
+        "EEAT-01": {"status": "Pass", "value": {}, "evidence": "measured then",
+                    "affected_pages": [], "severity": "Low",
+                    "recommendation": "", "confidence": 1.0,
+                    "source": "llm_judgment"},
+        "OFF-01": {"status": "Need Access", "value": {},
+                   "evidence": "no backlink key", "affected_pages": [],
+                   "severity": "Low", "recommendation": "", "confidence": 0.0,
+                   "source": "dfs_missing"}})
+    _db3.update_audit(_old, status="ready", completed_at=_t3.time() - 60)
+
+    _new = _db3.create_audit("vici", "Carry Co", "https://carry.test/",
+                             None, None, {})
+    _a3 = _db3.get_audit(_new)
+    _carried = _wk3._carry_forward(
+        _a3, {"skip_judgment": True, "skip_collectors": True}, _new,
+        {"TECH-01": {"status": "Pass"}})
+    check("an answered row from the last run comes forward",
+          "EEAT-01" in _carried, str(sorted(_carried)))
+    check("and it is stamped with where it came from",
+          _carried.get("EEAT-01", {}).get("value", {}).get("carried_from")
+          == _old)
+    check("an unanswered row is not carried - that is just an older gap",
+          "OFF-01" not in _carried, str(sorted(_carried)))
+    _ran = _wk3._carry_forward(_a3, {}, _new, {})
+    check("nothing is carried for a phase that actually ran",
+          not _ran, str(sorted(_ran)))
+    # And the panel says so rather than moving the score in silence.
+    from engine.report import _todo_panel as _tp3
+    _html3 = "".join(_tp3({}, {}, {"extras": {
+        "phases_run": {"run_consent": True, "run_aivis": True},
+        "carried_forward": {"count": 44, "from": [_old], "ids": []}}}))
+    check("the panel counts what was carried over",
+          "Carried over from an earlier run" in _html3 and "44" in _html3)
+
     print("\n" + "=" * 68)
     print(f"  {len(FAILURES)} FAILED: {FAILURES}" if FAILURES
           else "  ALL CHECKS PASSED — delete is complete and scoped; grouping is safe")

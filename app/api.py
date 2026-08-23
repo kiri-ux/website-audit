@@ -898,8 +898,19 @@ def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
     # ticked.
     if (meta.get("extras") or {}).get("consent"):
         meta["consent_url"] = f"/audits/{audit_id}/consent"
-    return render_html(meta, scores, findings, cat,
+    html = render_html(meta, scores, findings, cat,
                        summary=build_summary(findings, scores, cat, meta))
+    # THE GREEN DOT, ON THE PAGE THAT MEANS IT IS DONE.
+    #
+    # The running page pulses amber in the tab; this is the other half. Only
+    # for a run that finished in the last ten minutes - somebody who left the
+    # tab open and came back. On a report from last week a green dot would be
+    # decoration, and a tab full of them says nothing.
+    done_at = a.get("completed_at") or 0
+    if done_at and time.time() - float(done_at) < 600:
+        from .ui import _tab
+        html = html.replace("</body>", _tab("done") + "</body>")
+    return html
 
 
 def _extras(a: dict) -> dict:

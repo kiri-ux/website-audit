@@ -528,7 +528,62 @@ RAIL = (
     "</nav>")
 
 
-def _shell(title, body, refresh=None, heading=None, crumbs=None):
+# ---------------------------------------------------------------- tab state
+#
+# THE TAB IS WHERE YOU LOOK WHEN YOU ARE NOT LOOKING.
+#
+# A scan takes minutes, so nobody watches it - they switch tabs and come back.
+# Everything on the page said "running" to someone already reading it, and
+# nothing said anything to someone who was not. This paints the state into the
+# favicon and the title, which is the one part of the page a background tab
+# still shows: a slow amber pulse while it runs, a steady green dot when it
+# lands.
+#
+# Drawn on a canvas rather than swapped between two files: it is a dozen
+# lines, it cannot 404, and it keeps working if the brand icon changes.
+_TAB_JS = """
+<script>(function(){
+ var mode=%s, base=document.title, on=true, link=null;
+ function icon(color, alpha){
+  var c=document.createElement('canvas'); c.width=c.height=32;
+  var x=c.getContext('2d');
+  x.fillStyle='#002D58'; x.beginPath();
+  if(x.roundRect){x.roundRect(0,0,32,32,8);}else{x.rect(0,0,32,32);}
+  x.fill();
+  x.globalAlpha=alpha; x.fillStyle=color;
+  x.beginPath(); x.arc(16,16,8,0,6.2832); x.fill();
+  return c.toDataURL('image/png');
+ }
+ function paint(){
+  if(!link){link=document.querySelector("link[rel~='icon']");
+   if(!link){link=document.createElement('link');link.rel='icon';
+    document.head.appendChild(link);} }
+  if(mode==='running'){
+   on=!on;
+   link.type='image/png';
+   link.href=icon('#F1B434', on?1:0.28);
+   document.title=(on?'\u25cf ':'\u25cb ')+base;
+  }else{
+   link.type='image/png';
+   link.href=icon('#1E7A45',1);
+   document.title=base;
+  }
+ }
+ paint();
+ if(mode==='running') setInterval(paint, 900);
+})();</script>
+"""
+
+
+def _tab(mode):
+    """`running` pulses amber, `done` sits green, anything else is untouched."""
+    if mode not in ("running", "done"):
+        return ""
+    import json as _j
+    return _TAB_JS % _j.dumps(mode)
+
+
+def _shell(title, body, refresh=None, heading=None, crumbs=None, tab=None):
     """
     adtini chrome: fixed navy rail, white top bar, breadcrumb, content.
 
@@ -571,6 +626,7 @@ def _shell(title, body, refresh=None, heading=None, crumbs=None):
         trail = f"<div class='crumb'>{' &rsaquo; '.join(parts)}</div>"
     return (f"<!doctype html><html><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width,initial-scale=1'>{r}"
+            f"{_tab(tab)}"
             f"{HEAD}"
             f"<title>{e(title)}</title><style>{CSS}</style></head>"
             f"<body class='viz-root'>{RAIL}"
@@ -1598,7 +1654,9 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
     # page name printed twice with a font change. The audit detail page keeps
     # its trail, because there the first item is a link back to this one.
     return _shell("Site Scanner", body, refresh=8 if running else None,
-                  heading="Site Scanner")
+                  heading="Site Scanner",
+                  # Amber in the tab for as long as anything is in flight.
+                  tab="running" if running else None)
 
 
 def audit_html(a):
@@ -1789,4 +1847,6 @@ def audit_html(a):
             f"audit <code>{e(a['id'])}</code></div>{inner}")
     return _shell(f"{a['client_name']} — running", body, refresh=refresh,
                   heading=a["client_name"],
-                  crumbs=[("Site Scanner", "/"), (a["client_name"], None)])
+                  crumbs=[("Site Scanner", "/"), (a["client_name"], None)],
+                  tab="running" if cur in ("queued", "crawling", "checking",
+                                           "scoring") and not stale else None)

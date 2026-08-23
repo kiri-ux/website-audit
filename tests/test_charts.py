@@ -555,6 +555,30 @@ def main():
     check("everything drawn stays inside the flowable's own box",
           not [t for t in rec.texts if t["y"] > h or t["y"] < -1])
 
+    print("\nEVERY BOX ON THE FORM COUNTS AS A PHASE")
+    # THE BUG, REPLAYED.
+    #
+    # Only consent and AI visibility were treated as optional, so unticking
+    # "Read and judge the pages" and the collectors - because those answers
+    # already existed from an earlier run - printed seventy-six rows under "a
+    # credential we have not set, or a call we have not written".
+    from engine.access import unrequested as _unreq
+    from engine.judgment import CHECKPOINT_IDS as _JIDS
+    _ids = list(_JIDS)[:3] + ["OFF-01", "GSC-02", "TECH-01"]
+    _sk, _rest = _unreq(_ids, {"run_consent": True, "run_aivis": True,
+                               "run_judgment": False, "run_collectors": False})
+    check("an unticked judgment phase is not a fix list item",
+          all(n == "Read and judge the pages"
+              for c, (n, _f) in _sk if c.startswith("EEAT")), str(_sk[:1]))
+    check("nor are the collectors",
+          {"OFF-01", "GSC-02"} <= {c for c, _ in _sk}, str([c for c, _ in _sk]))
+    check("and a checkpoint no box controls stays where it was",
+          _rest == ["TECH-01"], str(_rest))
+    # AND THE OLDER STAMP MUST NOT BE READ AS "NOBODY ASKED".
+    _sk2, _rest2 = _unreq(_ids, {"run_consent": True, "run_aivis": True})
+    check("a stamp written before these phases existed claims nothing",
+          not _sk2 and len(_rest2) == len(_ids), f"{len(_sk2)} skipped")
+
     print("\nEVERYTHING HANGS FROM ONE LEFT EDGE")
     # THE BUG, REPLAYED.
     #

@@ -2473,7 +2473,12 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
          f"technical SEO, on-page, structured data, performance, security, "
          f"E-E-A-T and generative-engine visibility."),
         ("What we measured", f"{m} checks answered from your live site plus "
-                             f"third-party data."),
+                             f"third-party data."
+         + (f" {_cf['count']} of them were measured on an earlier run of this "
+            f"site and carried forward rather than repeated, so they describe "
+            f"the site as of that run."
+            if (_cf := ((meta.get("extras") or {}).get("carried_forward") or {})
+                ).get("count") else "")),
         ("What we need from you",
          f"{need_client} checks read from Search Console and Analytics, which "
          f"we cannot see without a read-only grant. They are left out of the "

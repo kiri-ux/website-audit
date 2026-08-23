@@ -22,6 +22,7 @@ from .artifacts import put_artifact, get_artifact
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from engine.crawler import Crawler
+from engine.access import OPTIONAL_PHASES as _OPTIONAL_PHASES
 from engine import checks as engine_checks
 from engine import scoring as engine_scoring
 from engine import aivis
@@ -764,6 +765,85 @@ def _context_of(art):
     return {**bc.to_dict(), "describe": bc.describe()}
 
 
+def _carry_forward(a, opts, audit_id, findings) -> dict:
+    """
+    Answers a SKIPPED phase already has, taken from this site's last run.
+
+    THE WHOLE POINT OF UNTICKING A BOX IS THAT YOU ALREADY HAVE THE ANSWER.
+    #
+    A run with the judgment layer and the collectors switched off produced
+    seventy-six unanswered rows, and the operator's reaction was the right
+    one: "I didn't select those because I already had them - but the previous
+    data isn't in the report." Both halves were true. Nothing carried over, so
+    a cheap re-run silently produced a WORSE report than the expensive one
+    before it, and the score moved for no reason anybody could see.
+    #
+    Rules, in order of how much they matter:
+    #
+      * Only for phases this run did not do. A phase that ran and failed is a
+        failure, and papering over it with last week's answer is exactly the
+        silent degradation this codebase keeps hunting.
+      * Only real answers. A Need Access row carried forward is just an older
+        copy of the same gap.
+      * Only from the same URL, newest first.
+      * Never silently: every carried row is stamped with where it came from
+        and when, the internal panel counts them, and the methodology says so.
+    """
+    want = []
+    for key, mod, attr, _name, _fix in _OPTIONAL_PHASES:
+        if _phase_on(opts, key):
+            continue
+        try:
+            want += list(getattr(__import__(mod, fromlist=[attr]), attr))
+        except Exception:  # noqa: BLE001
+            continue
+    # A row that this run answered properly always wins.
+    _ANSWERED = ("Pass", "Fail", "Warning", "Not Implemented", "Info", "N/A")
+    need = [cid for cid in dict.fromkeys(want)
+            if (findings.get(cid) or {}).get("status") not in _ANSWERED]
+    if not need:
+        return {}
+
+    url = (a.get("target_url") or "").rstrip("/").lower()
+    prior = [r for r in db.list_audits()
+             if r["id"] != audit_id
+             and (r.get("target_url") or "").rstrip("/").lower() == url
+             and r.get("status") == "ready"]
+    prior.sort(key=lambda r: r.get("completed_at") or r.get("created_at") or 0,
+               reverse=True)
+
+    carried, still = {}, set(need)
+    for row in prior[:5]:
+        if not still:
+            break
+        old = db.get_findings(row["id"]) or {}
+        when = row.get("completed_at") or row.get("created_at")
+        for cid in list(still):
+            f = old.get(cid)
+            if not f or f.get("status") not in _ANSWERED:
+                continue
+            f = dict(f)
+            val = dict(f.get("value") or {})
+            val["carried_from"] = row["id"]
+            val["carried_at"] = when
+            f["value"] = val
+            f["carried_from"] = row["id"]
+            carried[cid] = f
+            still.discard(cid)
+    if carried:
+        print(f"[worker] {audit_id} carried {len(carried)} answered row(s) "
+              f"forward from an earlier run of this URL", flush=True)
+    return carried
+
+
+def _phase_on(opts, key) -> bool:
+    if key == "run_judgment":
+        return not opts.get("skip_judgment")
+    if key == "run_collectors":
+        return not opts.get("skip_collectors")
+    return bool(opts.get(key))
+
+
 def _score_and_save(a, opts, audit_id, art, findings, extras, step):
     """Screenshots, scoring, persistence. Reached by every path, including the
     one that skips collectors entirely."""
@@ -838,8 +918,19 @@ def _score_and_save(a, opts, audit_id, art, findings, extras, step):
     # consent rows with no findings look identical whether the scan crashed or
     # nobody ticked the box, and the panel was printing both as "Ours to fix".
     # One is a bug; the other is a run that did exactly what was asked.
-    extras["phases_run"] = {"run_consent": bool(opts.get("run_consent")),
-                            "run_aivis": bool(opts.get("run_aivis"))}
+    #
+    # ALL of them, not the two opt-in ones. See OPTIONAL_PHASES in
+    # engine/access.py: the collectors and the judgment layer are boxes on the
+    # same form, and unticking them produced seventy-six rows on the fix list
+    # for work nobody asked this run to do.
+    extras["phases_run"] = {
+        "run_consent": bool(opts.get("run_consent")),
+        "run_aivis": bool(opts.get("run_aivis")),
+        # These two are recorded inverted because that is how they arrive:
+        # the form posts a tick, the API stores the absence of one.
+        "run_judgment": not opts.get("skip_judgment"),
+        "run_collectors": not opts.get("skip_collectors"),
+    }
 
     # SAVE AGAIN. THE FIRST SAVE HAPPENED BEFORE THE PHASES RAN.
     #
@@ -862,6 +953,21 @@ def _score_and_save(a, opts, audit_id, art, findings, extras, step):
     # `save_findings` deletes and rewrites the audit's rows, so a second call
     # is idempotent and costs one statement. The early save stays, because a
     # crash inside an optional phase should still leave a readable audit.
+    # WHAT AN UNTICKED PHASE ALREADY KNEW.
+    #
+    # Immediately before the final save and before scoring, so the carried
+    # rows count in the score exactly as they would have if the phase had run
+    # - which is the point. See _carry_forward for the rules.
+    carried = _carry_forward(a, opts, audit_id, findings)
+    if carried:
+        findings.update(carried)
+        extras["carried_forward"] = {
+            "count": len(carried),
+            "from": sorted({f.get("carried_from") for f in carried.values()
+                            if f.get("carried_from")}),
+            "ids": sorted(carried),
+        }
+
     db.save_findings(audit_id, findings)
 
     step("scoring", f"{len(findings)} checkpoints evaluated; scoring")
