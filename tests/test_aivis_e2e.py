@@ -419,6 +419,51 @@ def main():
         _Gem._resolved = None
         _Gem._dead = set()
 
+    print("\n  TWO TOOL SHAPES, AND THE MODEL DECIDES WHICH")
+    # "HTTP 400: Search as tool is not enabled for this model" is Gemini
+    # asking for the OLDER grounding shape — 1.5-era models take
+    # `google_search_retrieval` where 2.x takes `google_search`. Same
+    # capability, renamed. One extra request is the difference between a
+    # measured platform and a checkpoint reporting a 400.
+    from engine.aivis.providers import _tool_mismatch as _tm
+    check("the tool-shape 400 is recognised",
+          _tm("HTTP 400 from x: Search as tool is not enabled for this model."))
+    check("and a plain bad request is NOT — it must not burn every model",
+          not _tm("HTTP 400 from x: Invalid JSON payload received."))
+    _Gem._resolved = None
+    _Gem._dead = set()
+    _Gem._tool_for = {}
+    _shapes = []
+
+    def _shape_stub(self, url, payload, headers, timeout=90):
+        m = url.split("/models/")[1].split(":")[0]
+        tool = list(payload["tools"][0].keys())[0]
+        _shapes.append((m, tool))
+        if tool == "google_search":
+            raise RuntimeError("HTTP 400 from generativelanguage.googleapis."
+                               "com: Search as tool is not enabled for this "
+                               "model.")
+        return {"candidates": [{"content": {"parts": [{"text": "ok"}]}}]}
+
+    _Gem._post = _shape_stub
+    _g._models = lambda: ["gemini-2.5-flash", "gemini-1.5-flash"]
+    try:
+        _a3 = _g.ask("q3", "who")
+        check("a model that wants the older shape is asked with it",
+              _a3.ok and _shapes[-1][1] == "google_search_retrieval",
+              str(_shapes))
+        check("and it is NOT written off as a dead model",
+              "gemini-2.5-flash" not in _Gem._dead, str(_Gem._dead))
+        _k = len(_shapes)
+        _g.ask("q4", "who")
+        check("the working shape is remembered, so it costs one request",
+              len(_shapes) == _k + 1)
+    finally:
+        _Gem._post = _real_post
+        _Gem._resolved = None
+        _Gem._dead = set()
+        _Gem._tool_for = {}
+
     _Gem._resolved = None
     _Gem._dead = set()
     _g._models = lambda: []

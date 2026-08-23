@@ -1,20 +1,16 @@
-# 2026.08.20-56
+# 2026.08.20-57
 
 **Do**
 
 - Upload the zip, wait for Render.
 - Run a scan. Tick "Reuse the last crawl", "Ask the AI assistants", "Consent & privacy".
 - Run the capture on that new audit. (Scan first — each scan makes a new audit.)
-- Reload the extension at chrome://extensions.
 
 **Check**
 
-- New "Full consent scan" link at the top of the report, next to the PDF buttons.
-- That page shows: CMP evidence, GTM container, Consent Mode, every tracker
-  with the page it fired on, products bought vs firing, TN state checks.
-- Empty sections say why they're empty, not just blank.
-- Ours to fix: 0 or 1 items.
-- GSC-09, 10, 11 have numbers.
+- Ours to fix: empty. Gemini should be measured now.
+- "Full consent scan" link at the top of the report, next to the PDF buttons.
+- GEO-29 (Gemini) shows a citation rate instead of Need Access.
 
 **Pending**
 

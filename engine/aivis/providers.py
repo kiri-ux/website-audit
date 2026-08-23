@@ -268,6 +268,23 @@ class OpenAIProvider(Provider):
 
 
 # ---------------------------------------------------------------- Gemini
+def _tool_mismatch(msg: str) -> bool:
+    """
+    Is this Gemini rejecting the GROUNDING TOOL rather than the request?
+
+    Deliberately narrow. A blanket "HTTP 400 means try the next model" would
+    burn through every candidate on a malformed prompt and then report that
+    the key has no usable models, which is a confident lie about the wrong
+    thing.
+    """
+    m = (msg or "").lower()
+    return "400" in m and (
+        "search as tool is not enabled" in m
+        or "google_search_retrieval" in m
+        or "google_search" in m
+        or ("tool" in m and ("not enabled" in m or "not supported" in m)))
+
+
 class GeminiProvider(Provider):
     """Gemini with Google Search grounding."""
     name = "gemini"
@@ -310,6 +327,16 @@ class GeminiProvider(Provider):
         return out
 
     _dead: set = set()
+    # Grounding tool shapes, newest first. A model that rejects one is asked
+    # with the other before it is written off.
+    _TOOLS = ({"google_search": {}}, {"google_search_retrieval": {}})
+    _tool_for: dict = {}
+
+    def _tools(self, model):
+        """The shapes worth trying for this model, remembered once it answers."""
+        known = GeminiProvider._tool_for.get(model)
+        return (known,) if known else self._TOOLS
+
 
     def _candidates(self):
         """
@@ -362,24 +389,46 @@ class GeminiProvider(Provider):
         def go():
             last = None
             for model in self._model_order():
-                try:
-                    d = self._post(
-                        f"https://generativelanguage.googleapis.com/v1beta/"
-                        f"models/{model}:generateContent"
-                        f"?key={os.getenv('GEMINI_API_KEY')}",
-                        {"contents": [{"parts": [{"text": prompt}]}],
-                         "tools": [{"google_search": {}}]}, {})
-                except RuntimeError as ex:
-                    msg = str(ex)
-                    # A model that is missing, retired or closed to new users
-                    # is dead for this whole run — remember it, so twenty-four
-                    # queries do not each rediscover it, and try the next one.
-                    if ("HTTP 404" in msg or "HTTP 403" in msg
-                            or "no longer available" in msg):
-                        GeminiProvider._dead.add(model)
-                        last = ex
-                        continue
-                    raise
+                d = None
+                for tool in self._tools(model):
+                    try:
+                        d = self._post(
+                            f"https://generativelanguage.googleapis.com/v1beta/"
+                            f"models/{model}:generateContent"
+                            f"?key={os.getenv('GEMINI_API_KEY')}",
+                            {"contents": [{"parts": [{"text": prompt}]}],
+                             "tools": [tool]}, {})
+                    except RuntimeError as ex:
+                        msg = str(ex)
+                        # TWO TOOL SHAPES, AND THE MODEL DECIDES WHICH.
+                        #
+                        # `HTTP 400: Search as tool is not enabled for this
+                        # model` is Gemini saying it wants the OLDER grounding
+                        # shape — 1.5-era models take `google_search_retrieval`
+                        # where 2.x takes `google_search`. Same capability,
+                        # renamed. Trying the other shape on the same model
+                        # costs one request and is the difference between a
+                        # measured platform and a checkpoint that reports a
+                        # 400.
+                        if _tool_mismatch(msg) and tool is not self._TOOLS[-1]:
+                            last = ex
+                            continue
+                        # A model that is missing, retired, closed to new users,
+                        # or cannot ground at all is dead for this whole run —
+                        # remember it, so twenty-four queries do not each
+                        # rediscover it, and try the next model.
+                        if ("HTTP 404" in msg or "HTTP 403" in msg
+                                or "no longer available" in msg
+                                or _tool_mismatch(msg)):
+                            GeminiProvider._dead.add(model)
+                            last = ex
+                            d = None
+                            break
+                        raise
+                    GeminiProvider._tool_for[model] = tool
+                    break
+                if d is None:
+                    continue
                 GeminiProvider._resolved = model
                 cand = (d.get("candidates") or [{}])[0]
                 body = "".join(p.get("text", "")

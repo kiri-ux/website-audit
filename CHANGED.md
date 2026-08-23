@@ -1,7 +1,59 @@
-# Changed files — build 2026.08.20-56
+# Changed files — build 2026.08.20-57
 
 Cumulative delta since **2026.08.18-16**. Packed by `pack.py`.
 Extension is **1.4.4** — unchanged since ‑50.
+
+---
+
+## Two tool shapes, and the model decides which
+
+> HTTP 400 from generativelanguage.googleapis.com: **Search as tool is not
+> enabled for this model.**
+
+That is Gemini asking for the *older* grounding shape. 2.x models take
+`google_search`; 1.5-era models take `google_search_retrieval`. Same
+capability, renamed, and the adapter only knew the new name — so a model that
+can ground perfectly well was rejecting every query.
+
+Each candidate model is now asked with both shapes before it is written off,
+and the shape that worked is remembered, so it costs exactly one extra request
+per run rather than one per query.
+
+**The 400 match is deliberately narrow.** "HTTP 400 means try the next model"
+would burn through every candidate on a malformed prompt and then report that
+the key has no usable models — a confident lie about the wrong thing. It
+matches the tool-not-enabled wording specifically, and a plain bad request
+still raises where it happens:
+
+```
+  PASS  the tool-shape 400 is recognised
+  PASS  and a plain bad request is NOT — it must not burn every model
+  PASS  a model that wants the older shape is asked with it
+  PASS  and it is NOT written off as a dead model
+  PASS  the working shape is remembered, so it costs one request
+```
+
+No ungrounded fallback. Asking Gemini without search grounding would return an
+answer and a citation rate, and it would be measuring training-data recall
+rather than citation — a different and weaker thing wearing the same number.
+If neither shape works on any model, the row says so.
+
+---
+
+## The last three rows, in order
+
+Worth recording what the panel has been saying, because each message was only
+possible because of the one before it:
+
+| build | the row said | what it was |
+|---|---|---|
+| ‑50 | "no successful responses collected" | nothing — the error was thrown away |
+| ‑53 | "HTTP Error 404: Not Found" | the body was read, but the model was hardcoded |
+| ‑55 | "no longer available to new users" | a listed model Google would not serve |
+| ‑56 | "prepayment credits are depleted" | billing, and it named the console URL |
+| ‑57 | "Search as tool is not enabled" | the wrong tool name — fixed here |
+
+Five distinct causes that all used to print as one sentence.
 
 ---
 
