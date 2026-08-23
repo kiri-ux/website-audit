@@ -1,10 +1,79 @@
-# Changed files — build 2026.08.20-55
+# Changed files — build 2026.08.20-56
 
 Cumulative delta since **2026.08.18-16**. Packed by `pack.py`.
 Extension is **1.4.4** — unchanged since ‑50.
 
-Four items on the list. Three of them should not have been there, and the
-fourth was cut off mid-sentence.
+---
+
+## Consent dashboard
+
+New link at the top of the report, next to the PDF buttons: **Full consent
+scan &rsaquo;**. Only drawn on audits that actually ran one.
+
+### The scan was being thrown away
+
+Nine checkpoints are a summary of the consent scan. They are not the scan. The
+scanner works out which CMP is installed and what evidence matched it, the GTM
+container ids, the Consent Mode defaults, every tracker that fired and exactly
+when relative to consent, which bought products are actually present, and how
+each targeted state's law comes out — and all of it was computed and discarded
+the moment nine findings were derived. `extras["consent"]` kept five fields.
+
+The whole scan now goes to the artifact store, which is the one place the API
+and the worker demonstrably share.
+
+### Each page keeps its own result
+
+The conversion-page scans were merged into the homepage's. That merge is right
+for the checkpoints — a pixel firing pre-consent on any page is a pre-consent
+fire and CONS-04 should say so once — and wrong for a dashboard: once three
+pages are concatenated, *which page was this on* is gone, and that is the first
+question anyone asks about an ungated pixel. Both are kept now. A page that
+failed to scan is in the record too, rather than a run that covered two of the
+three pages it was asked to and never mentioning the third.
+
+### What the page shows
+
+- Verdict, mode, and the scanner's own detail line
+- CMP matched **and the evidence it matched on**, so a wrong identification is
+  checkable rather than taken on trust
+- GTM containers, Consent Mode defaults, and which probes actually ran
+- Fired before consent — vendor, severity, full request URL, and the page
+- Fired after Reject, fired despite GPC, fired only after consent
+- Products bought against what fires
+- Per-state law checks with the detail behind each
+- Every page scanned, with its mode and tracker counts
+
+### Empty tables say why they are empty
+
+"No trackers under Fired after Reject" reads as a pass. It is a pass only if
+Reject was actually clicked — and with no banner to click, the identical empty
+table means nothing was tested. Each section states which:
+
+> Not tested: no Reject control was found to click — there is no consent
+> banner on this site.
+
+> Not applicable: none of the states this client sells in (TN) require Global
+> Privacy Control to be honoured.
+
+Put California in the markets and that second line becomes *"Not tested,
+although CA requires it. That is ours to fix, not the client's."* A basic-mode
+scan says at the top that every empty table below means untested, not clean.
+
+### An audit with no detail explains itself
+
+The link is drawn from `extras`, and an audit from before this build has extras
+but no artifact. That page says so and how to get it, rather than 404ing — a
+dead link reads as a broken feature, not as a phase nobody ticked.
+
+---
+
+## Also
+
+`GET /api/audits/{id}/consent` returns the stored scan as JSON.
+
+Tests: 22 new assertions across `test_consent.py` and `test_routes.py`,
+including the page fetched over real HTTP and the report link resolving.
 
 ---
 

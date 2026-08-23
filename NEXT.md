@@ -1,19 +1,23 @@
-# Build 2026.08.19-10
+# 2026.08.20-56
 
-## Check after deploying
+**Do**
 
-- [ ] Header reads **build 2026.08.19-10**.
-- [ ] **Re-run** button on each client card and on every earlier-run row. It
-      queues a NEW audit and leaves the original untouched — re-running is how
-      you show a fix worked, so it must not overwrite the before.
-- [ ] Recommended Plan bullets start with a verb: *"Rewrite duplicate page
-      titles"*, *"Write alt text for every image"*, *"Unblock the AI crawlers"*.
-- [ ] Scores by Area: "70 Needs Improvement" no longer runs back over the bar.
-- [ ] No "outside the scope of this audit" wording anywhere. Undetected ad
-      pixels just read **N/A — "Not detected."**
+- Upload the zip, wait for Render.
+- Run a scan. Tick "Reuse the last crawl", "Ask the AI assistants", "Consent & privacy".
+- Run the capture on that new audit. (Scan first — each scan makes a new audit.)
+- Reload the extension at chrome://extensions.
 
-## Up next
+**Check**
 
-- **Send me the keyword rankings table** from a DataForSEO run. Last unverified
-  piece before wiring backlink and ranking data into the E-E-A-T and AI Search
-  prompts.
+- New "Full consent scan" link at the top of the report, next to the PDF buttons.
+- That page shows: CMP evidence, GTM container, Consent Mode, every tracker
+  with the page it fired on, products bought vs firing, TN state checks.
+- Empty sections say why they're empty, not just blank.
+- Ours to fix: 0 or 1 items.
+- GSC-09, 10, 11 have numbers.
+
+**Pending**
+
+- Pick a word to replace "Pass" (Met? OK?).
+- Parity: gtm_api.py (large) → product pixel checkpoints → remediation layer
+  → client share link → run history → batch + CSV + alerts.

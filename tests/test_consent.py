@@ -548,6 +548,89 @@ def main():
     check("and nothing on it tells a person to go and look",
           "Load the page and look" not in _txt3)
 
+    print("\nTHE SCAN IS KEPT, NOT JUST THE NINE ROWS DERIVED FROM IT")
+    # Everything the scanner learned — CMP signatures and the evidence that
+    # matched them, container ids, Consent Mode defaults, every tracker with
+    # the moment it fired, per-state statute results, product pixels — was
+    # computed and thrown away as soon as nine findings existed. That is most
+    # of what the standalone tool puts on screen.
+    import inspect as _i4
+    from app import worker as _wk
+    _csrc = _i4.getsource(_wk._consent)
+    check("the worker stores the whole scan as an artifact",
+          'put_artifact(audit_id, "consent_scan.json"' in _csrc)
+    check("with each page's own result, not only the merged one",
+          '"pages": pages' in _csrc and '"role": "conversion"' in _csrc)
+    check("a page that failed to scan is still in the record",
+          '"error": f"{type(exc).__name__}: {exc}"' in _csrc)
+    check("and a detail write that fails says so instead of vanishing",
+          'has_detail' in _csrc and 'detail_error' in _csrc)
+    import app.api as _api4
+    check("the page and the JSON are both routed",
+          hasattr(_api4, "consent_page") and hasattr(_api4, "consent_detail"))
+
+    print("\nAND THE DASHBOARD RENDERS WHAT IT WAS GIVEN")
+    from app.ui_consent import consent_html as _ch
+    _aud = {"id": "abc123", "client_name": "The Ooten Law Firm",
+            "target_url": "https://ootenlawfirm.com/"}
+    _det = {"scan": {"mode": "full", "verdict": "no_cmp",
+                     "verdict_detail": "No CMP detected.",
+                     "cmps": [], "gtm": {"found": True,
+                                         "container_ids": ["GTM-K4SZBGQZ"]},
+                     "consent_mode_default": False, "banner_visible": None,
+                     "reject_tested": False, "gpc_tested": False,
+                     "pre_consent": [{"vendor": "Meta Pixel", "severity":
+                                      "ungated",
+                                      "url": "https://facebook.com/tr?id=1"}],
+                     "post_reject": [], "gpc_fires": [], "states": ["TN"],
+                     "state_checks": [{"state": "TN", "check": "Opt-out link",
+                                       "status": "Fail", "detail": "None."}],
+                     "products": [{"product": "PMax", "expected": True,
+                                   "fired": False, "pixels": []}]},
+            "pages": [{"url": "https://ootenlawfirm.com/", "role": "homepage",
+                       "scan": {"mode": "full", "pre_consent": [
+                           {"vendor": "Meta Pixel", "severity": "ungated",
+                            "url": "https://facebook.com/tr?id=1"}]}},
+                      {"url": "https://ootenlawfirm.com/thank-you/",
+                       "role": "conversion",
+                       "scan": {"mode": "full", "pre_consent": []}}],
+            "requested": {"states": ["TN"], "products": ["PMax"],
+                          "conversion_urls":
+                              ["https://ootenlawfirm.com/thank-you/"]}}
+    _html = _ch(_aud, _det)
+    check("the container id is on the page", "GTM-K4SZBGQZ" in _html)
+    check("the ungated pixel is named with its request",
+          "Meta Pixel" in _html and "facebook.com/tr" in _html)
+    check("and attributed to the page it fired on",
+          "thank-you" in _html and "Page" in _html)
+    check("a bought product that never fires is called out",
+          "PMax" in _html and "not seen" in _html)
+    check("the state result carries its statute detail",
+          "Opt-out link" in _html)
+
+    print("\nAN EMPTY TABLE AND A CLEAN ONE MUST NOT LOOK THE SAME")
+    # "No trackers under Fired after Reject" reads as a pass. It is a pass
+    # only if Reject was clicked; with no banner to click, the identical empty
+    # table means nothing was tested.
+    check("an untested Reject says there was no banner to click",
+          "no Reject control was found to click" in _html)
+    check("and GPC says it does not apply in Tennessee rather than 'not run'",
+          "Not applicable" in _html and "(TN)" in _html)
+    _ca = _ch(_aud, {**_det, "requested": {"states": ["CA"]}})
+    check("but a state that DOES require GPC makes it ours to fix",
+          "ours to fix" in _ca and "CA" in _ca)
+    _basic = _ch(_aud, {**_det, "scan": {**_det["scan"], "mode": "basic"}})
+    check("a basic scan says the empty tables mean untested, not clean",
+          "mean untested, not clean" in _basic)
+
+    print("\nAND AN AUDIT WITH NO DETAIL EXPLAINS ITSELF")
+    # The link is drawn on every consent audit; older ones have no artifact.
+    # A 404 there reads as a broken feature.
+    _none = _ch(_aud, None)
+    check("no stored detail renders a page, not an error",
+          "No consent detail was stored" in _none)
+    check("and says how to get it", "Re-run" in _none)
+
     print("\n" + "=" * 68)
     if FAILED:
         print(f"  {len(FAILED)} FAILED: {FAILED}")

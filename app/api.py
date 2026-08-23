@@ -758,6 +758,42 @@ def audit_pdf(audit_id: str, polish: bool = False,
         "Content-Disposition": f'inline; filename="{fname}-seo-geo-audit.pdf"'})
 
 
+@app.get("/audits/{audit_id}/consent", response_class=HTMLResponse)
+def consent_page(audit_id: str, x_api_key: str | None = Header(None)):
+    """
+    The consent scan in full, rather than the nine checkpoints derived from it.
+
+    Reads the artifact the worker stored. An audit from before that existed
+    renders the page explaining exactly that, rather than a 404 — the link is
+    on every consent audit and a dead link is a bug report waiting to happen.
+    """
+    p = principal(x_api_key)
+    a = db.get_audit(audit_id, p.scope)
+    if not a:
+        raise HTTPException(404, "audit not found")
+    detail = None
+    blob = get_artifact(audit_id, "consent_scan.json")
+    if blob:
+        try:
+            detail = json.loads(blob.decode())
+        except Exception:  # noqa: BLE001
+            detail = None
+    from .ui_consent import consent_html
+    return consent_html(a, detail)
+
+
+@app.get("/api/audits/{audit_id}/consent")
+def consent_detail(audit_id: str, x_api_key: str | None = Header(None)):
+    """The same record as JSON, for anything that wants to read it directly."""
+    p = principal(x_api_key)
+    if not db.get_audit(audit_id, p.scope):
+        raise HTTPException(404, "audit not found")
+    blob = get_artifact(audit_id, "consent_scan.json")
+    if not blob:
+        raise HTTPException(404, "no consent detail stored for this audit")
+    return Response(blob, media_type="application/json")
+
+
 @app.get("/audits/{audit_id}", response_class=HTMLResponse)
 def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
     p = principal(x_api_key)
@@ -771,6 +807,11 @@ def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
     meta = _report_meta(a)
     cat = db.catalog()
     meta["pdf_url"] = f"/audits/{audit_id}.pdf"
+    # Only when there is something to show. A link to an empty page is worse
+    # than no link: it reads as a broken feature rather than a phase nobody
+    # ticked.
+    if (meta.get("extras") or {}).get("consent"):
+        meta["consent_url"] = f"/audits/{audit_id}/consent"
     return render_html(meta, scores, findings, cat,
                        summary=build_summary(findings, scores, cat, meta))
 

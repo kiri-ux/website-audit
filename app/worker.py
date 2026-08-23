@@ -405,15 +405,34 @@ def _consent(a, audit_id, findings, extras, opts, step):
         # Site-level checks run once, on the homepage, exactly as the
         # standalone tool does it; the extra pages contribute their pixels.
         extra = []
+        # KEEP EACH PAGE'S OWN RESULT, not only the merge.
+        #
+        # The merge below is right for the checkpoints — a pixel firing
+        # pre-consent on ANY page is a pre-consent fire, and CONS-04 should
+        # say so once. It is wrong for a dashboard: once three pages are
+        # concatenated into one list, "which page was this on" is gone, and
+        # that is the first question anyone asks about an ungated pixel.
+        pages = []
+        if isinstance(scan, dict):
+            pages.append({"url": a["target_url"], "role": "homepage",
+                          "scan": scan})
         for url in (opts.get("conversion_urls") or []):
             try:
-                extra.append(scan_site(
+                one = scan_site(
                     url, prefer_full=not opts.get("skip_consent_browser"),
                     site_checks=False,
-                    products=opts.get("consent_products") or None))
+                    products=opts.get("consent_products") or None)
+                extra.append(one)
+                pages.append({"url": url, "role": "conversion", "scan": one})
             except Exception as exc:  # noqa: BLE001
                 print(f"[worker] {audit_id} conversion scan failed for {url}: "
                       f"{type(exc).__name__}: {exc}", flush=True)
+                # A page that could not be scanned is part of the record too.
+                # Dropping it means the dashboard lists two pages for a run
+                # that was asked to cover three, and says nothing about the
+                # third.
+                pages.append({"url": url, "role": "conversion",
+                              "error": f"{type(exc).__name__}: {exc}"})
         if extra and isinstance(scan, dict):
             # Merge the pixel evidence, keep the homepage's verdict. A pixel
             # firing pre-consent on ANY scanned page is a pre-consent fire.
@@ -446,7 +465,38 @@ def _consent(a, audit_id, findings, extras, opts, step):
             "verdict": scan.get("verdict"),
             "verdict_detail": scan.get("verdict_detail"),
             "scanned_at": scan.get("scanned_at"),
+            "pages_scanned": scan.get("pages_scanned") or 1,
+            "has_detail": True,
         }
+        # THE SCAN ITSELF IS THE PRODUCT; NINE CHECKPOINTS ARE A SUMMARY OF IT.
+        #
+        # Everything the scanner learned — every CMP signature and the evidence
+        # that matched it, container ids, Consent Mode defaults, each tracker
+        # with its vendor and URL and when it fired, the per-state statute
+        # results, the product pixels — was being thrown away the moment nine
+        # findings were derived from it. That is most of what the standalone
+        # tool shows on screen, computed and discarded on every run.
+        #
+        # It goes to the artifact store, which is the one place the API and the
+        # worker demonstrably share.
+        try:
+            put_artifact(audit_id, "consent_scan.json", json.dumps(
+                {"scan": scan, "pages": pages,
+                 "requested": {
+                     "states": opts.get("consent_states") or [],
+                     "industries": opts.get("consent_industries") or [],
+                     "products": opts.get("consent_products") or [],
+                     "conversion_urls": opts.get("conversion_urls") or [],
+                     "implementation": opts.get("implementation") or ""}},
+                default=str).encode())
+        except Exception as exc:  # noqa: BLE001
+            # Never fail the audit over the detail record. But say so — a
+            # dashboard that is quietly empty is worse than one that explains
+            # why it is empty.
+            extras["consent"]["has_detail"] = False
+            extras["consent"]["detail_error"] = f"{type(exc).__name__}: {exc}"
+            print(f"[worker] {audit_id} consent detail not stored: "
+                  f"{type(exc).__name__}: {exc}", flush=True)
 
 
 def _ai_visibility(a, audit_id, findings, extras, step):

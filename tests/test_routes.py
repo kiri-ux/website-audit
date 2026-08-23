@@ -270,6 +270,41 @@ def main():
     st, ct, body = GET(f"/api/audits/{aid}")
     check("JSON API unaffected", st == 200 and json.loads(body)["id"] == aid)
 
+    print("\nTHE CONSENT DETAIL PAGE, OVER HTTP")
+    # The report advertises this link on every audit that ran a consent scan,
+    # so it has to resolve for real — a dead link there reads as a broken
+    # feature rather than a phase nobody ticked.
+    from app.artifacts import put_artifact as _put
+    _put(aid, "consent_scan.json", json.dumps({
+        "scan": {"mode": "full", "verdict": "no_cmp", "cmps": [],
+                 "gtm": {"found": True, "container_ids": ["GTM-TEST123"]},
+                 "consent_mode_default": False, "reject_tested": False,
+                 "gpc_tested": False, "states": ["TN"],
+                 "pre_consent": [{"vendor": "Meta Pixel", "severity": "ungated",
+                                  "url": "https://facebook.com/tr?id=9"}]},
+        "pages": [{"url": "https://junkbeegone.test/", "role": "homepage",
+                   "scan": {"mode": "full", "pre_consent": []}}],
+        "requested": {"states": ["TN"]}}).encode())
+    _ex = json.loads(db.get_audit(aid).get("extras") or "{}")
+    _ex["consent"] = {"mode": "full", "verdict": "no_cmp", "has_detail": True}
+    db.update_audit(aid, extras=json.dumps(_ex))
+
+    st, ct, body = GET(f"/audits/{aid}/consent")
+    check("the consent page renders", st == 200 and b"GTM-TEST123" in body,
+          f"{st} {len(body)}B")
+    check("and names the ungated pixel", b"Meta Pixel" in body)
+    st, ct, body = GET(f"/api/audits/{aid}/consent")
+    check("the JSON route serves the stored scan",
+          st == 200 and json.loads(body)["scan"]["verdict"] == "no_cmp",
+          str(st))
+    _, _, _rep = GET(f"/audits/{aid}")
+    check("and the report page links to it",
+          f"/audits/{aid}/consent".encode() in _rep)
+    # An audit with no stored detail must still answer, because the link is
+    # drawn from extras and an older audit has extras but no artifact.
+    st, _, body = GET("/audits/doesnotexist/consent")
+    check("an unknown audit is still a 404", st == 404, str(st))
+
     print("\nEVERY LINK THE REPORT PAGE ADVERTISES RESOLVES")
     _, _, html = GET(f"/audits/{aid}")
     hrefs = set(re.findall(rb'href=[\'"](/[^\'" >]+)', html))

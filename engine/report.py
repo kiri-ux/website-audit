@@ -768,7 +768,20 @@ def render_html(meta, sc, findings, catalog, summary=None):
                  f"text-decoration:none'>Open client PDF</a>"
                  f"<a href='{e(meta['pdf_url'])}?polish=1' target='_blank' "
                  f"rel='noopener' style='margin-left:12px;"
-                 f"font-size:12.5px;color:var(--ink2)'>with AI-written summary</a></div>")
+                 f"font-size:12.5px;color:var(--ink2)'>with AI-written summary</a>"
+                 # THE CONSENT SCAN IS BIGGER THAN THE NINE ROWS BELOW.
+                 #
+                 # Every CMP signature and its evidence, container ids,
+                 # Consent Mode defaults, each tracker with the moment it
+                 # fired, the per-state statute results and the product
+                 # pixels — all of it is on the record now, and none of it
+                 # fits in a checkpoint row. The link is only drawn when a
+                 # consent scan actually ran.
+                 + (f"<a href='{e(meta.get('consent_url'))}' "
+                    f"style='margin-left:16px;font-size:12.5px;"
+                    f"color:var(--ink2)'>Full consent scan &rsaquo;</a>"
+                    if meta.get("consent_url") else "")
+                 + "</div>")
 
     if summary:
         P.append("<h2>Executive summary</h2>")
