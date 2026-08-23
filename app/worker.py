@@ -689,8 +689,18 @@ def _ai_visibility(a, audit_id, findings, extras, step):
             key = (r.get("query_id"), r.get("platform"))
             if key not in answers and r.get("text"):
                 answers[key] = " ".join(str(r["text"]).split())[:400]
+        # THE EXAMPLES COME FROM THE TOOLS THE CLIENT HAS HEARD OF.
+        #
+        # Every result is equally valid as a measurement, and they are not
+        # equally useful as an EXAMPLE: "Asked of Claude" invites a question
+        # about why we asked Claude. Google's AI answers and ChatGPT are the
+        # two a client already uses, so the examples come from those where
+        # the run has them, and fall back to whatever else answered.
+        _SHOW_FIRST = {"ai_overview": 0, "chatgpt": 1, "perplexity": 2,
+                       "gemini": 3, "claude": 4, "copilot": 5}
         wins, losses = [], []
-        for r in (run.get("results") or []):
+        for r in sorted((run.get("results") or []),
+                        key=lambda x: _SHOW_FIRST.get(x.get("platform"), 9)):
             if not r.get("ok"):
                 continue
             q = qtext.get(r.get("query_id"))

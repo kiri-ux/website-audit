@@ -201,6 +201,31 @@ def main():
                or " the ?" in t], str(holes[:3]))
     check("and the services still carry the panel on their own",
           any("criminal defense" in t for t in holes), str(holes[-2:]))
+    # A TOWN IS NOT A SERVICE.
+    #
+    # /clinton and /farragut are city pages. They produced "Who should I hire
+    # for clinton in Knoxville, Tennessee?" - a question with a town where
+    # the job goes. Places we know about are filtered; the rest is shape,
+    # because work is described in more than one word and a town is not.
+    _towns = profile_from_audit(
+        "The Ooten Law Firm", "https://ootenlawfirm.com/",
+        {"brand": "The Ooten Law Firm",
+         "locations": [{"city": "Knoxville", "region": "Tennessee"},
+                       {"city": "Clinton", "region": "Tennessee"}],
+         "primary_markets": "Anderson County, TN",
+         "sections": ["/clinton", "/farragut", "/criminal-defense",
+                      "/estate-planning", "/dui"]}, "Legal - Defense")
+    check("a town with schema is dropped from the services",
+          "clinton" not in [x.lower() for x in _towns.services],
+          str(_towns.services))
+    check("and so is the town next to it that had none",
+          "farragut" not in [x.lower() for x in _towns.services],
+          str(_towns.services))
+    check("while the real practice areas survive",
+          {"criminal defense", "estate planning"}
+          <= {x.lower() for x in _towns.services}, str(_towns.services))
+    check("including the one-word ones that are genuinely services",
+          "dui" in [x.lower() for x in _towns.services], str(_towns.services))
     # A client we cannot classify gets service questions, never "business".
     bare = profile_from_audit("Someone", "https://someone.test/",
                               {"sections": ["/roof-repair"]},

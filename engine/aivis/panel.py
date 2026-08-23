@@ -413,8 +413,56 @@ def profile_from_audit(client_name: str, url: str, context: dict | None = None,
         "testimonials", "team", "our team", "attorneys", "staff", "careers",
         "locations", "gallery", "portfolio", "case results", "results",
     }
+    # NOR IS A PLACE.
+    #
+    # /clinton and /farragut are city pages, and they produced "Who should I
+    # hire for clinton in Knoxville, Tennessee?" - a question with a town
+    # where the job should be. Every place we know about goes in the stop
+    # list: the cities and regions the crawl found, and the markets the
+    # client typed into the form.
+    places = set()
+    for loc in (ctx.get("locations") or []):
+        for key in ("city", "region", "name"):
+            val = str(loc.get(key) or "").strip().lower()
+            if val:
+                places.add(val)
+    for extra in (ctx.get("states") or []):
+        places.add(str(extra).strip().lower())
+    for token in str(ctx.get("primary_markets") or "").replace(",", " ").split():
+        token = token.strip().lower()
+        if len(token) > 3 and token not in ("county", "city", "area"):
+            places.add(token)
+    # AND A BARE ONE-WORD PATH IS USUALLY A PLACE OR A NAV LINK.
+    #
+    # The crawl only finds the towns a site publishes SCHEMA for, so /clinton
+    # was caught by the list above and /farragut - the next town over, with no
+    # markup - was not. What separates them from a real service is shape: work
+    # is described in more than one word nearly every time ("criminal
+    # defense", "estate planning", "water heater repair"), while a town, a
+    # person and a nav label are one. The exceptions are the trades and
+    # practice areas that genuinely have single-word names, and they are
+    # short, closed and worth listing.
+    _ONE_WORD_SERVICES = {
+        "dui", "dwi", "seo", "ppc", "hvac", "roofing", "plumbing", "painting",
+        "landscaping", "remodeling", "bankruptcy", "divorce", "probate",
+        "mediation", "immigration", "litigation", "arbitration", "adoption",
+        "dentistry", "orthodontics", "chiropractic", "dermatology",
+        "physiotherapy", "audiology", "optometry", "podiatry", "insurance",
+        "mortgages", "accounting", "bookkeeping", "payroll", "catering",
+        "flooring", "roofs", "windows", "siding", "gutters", "fencing",
+        "decking", "masonry", "paving", "excavation", "towing", "detailing",
+        "upholstery", "grooming", "boarding", "daycare", "tutoring",
+        "photography", "videography", "printing", "signage", "moving",
+        "storage", "cleaning", "restoration", "inspections", "appraisals",
+        "surveying", "welding", "machining", "electrical", "wills", "trusts",
+    }
     services = [s for s in services
-                if s and s.lower() not in _NOT_A_SERVICE]
+                if s and s.lower() not in _NOT_A_SERVICE
+                and s.lower() not in places
+                and not any(p and p in s.lower() for p in places
+                            if len(p) > 4)
+                and (" " in s.strip() or s.strip().lower()
+                     in _ONE_WORD_SERVICES)]
 
     return ClientProfile(
         brand=brand, domain=domain, category=category,

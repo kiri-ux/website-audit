@@ -972,12 +972,9 @@ def _ai_intro(v) -> str:
     # WAS "assistant", which is what the industry calls these and not what a
     # client calls them. They are the things that now answer a search before
     # a list of links appears; "AI tools" needs no explaining and no glossary.
-    return (f"People increasingly ask ChatGPT and Google's AI answers the "
-            f"questions they used to type into a search box, and those "
-            f"answers link out to a handful of websites. This section is "
-            f"about whether yours is one of them.\n"
-            f"We put {n} questions to {who} and recorded, for each answer, "
-            f"whether it named you and whether it linked to your site.")
+    return (f"We posed {n} questions to {who} and recorded, for each "
+            f"answer, whether it named you and whether it linked to your "
+            f"site.")
 
 
 def _asked_by_name(question, brand) -> bool:
@@ -1012,8 +1009,19 @@ def _ai_examples(v, S, brand=""):
     not another column. It is one block per question that reads as a sentence:
     what was asked, what came back, and the answer's own words.
     """
-    wins = v.get("cited_examples") or []
-    miss = v.get("missed_examples") or []
+    _SHOW_FIRST = {"ai_overview": 0, "chatgpt": 1, "perplexity": 2,
+                   "gemini": 3, "claude": 4, "copilot": 5}
+
+    def _pref(items):
+        # Google's AI answers and ChatGPT first - see the same list in
+        # app/worker.py, which decides which examples get STORED. This orders
+        # what a run already stored, so an audit from before that change also
+        # leads with the tools the client has heard of.
+        return sorted(items or [],
+                      key=lambda x: _SHOW_FIRST.get(x.get("platform"), 9))
+
+    wins = _pref(v.get("cited_examples"))
+    miss = _pref(v.get("missed_examples"))
     if not wins and not miss:
         return []
 
@@ -1139,11 +1147,14 @@ def _ai_visibility(meta, S):
         return [Paragraph(_p(big), _big), Paragraph(_p(lead), _lead),
                 Paragraph(_p(sub), _sub)]
 
+    # NAMED FIRST, THEN LINKED. The two numbers are a sequence, not a pair:
+    # a tool has to know you before it can cite you, and the gap between them
+    # is the finding. Reading the smaller number first hid that.
     tiles = Table([[
-        _tile3(f"{cite}%", "of answers linked to you",
-               "your site was one of the sources"),
         _tile3(f"{ment}%", "of answers named you",
                "said your name, linked elsewhere"),
+        _tile3(f"{cite}%", "of answers linked to you",
+               "your site was one of the sources"),
         _tile3(v.get("client_citations") or 0, "links to your site",
                f"across {_plats} tool{'s' if _plats != 1 else ''}"),
     ]], colWidths=[2.2 * inch, 2.2 * inch, 2.2 * inch])

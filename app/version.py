@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-79"
-BUILD_NOTES = ("A page with nothing on it stops being filed as a missing "
-               "credential, and canonicalization is explained in English")
+BUILD = "2026.08.20-80"
+BUILD_NOTES = ("A town is no longer treated as a service, examples come "
+               "from Google and ChatGPT, named-then-linked tile order")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.
