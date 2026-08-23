@@ -527,6 +527,22 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
     vendor = [c for c in vendor
               if (findings.get(c) or {}).get("source") not in _NOT_WORK]
 
+    # AND A PAGE WITH NOTHING ON IT IS NOT A MISSING CREDENTIAL EITHER.
+    #
+    # The row said "This page carried no readable text for this check" and sat
+    # under a heading reading "A credential we have not set, or a call we have
+    # not written". Both sentences were on screen at once and they contradict
+    # each other - which is the same fault as the platform rows above, one
+    # bucket further along: a list headed "ours to fix" that fills with things
+    # that are not that stops being read.
+    #
+    # It IS still ours to look at, so it keeps a group of its own rather than
+    # disappearing, with the fix line the finding already carries.
+    _NO_TEXT = {"page_unreadable", "no_material"}
+    unreadable = [c for c in vendor
+                  if (findings.get(c) or {}).get("source") in _NO_TEXT]
+    vendor = [c for c in vendor if c not in set(unreadable)]
+
     if vendor:
         items = bullets(reasons(vendor))
         out.append(
@@ -537,6 +553,19 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             f"A credential we have not set, or a call we have not written. "
             f"Nothing to ask anyone for.</div>"
             f"<ul style='margin:6px 0 0 18px'>{items}</ul></div>")
+
+    if unreadable:
+        rows = bullets(reasons(unreadable))
+        out.append(
+            f"<div style='margin-top:12px'>"
+            f"<b style='color:var(--ink2)'>Nothing on the page to read "
+            f"&middot; {len(unreadable)}</b>"
+            f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
+            f"The check ran and found no text to judge - usually a page that "
+            f"builds itself in the browser, or a kind of page this site does "
+            f"not publish. Neither is a credential and neither is the "
+            f"client's to fix.</div>"
+            f"<ul style='margin:6px 0 0 18px'>{rows}</ul></div>")
 
     if boundary:
         rows = bullets(reasons(boundary), fix=False)

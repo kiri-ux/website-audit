@@ -689,6 +689,29 @@ def main():
     check("and 'Not Implemented' is written the way a client would say it",
           _status_word("Not Implemented", "ONP-34") == "Missing")
 
+    print("\nA PAGE WITH NOTHING ON IT IS NOT A MISSING CREDENTIAL")
+    # The row read "This page carried no readable text for this check" under a
+    # heading reading "A credential we have not set, or a call we have not
+    # written". Both on screen at once, contradicting each other - the same
+    # fault as the platform rows, one bucket along.
+    from engine.report import _todo_panel as _tp
+    _F2 = {"EEAT-01": {"status": "Need Access", "severity": "Low",
+                       "evidence": "This page carried no readable text for "
+                                   "this check.",
+                       "recommendation": "If the page builds its content in "
+                                         "the browser, re-run with Render "
+                                         "JavaScript forced.",
+                       "confidence": 0.0, "source": "page_unreadable"}}
+    _c2 = {"EEAT-01": {"prefix": "EEAT", "checkpoint": "First-hand experience"}}
+    _html = "".join(_tp(_F2, _c2, {"extras": {"phases_run":
+                                              {"run_consent": True,
+                                               "run_aivis": True}}}))
+    check("it gets its own group", "Nothing on the page to read" in _html)
+    check("and is not filed under a credential we have not set",
+          "Ours to fix" not in _html, _html[:0])
+    check("the fix line travels with it",
+          "Render JavaScript forced" in _html)
+
     print("\n" + "=" * 68)
     if FAILED:
         print(f"  {len(FAILED)} FAILED: {FAILED}")

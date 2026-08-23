@@ -12,10 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-78"
-BUILD_NOTES = ("One left edge for the whole document; the AI section "
-               "rewritten with the answers themselves; no question with a "
-               "hole in it; an evidence shot proves its own red mark")
+BUILD = "2026.08.20-79"
+BUILD_NOTES = ("A page with nothing on it stops being filed as a missing "
+               "credential, and canonicalization is explained in English")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

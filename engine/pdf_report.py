@@ -1258,10 +1258,15 @@ SECTION_MEANS = {
     "ANA": "whether the tracking on the site actually records what it should",
     "GSC": "what Google's own Search Console reports about the site",
     "GA4": "whether Google Analytics is set up to answer real questions",
-    "TECH": "the plumbing search engines use to find and read pages",
+    "TECH": "whether search engines can find, fetch and read the pages",
     "URL": "whether addresses are readable and organized by topic",
     "SEC": "whether the site is served securely end to end",
-    "CANON": "whether Google can tell which version of a page is the real one",
+    # WAS: "whether Google can tell which version of a page is the real one".
+    # Which version of what? The reader has not been told the page HAS
+    # versions - that is the part of canonicalization that needs saying, and
+    # it is the whole of what the area checks.
+    "CANON": "whether one page reachable at several web addresses is counted "
+             "once instead of as duplicates",
     "PERF": "how fast the site feels to a real visitor on a real phone",
     "ONP": "titles, headings and copy — what a page says it is about",
     "MOB": "how the site behaves on a phone, which is most of the traffic",
@@ -1269,7 +1274,7 @@ SECTION_MEANS = {
     "INTL": "whether the right language and region version is served",
     "HTML": "whether the code is clean enough not to get in its own way",
     "EEAT": "the signals that show a real, qualified business is behind the site",
-    "GEO": "whether AI assistants can read the site and cite it",
+    "GEO": "whether AI tools can read the site and link to it in an answer",
     "OFF": "who links to the site, and what that says about its authority",
     "CONS": "whether tracking waits for consent, which is a legal question",
 }
@@ -1541,8 +1546,16 @@ def _evidence(meta, S, catalog=None):
         try:
             iw, ih = _png_size(sh["png"])
             sw = 6.4 * inch
-            img = Shot(sh["png"], sw,
-                       sw * ((ih / iw) if (iw and ih) else 820 / 1280))
+            full = sw * ((ih / iw) if (iw and ih) else 820 / 1280)
+            # A CAPTURE TALLER THAN A PAGE CANNOT BE LAID OUT AS ONE FLOWABLE.
+            #
+            # Our own captures are a 1280x820 viewport and fit comfortably.
+            # A stored shot from another source can be a full-page image -
+            # 1280 by six thousand - which asks reportlab for a flowable
+            # thirty inches tall, and what comes out is a strip at the top of
+            # an otherwise blank page. Cap the box and crop to the top, the
+            # way the cover shot does.
+            img = Shot(sh["png"], sw, min(full, 4.6 * inch), draw_h=full)
         except Exception:
             continue
         # WHAT IS ACTUALLY MARKED, NOT THE CHECKPOINT'S NAME.
