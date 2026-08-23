@@ -916,6 +916,10 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
     except Exception:  # noqa: BLE001
         _SC, _IND = {}, []
     NSTATES = len(_SC) or 20
+    # The reputation scan spends DataForSEO credit per run, and it is the same
+    # key the backlink and ranking collectors already use - so the note says
+    # what it costs rather than whether it is available.
+    REP_NOTE = "reviews, brand searches, page one for \u201creviews\u201d"
     # The state vocabulary goes to the browser so a market can be validated as
     # it is typed, with no round trip. Two facts per code: the full name, and
     # whether we have a law to check there. The second is the one that makes
@@ -1092,6 +1096,9 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
           <label class='ph'><input type='checkbox' name='run_aivis' value='1'
             {AIVIS_ATTR} form='auditform'><span class='tick'>{TICK}</span>
             Ask the AI assistants <span class='note'>{AIVIS_NOTE}</span></label>
+          <label class='ph'><input type='checkbox' name='run_reputation'
+            value='1' form='auditform'><span class='tick'>{TICK}</span>
+            Reputation profile <span class='note'>{REP_NOTE}</span></label>
           <label class='ph'><input type='checkbox' name='reuse_crawl' value='1'
             checked form='auditform'><span class='tick'>{TICK}</span>
             Reuse the last crawl</label>

@@ -12,6 +12,7 @@ network, and no spend — and it is deterministic, so it can gate CI.
 from __future__ import annotations
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -730,6 +731,69 @@ def main():
         _Px._post = _real_px
         _Px._endpoint = None
         os.environ.pop("PERPLEXITY_API_KEY", None)
+
+    # ---------- the examples the CLIENT reads ----------
+    #
+    # Three complaints, all from the same reading of one report, all about the
+    # six example cards rather than the numbers above them:
+    #
+    #   * a platform the client has never opened, named in their report;
+    #   * the same question printed twice;
+    #   * and "is X legit or a scam?" beside "is X a reputable company?",
+    #     which is one question about trust taking two of six slots.
+    #
+    # The first two are exact rules. The third is the one that will rot: it
+    # depends on a bucket list, and a new phrasing that lands outside every
+    # bucket comes back as a near-repeat. So it is tested on the real pairs.
+    print("\nEXAMPLE CARDS")
+    from engine import pdf_report as _P
+    _S = _P._styles()
+    _brand = "Ooten Law Firm"
+    _v = {"citation_rate": 10.8, "mention_rate": 18.5,
+          "unprompted_citation_rate": 4.2, "client_citations": 7,
+          "citation_gap": 12, "questions": 24,
+          "top_competitor_domain": "knoxvillelaw.com",
+          "platforms": "ai_overview, chatgpt, claude, gemini, perplexity",
+          "cited_examples": [
+              {"question": f"Is {_brand} legit or a scam?", "platform": "gemini"},
+              {"question": f"Is {_brand} a reputable company?", "platform": "chatgpt"},
+              {"question": f"Is {_brand} legit or a scam?", "platform": "perplexity"},
+              {"question": f"What is {_brand} known for?", "platform": "chatgpt"}],
+          "missed_examples": [
+              {"question": "Who is the best DUI attorney in Knoxville, Tennessee?",
+               "platform": "claude", "cited_instead": ["avvo.com"]},
+              {"question": "Who is the top DUI lawyer in Knoxville?",
+               "platform": "gemini", "cited_instead": []},
+              {"question": "How much does a family law attorney cost in "
+                           "Knoxville, Tennessee?", "platform": "gemini",
+               "cited_instead": []}]}
+    _txt = []
+
+    def _walk(f):
+        t = getattr(f, "text", None)
+        if isinstance(t, str):
+            _txt.append(t)
+        for kid in (getattr(f, "_content", None) or []):
+            _walk(kid)
+        for row in (getattr(f, "_cellvalues", None) or []):
+            for cell in row:
+                for kid in (cell if isinstance(cell, list) else [cell]):
+                    _walk(kid)
+
+    for _f in _P._ai_examples(_v, _S, _brand):
+        _walk(_f)
+    _all = " ".join(_txt).lower()
+    _qs = re.findall(r"“([^”]+)”", " ".join(_txt))
+    check("no platform the client has never opened is named",
+          "perplexity" not in _all and "claude" not in _all)
+    check("no question printed twice", len(_qs) == len(set(_qs)), str(_qs))
+    check("legit/scam and reputable are one question, not two",
+          sum(1 for q in _qs if "legit" in q.lower()
+              or "reputable" in q.lower()) == 1, str(_qs))
+    check("best and top DUI are one question, not two",
+          sum(1 for q in _qs if "dui" in q.lower()) == 1, str(_qs))
+    check("both halves still shown", any("cost" in q.lower() for q in _qs)
+          and any("known for" in q.lower() for q in _qs), str(_qs))
 
     print("\n" + "=" * 68)
     if FAILURES:

@@ -1072,8 +1072,104 @@ def _ai_examples(v, S, brand=""):
         return sorted(items or [],
                       key=lambda x: _SHOW_FIRST.get(x.get("platform"), 9))
 
-    wins = _pref(v.get("cited_examples"))
-    miss = _pref(v.get("missed_examples"))
+    # PERPLEXITY IS MEASURED, NOT SHOWN.
+    #
+    # It answers, it counts in every rate above, and as an EXAMPLE it costs
+    # more than it pays: a client who has never opened it reads "Asked of
+    # Perplexity" and asks why, which is a question about our tooling in the
+    # middle of a section about their visibility.
+    _NOT_SHOWN = {"perplexity", "claude"}
+    def _shown(items):
+        keep = [x for x in items
+                if str(x.get("platform") or "").lower() not in _NOT_SHOWN]
+        # Unless that leaves nothing - a run where only those answered is
+        # still better evidenced with them than with an empty section.
+        return keep or items
+
+    wins = _shown(_pref(v.get("cited_examples")))
+    miss = _shown(_pref(v.get("missed_examples")))
+
+    # THE SAME QUESTION TWICE IS NOT TWO EXAMPLES.
+    #
+    # "Is Ooten Law Firm legit or a scam?" appeared twice - cited by Google,
+    # not cited by Perplexity - which is a real and interesting difference,
+    # and it reads as the report repeating itself. One row per question; the
+    # first one in platform order keeps the slot.
+    # AND NEITHER IS THE SAME QUESTION IN DIFFERENT WORDS.
+    #
+    # Exact-text dedupe fixed the pair that read identically and left the pair
+    # that reads identically to a CLIENT: "Is Ooten Law Firm legit or a scam?"
+    # next to "Is Ooten Law Firm a reputable company?" is one question about
+    # trust, asked twice, and printing both spends two of six example slots on
+    # the same finding. So the key is what the question is ASKING, not how it
+    # was phrased - and anything we cannot bucket falls back to its content
+    # words, which still catches word-order variants.
+    _INTENT = (
+        ("trust", ("legit", "scam", "reputable", "trustworthy", "trust",
+                   "reliable", "safe", "ripoff", "rip off", "fraud")),
+        ("quality", ("reviews", "rating", "complaints", "good", "any good")),
+        ("cost", ("cost", "price", "pricing", "how much", "fee", "fees",
+                  "charge", "expensive", "afford")),
+        ("best", ("best", "top", "recommend", "who should i", "leading")),
+        ("about", ("known for", "what is", "who is", "specialize",
+                   "specialise", "what does", "services", "offer")),
+        ("choose", ("how do i choose", "what to look for", "questions to ask",
+                    "how to pick", "how to find")),
+    )
+    _STOP = {"a", "an", "the", "is", "are", "do", "does", "in", "of", "for",
+             "to", "or", "and", "i", "my", "you", "your", "what", "who",
+             "how", "with", "on", "at", "near", "me", "it", "be", "any"}
+
+    def _intent(q, brand):
+        t = " ".join(str(q or "").lower().split())
+        b = " ".join(str(brand or "").lower().split())
+        if b:
+            t = t.replace(b, " ")
+        t = " ".join(t.replace("?", " ").split())
+        for name, words in _INTENT:
+            if any(w in t for w in words):
+                return name
+        return " ".join(sorted(w for w in t.split()
+                               if w not in _STOP and len(w) > 2))
+
+    seen_q = set()
+
+    def _fresh(items):
+        out = []
+        for it in items:
+            q = str(it.get("question") or "")
+            k = " ".join(q.lower().split())
+            if not k:
+                continue
+            # Both keys, so an exact repeat and a reworded one are each caught
+            # once, and a question whose intent we cannot name is still deduped
+            # on its own text.
+            ik = _intent(q, brand)
+            if k in seen_q or (ik and ik in seen_q):
+                continue
+            seen_q.add(k)
+            if ik:
+                seen_q.add(ik)
+            out.append(it)
+        return out
+
+    _raw_wins, _raw_miss = wins, miss
+    wins = _fresh(wins)
+    miss = _fresh(miss)
+    # DEDUPE MUST NOT DELETE THE HALF THAT MATTERS.
+    #
+    # The intent key is shared across both lists on purpose - a trust question
+    # answered and a trust question missed is still one question - but if every
+    # miss happened to share an intent with a win, the misses vanish and the
+    # section shows only good news. The misses are the finding. When intent
+    # dedupe empties them, fall back to exact-text dedupe for that half.
+    if _raw_miss and not miss:
+        _seen = set()
+        for it in _raw_miss:
+            k = " ".join(str(it.get("question") or "").lower().split())
+            if k and k not in _seen:
+                _seen.add(k)
+                miss.append(it)
     if not wins and not miss:
         return []
 
@@ -1140,8 +1236,212 @@ def _ai_examples(v, S, brand=""):
 
     for w in _spread(wins, 2):
         out.append(block(w, True))
-    for m in _spread(miss, 3):
+    # THE MISSES WORTH SHOWING ARE THE ONES THAT DID NOT NAME YOU.
+    #
+    # Three brand questions in the "did not link" half tells the reader that
+    # assistants are unsure about a firm they were asked about by name. True,
+    # and it is the same story as the two rows above it. The ones that carry
+    # new information are the questions where somebody was looking for the
+    # SERVICE and got sent elsewhere - so those go first, and at most one
+    # by-name miss is kept for contrast.
+    unnamed = [m for m in miss if not _asked_by_name(m.get("question"), brand)]
+    named = [m for m in miss if _asked_by_name(m.get("question"), brand)]
+    # A by-name miss only earns a slot when the cited half did not already
+    # spend the reader's attention on by-name questions - otherwise "is it a
+    # reputable company" lands two inches under "is it legit or a scam" and
+    # reads as the report asking the same thing twice.
+    shown_named = sum(1 for w in _spread(wins, 2)
+                      if _asked_by_name(w.get("question"), brand))
+    picks = _spread(unnamed, 3)
+    if len(picks) < 3 and shown_named < 2:
+        picks += _spread(named, 3 - len(picks))
+    for m in picks:
         out.append(block(m, False))
+    return out
+
+
+def _listy_pdf(items) -> str:
+    """a, b and c - the way a person writes it."""
+    items = [str(i) for i in items if i]
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    return ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def _reputation(meta, S):
+    """
+    What the public record says - reviews, brand searches, page one.
+
+    A DIFFERENT KIND OF FACT FROM THE REST OF THIS REPORT, and it reads in a
+    different order because of that. Everything else is about the client's own
+    site and can be fixed by editing it. This is about what other people have
+    published, where the only levers are earning more of the good and
+    answering the bad - so the section leads with the score a stranger sees
+    before it gets anywhere near a recommendation.
+    """
+    rep = (meta.get("extras") or {}).get("reputation") or {}
+    if not rep or not rep.get("ok"):
+        return []
+    sm = rep.get("summary") or {}
+    out = [PageBreak(),
+           Paragraph("Reputation", S["h2"]), _rule(),
+           Paragraph(
+               "Before anyone reads a word of your site, most of them search "
+               "your name. This is what that search returns: the star rating "
+               "on your listings, what else holds page one for "
+               "\u201cyour name reviews\u201d, and whether people are "
+               "searching your name alongside a complaint.", S["small"])]
+    # A CARRIED PROFILE SAYS SO.
+    #
+    # Reputation is the fastest-moving section in the report - one bad week
+    # moves a star rating - so a profile taken from an earlier run has to be
+    # dated on the page. Silently reprinting last month's number as this
+    # month's is the exact failure this codebase keeps chasing.
+    if rep.get("carried_at"):
+        out.append(Paragraph(
+            f"Measured on an earlier run of this site "
+            f"({_p(str(rep['carried_at'])[:10])}) and carried forward, so it "
+            f"describes the public record as of that date.", S["tiny"]
+            if "tiny" in S else S["small"]))
+    out.append(Spacer(1, 10))
+
+    _big = ParagraphStyle("repbig", parent=S["cellsm"], fontName=_fonts.BOLD,
+                          fontSize=21, leading=24, textColor=INK)
+    _lead = ParagraphStyle("replead", parent=S["cellsm"], fontName=_fonts.BOLD,
+                           fontSize=8.5, leading=11, textColor=INK)
+    _sub = ParagraphStyle("repsub", parent=S["cellsm"], fontSize=7.5,
+                          leading=9.5, textColor=colors.HexColor("#4A5461"))
+
+    def tile(big, lead, sub):
+        return [Paragraph(_p(big), _big), Paragraph(_p(lead), _lead),
+                Paragraph(_p(sub), _sub)]
+
+    rating = sm.get("rating")
+    locs = sm.get("locations") or 0
+    tiles = Table([[
+        tile(f"{rating}" if rating else "\u2014", "average rating",
+             f"across {locs} listing{'s' if locs != 1 else ''}"),
+        tile(f"{sm.get('reviews') or 0:,}", "reviews in total",
+             "on your Google listings"),
+        tile(f"{sm.get('owned_in_top10') or 0} of "
+             f"{(sm.get('owned_in_top10') or 0) + (sm.get('third_party_in_top10') or 0)}",
+             "page one is yours",
+             "for \u201c{} reviews\u201d".format(rep.get("brand") or "your name")),
+    ]], colWidths=[2.2 * inch, 2.2 * inch, 2.2 * inch])
+    tiles.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BACKGROUND", (0, 0), (-1, -1), SURFACE),
+        ("BOX", (0, 0), (-1, -1), 0.5, LINE),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, LINE),
+        ("ROUNDEDCORNERS", [9, 9, 9, 9]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12), ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING", (0, 0), (-1, -1), 11), ("BOTTOMPADDING", (0, 0), (-1, -1), 11),
+    ]))
+    out.append(tiles)
+
+    # THE WEAKEST LISTING, NAMED.
+    #
+    # An average of 4.7 across nine locations is a good number that hides the
+    # one at 3.2, and the one at 3.2 is the only actionable thing on the page.
+    worst = sm.get("worst") or {}
+    if worst and rating and float(worst.get("rating") or 5) < float(rating) - 0.3:
+        out.append(Spacer(1, 8))
+        out.append(_banner(
+            "", f"{worst.get('title')} is your weakest listing at "
+                f"{worst.get('rating')} from {worst.get('reviews') or 0} "
+                f"reviews - below your own average. One location can carry the "
+                f"whole brand's rating down in a local pack.", GOLD, S))
+
+    # ---- page one for "<brand> reviews" --------------------------------
+    organic = ((rep.get("serp") or {}).get("organic") or [])[:10]
+    if organic:
+        rows = [[Paragraph("<b>#</b>", S["cellsm"]),
+                 Paragraph("<b>What ranks</b>", S["cellsm"]),
+                 Paragraph("<b>Whose</b>", S["cellsm"]),
+                 Paragraph("<b>Rating shown</b>", S["cellsm"])]]
+        for o in organic:
+            rows.append([
+                Paragraph(str(o.get("pos") or ""), S["cellsm"]),
+                Paragraph(f"<b>{_p(o.get('domain'))}</b><br/>"
+                          f"<font color='#8096AC'>{_p(o.get('title'))}</font>",
+                          S["cellsm"]),
+                Paragraph("Yours" if o.get("owned") else "Someone else's",
+                          S["cellsm"]),
+                Paragraph(str(o.get("rating") or "\u2014"), S["cellsm"]),
+            ])
+        t = Table(rows, colWidths=[0.35 * inch, 3.65 * inch, 1.2 * inch,
+                                   1.4 * inch])
+        t.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.6, LINE),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.35, colors.HexColor("#F1F4F7")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
+        out += [Spacer(1, 14),
+                Paragraph("Page one for \u201c{} reviews\u201d".format(
+                    rep.get("brand") or "your name"), S["h3"]),
+                Paragraph("Every result here is what a person deciding "
+                          "whether to call you reads instead of your site.",
+                          S["small"]),
+                Spacer(1, 6), t]
+
+    # ---- brand searches carrying a complaint ---------------------------
+    neg = sm.get("negative_terms") or []
+    # SAY EACH PHRASE ONCE.
+    #
+    # The same phrase reaches this block from three different databases -
+    # keyword volume, autocomplete, related searches - and printing it in all
+    # three sentences reads as three separate problems. It is one, found three
+    # ways, so the first mention keeps it and the rest drop it.
+    _said = {(t.get("term") or "").strip().lower() for t in neg[:4]}
+
+    def _new(seq):
+        out = []
+        for x in seq:
+            k = str(x).strip().lower()
+            if k and k not in _said:
+                _said.add(k)
+                out.append(x)
+        return out
+
+    sugg = _new(sm.get("negative_suggestions") or [])
+    related = _new(sm.get("negative_related") or [])
+    if neg or sugg or related:
+        lines = []
+        if sm.get("negative_volume"):
+            lines.append(
+                f"<b>{sm['negative_volume']:,} searches a month</b> pair your "
+                f"name with a complaint word - out of "
+                f"{sm.get('brand_volume') or 0:,} brand searches in total.")
+        if neg:
+            lines.append("The largest are " + _listy_pdf(
+                [f"\u201c{t['term']}\u201d ({t['volume']:,}/mo)"
+                 for t in neg[:4]]) + ".")
+        if sugg:
+            lines.append("Google's own search box suggests "
+                         + _listy_pdf([f"\u201c{x}\u201d" for x in sugg[:4]])
+                         + " while somebody is typing your name.")
+        if related:
+            lines.append("Related searches on the results page include "
+                         + _listy_pdf([f"\u201c{x}\u201d"
+                                       for x in related[:4]]) + ".")
+        out += [Spacer(1, 14),
+                Paragraph("Searches that carry a complaint", S["h3"]),
+                Paragraph(" ".join(lines), S["body"])]
+
+    forums = sm.get("forums") or []
+    if forums:
+        out += [Spacer(1, 10),
+                Paragraph(
+                    "A discussion thread ranks for your name: "
+                    + _listy_pdf(sorted({f.get("domain") for f in forums
+                                         if f.get("domain")})[:4])
+                    + ". Threads outrank most owned pages and cannot be "
+                      "edited - they are answered, not removed.", S["small"])]
     return out
 
 
@@ -1422,13 +1722,17 @@ def _strength_grid(items, S):
         ("TOPPADDING", (0, 0), (-1, -1), 0),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
     ]))
-    # ONE BLOCK, NOT TWO HALVES ON TWO PAGES.
+    # RETURNED BARE, NOT WRAPPED.
     #
-    # A Table splits at a row boundary by default, so four cards became two at
-    # the foot of one page and two at the top of the next, under no heading -
-    # and the second pair read as an orphaned fragment of something. Four
-    # cards are about two inches; if they do not fit, they move together.
-    return [KeepTogether([grid])]
+    # It used to come back as KeepTogether([grid]), and the caller then bound
+    # THAT inside another KeepTogether with the heading. A KeepTogether inside
+    # a KeepTogether cannot measure itself - the inner one has no canvas while
+    # the outer is wrapping - and reportlab's fallback for that is to assume
+    # it will not fit. Which is why "Current Strengths" kept jumping to the
+    # next page with six inches of clear space above it.
+    #
+    # The caller does the binding, once.
+    return [grid]
 
 
 def _market_pills(raw, S):
@@ -1669,7 +1973,10 @@ def _evidence(meta, S, catalog=None):
             else where
         cap = Paragraph(f"<font color='#52514e'>{_p(cap_txt)}</font>",
                         S["muted"])
-        out.append(KeepTogether([img, Spacer(1, 3), cap, Spacer(1, 14)]))
+        # Flat, for the same reason as the strength grid: these are bound
+        # into one KeepTogether below, and nesting them inside their own
+        # would leave the outer one unable to measure anything.
+        out += [img, Spacer(1, 3), cap, Spacer(1, 14)]
     if not out:
         return []
     # One block: the heading and every shot, together or not at all.
@@ -2275,6 +2582,13 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         story.append(PageBreak())
         for fl in ai_block:
             story.append(fl)
+
+    # ------------------------------------------------ reputation
+    # Its own page: it opens with a PageBreak of its own because the section
+    # is a change of subject, not a continuation. Everything above is the
+    # client's site; this is everybody else's pages about the client.
+    for fl in _reputation(meta, S):
+        story.append(fl)
 
     # ------------------------------------------------ roadmap
     if summary and summary.get("roadmap"):

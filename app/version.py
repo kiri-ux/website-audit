@@ -12,9 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-84"
-BUILD_NOTES = ("Captures widen to the site, all three fit one page, a "
-               "neighbourhood is not a service, every strength gets its line")
+BUILD = "2026.08.20-85"
+BUILD_NOTES = ("Reputation profile: reviews, page one for the brand, and "
+               "brand searches carrying a complaint. AI examples stop asking "
+               "the same question twice in different words")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

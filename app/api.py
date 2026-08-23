@@ -434,6 +434,7 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
                 run_judgment: str = Form(""),
                 run_collectors: str = Form(""),
                 run_screenshots: str = Form(""),
+                run_reputation: str = Form(""),
                 run_aivis: str = Form(""),
                 run_consent: str = Form(""),
                 consent_states: str = Form(""),
@@ -463,6 +464,8 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
         opts["skip_judgment"] = not run_judgment
         opts["skip_collectors"] = not run_collectors
         opts["skip_screenshots"] = not run_screenshots
+        if run_reputation:
+            opts["run_reputation"] = True
     # Opt-IN, not opt-out like the three above. This phase spends money per
     # question across several platforms, so an unticked box means off — and so
     # does a script that has never heard of it.

@@ -764,6 +764,37 @@ def _ai_visibility(a, audit_id, findings, extras, step):
               f"{type(exc).__name__}: {exc}", flush=True)
 
 
+def _reputation(a, audit_id, extras, step):
+    """
+    What the public record says about this client.
+
+    NOT SCORED, and that is deliberate - see engine/reputation. It fills a
+    section from `extras` the way AI visibility does. Failures cost the
+    section and never the audit.
+    """
+    try:
+        from engine import reputation
+        ctx = extras.get("context") or {}
+        brand = (ctx.get("brand") or a.get("client_name") or "").strip()
+        if not brand:
+            print(f"[worker] {audit_id} reputation skipped - no brand name",
+                  flush=True)
+            return
+        step("checking", f"reading the public record for {brand}")
+        rep = reputation.profile(brand, a.get("target_url") or "")
+        rep["summary"] = reputation.summarize(rep)
+        extras["reputation"] = rep
+        s = rep["summary"]
+        print(f"[worker] {audit_id} reputation: {s['locations']} listing(s), "
+              f"{s['reviews']} reviews, {s['negative_volume']} negative brand "
+              f"searches/mo", flush=True)
+    except Cancelled:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        print(f"[worker] {audit_id} reputation scan errored: "
+              f"{type(exc).__name__}: {exc}", flush=True)
+
+
 def _context_of(art):
     from engine.context import extract as extract_context
     bc = extract_context(art)
@@ -795,13 +826,39 @@ def _carry_forward(a, opts, audit_id, findings) -> dict:
         and when, the internal panel counts them, and the methodology says so.
     """
     want = []
+    off_keys = set()
     for key, mod, attr, _name, _fix in _OPTIONAL_PHASES:
         if _phase_on(opts, key):
             continue
+        off_keys.add(key)
         try:
             want += list(getattr(__import__(mod, fromlist=[attr]), attr))
         except Exception:  # noqa: BLE001
             continue
+
+    # THE DECLARED ID LISTS ARE NOT THE WHOLE PHASE.
+    #
+    # GSC_IDS is the set the Search Console collector RETURNS. Two more GSC
+    # rows are answered elsewhere - from the CrUX data another collector
+    # already fetched - and they are in the catalog but on nobody's list. So
+    # with the collectors unticked they were not carried, and the panel said
+    # "Search Console produced no result for this run" for a phase the
+    # operator had deliberately skipped because they already had it.
+    #
+    # A phase owns its SECTIONS, not just the ids one function happens to
+    # return. Anything in the catalog under a skipped phase's prefixes is
+    # eligible.
+    _PHASE_PREFIXES = {
+        "run_collectors": ("GSC", "GA4", "OFF"),
+        "run_consent": ("CONS",),
+    }
+    prefixes = tuple(p for k in off_keys for p in _PHASE_PREFIXES.get(k, ()))
+    if prefixes:
+        try:
+            want += [cid for cid in db.catalog()
+                     if str(cid).split("-")[0] in prefixes]
+        except Exception:  # noqa: BLE001
+            pass
     # A row that this run answered properly always wins.
     _ANSWERED = ("Pass", "Fail", "Warning", "Not Implemented", "Info", "N/A")
     need = [cid for cid in dict.fromkeys(want)
@@ -839,6 +896,50 @@ def _carry_forward(a, opts, audit_id, findings) -> dict:
         print(f"[worker] {audit_id} carried {len(carried)} answered row(s) "
               f"forward from an earlier run of this URL", flush=True)
     return carried
+
+
+def _carry_extras(a, opts, audit_id, extras):
+    """
+    A SECTION THAT IS NOT A CHECKPOINT STILL HAS TO SURVIVE A CHEAP RE-RUN.
+
+    `_carry_forward` carries answered ROWS, which is enough for every phase
+    whose output is checkpoints. Reputation has none by design - it renders
+    straight out of `extras` - so unticking its box on a re-run does not
+    produce a stale section or a gap on the fix list. It produces NO SECTION
+    AT ALL, silently, and the second report is quietly smaller than the first
+    for reasons nobody can see from the document.
+
+    Same rules as the row version, for the same reasons: only for a phase this
+    run did not do, only from the same URL, newest first, and stamped with
+    where it came from so the page can say how old it is rather than passing
+    last month's star rating off as today's.
+    """
+    if _phase_on(opts, "run_reputation") or extras.get("reputation"):
+        return
+    url = (a.get("target_url") or "").rstrip("/").lower()
+    try:
+        prior = [r for r in db.list_audits()
+                 if r["id"] != audit_id
+                 and (r.get("target_url") or "").rstrip("/").lower() == url
+                 and r.get("status") == "ready"]
+    except Exception:  # noqa: BLE001
+        return
+    prior.sort(key=lambda r: r.get("completed_at") or r.get("created_at") or 0,
+               reverse=True)
+    for row in prior[:5]:
+        try:
+            old = json.loads(db.get_audit(row["id"]).get("extras") or "{}")
+        except Exception:  # noqa: BLE001
+            continue
+        rep = (old or {}).get("reputation")
+        if rep and rep.get("ok"):
+            rep = dict(rep)
+            rep["carried_from"] = row["id"]
+            rep["carried_at"] = row.get("completed_at") or row.get("created_at")
+            extras["reputation"] = rep
+            print(f"[worker] {audit_id} carried the reputation profile "
+                  f"forward from {row['id']}", flush=True)
+            return
 
 
 def _phase_on(opts, key) -> bool:
@@ -917,6 +1018,11 @@ def _score_and_save(a, opts, audit_id, art, findings, extras, step):
     if opts.get("run_aivis"):
         _ai_visibility(a, audit_id, findings, extras, step)
 
+    # Opt-in for the same reason as the others: it spends DataForSEO credit
+    # per run, and plenty of audits do not need it.
+    if opts.get("run_reputation"):
+        _reputation(a, audit_id, extras, step)
+
     # WHICH OPTIONAL PHASES WERE ASKED FOR.
     #
     # Recorded because the report cannot tell the difference otherwise. Nine
@@ -934,6 +1040,7 @@ def _score_and_save(a, opts, audit_id, art, findings, extras, step):
         # These two are recorded inverted because that is how they arrive:
         # the form posts a tick, the API stores the absence of one.
         "run_judgment": not opts.get("skip_judgment"),
+        "run_reputation": bool(opts.get("run_reputation")),
         "run_collectors": not opts.get("skip_collectors"),
     }
 
@@ -963,6 +1070,7 @@ def _score_and_save(a, opts, audit_id, art, findings, extras, step):
     # Immediately before the final save and before scoring, so the carried
     # rows count in the score exactly as they would have if the phase had run
     # - which is the point. See _carry_forward for the rules.
+    _carry_extras(a, opts, audit_id, extras)
     carried = _carry_forward(a, opts, audit_id, findings)
     if carried:
         findings.update(carried)
