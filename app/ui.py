@@ -805,11 +805,19 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
              "copilot": "Copilot"}
     if not caps.get("known"):
         AIVIS_ATTR = ""
-        AIVIS_NOTE = "(asks each assistant; the worker has not reported its keys)"
+        AIVIS_NOTE = "the worker has not reported its keys"
     elif plats:
-        names = ", ".join(_NICE.get(x, x) for x in plats)
+        # THE COUNT, NOT THE ROLL-CALL.
+        #
+        # "(AI Overviews, ChatGPT, Claude, Gemini, Perplexity - ~2 min - paid
+        # per question)" is longer than every other pill in the row put
+        # together, and the names are not a decision anyone makes here: which
+        # assistants are reachable is decided by which keys the worker holds.
+        # The number says the same thing in four characters, and the report
+        # names them where naming them matters.
         AIVIS_ATTR = ""
-        AIVIS_NOTE = f"({names} &middot; ~2 min &middot; paid per question)"
+        AIVIS_NOTE = (f"{len(plats)} assistant"
+                      f"{'s' if len(plats) != 1 else ''} &middot; ~2 min")
     else:
         # Disabled rather than merely discouraged. A ticked box that cannot do
         # anything is worse than one that explains why it is greyed out.
@@ -992,8 +1000,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
             Ask the AI assistants <span class='note'>{AIVIS_NOTE}</span></label>
           <label class='ph'><input type='checkbox' name='reuse_crawl' value='1'
             checked form='auditform'><span class='tick'>{TICK}</span>
-            Reuse the last crawl
-            <span class='note'>if we have one \u2014 no new requests</span></label>
+            Reuse the last crawl</label>
         </div>
 
         <!-- CRAWL SETTINGS ARE NOT PHASES.

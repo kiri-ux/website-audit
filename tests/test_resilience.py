@@ -207,8 +207,13 @@ def main():
           "ai_platforms" in inspect.getsource(_w._publish_capabilities))
 
     ready = _box({"known": True, "ai_platforms": ["chatgpt", "claude"]})
-    check("with keys, the box names the assistants that will answer",
-          "ChatGPT, Claude" in ready and "disabled" not in ready, ready[:80])
+    # WAS: asserted the box listed "ChatGPT, Claude" by name. The roll-call was
+    # longer than every other pill in the row put together, and which
+    # assistants are reachable is not a decision made on this form - it is
+    # decided by the keys the worker holds. What still has to be true is that
+    # the box knows how many will answer and is usable.
+    check("with keys, the box says how many assistants will answer",
+          "2 assistants" in ready and "disabled" not in ready, ready[:80])
     none = _box({"known": True, "ai_platforms": []})
     check("with no keys, the box is disabled rather than merely discouraged",
           "disabled" in none, none[:80])
