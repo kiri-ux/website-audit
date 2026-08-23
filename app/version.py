@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-74"
-BUILD_NOTES = ("Shorter phase pills - the assistant count instead of the "
-               "roll-call, and no note on reuse-the-last-crawl")
+BUILD = "2026.08.20-76"
+BUILD_NOTES = ("The dashboard stops reloading under your hands while you "
+               "type; Stop closes out a run a deploy already interrupted")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

@@ -351,6 +351,24 @@ def main():
     _, _, page = GET(f"/audits/{rid}")
     check("the running page offers the button",
           b"/stop" in page, str(page[:0]))
+    # A RUN THAT WAS INTERRUPTED HAS NOBODY LEFT TO NOTICE.
+    #
+    # Deploying mid-scan takes the process with it. Stop on that row used to
+    # write the flag and wait for a reader that was never coming, so the page
+    # sat at "stopping" until the stall detector reported it as a fault - for
+    # something the person deliberately did.
+    from app.ui import STALE_AFTER_S as _STALE
+    gid = _db.create_audit(partner_id="vici", client_name="Interrupted",
+                           target_url="https://gone.test/",
+                           vertical="local_service", options={})
+    _db.update_audit(gid, status="checking",
+                     heartbeat_at=_t.time() - _STALE - 60)
+    POST(f"/api/audits/{gid}/stop")
+    row = _db.get_audit(gid)
+    check("an interrupted run closes out immediately",
+          row["status"] == "cancelled", row["status"])
+    check("and says why, without blaming the site",
+          "interrupted" in (row.get("progress") or ""), row.get("progress"))
 
     print("\nEVERY LINK THE REPORT PAGE ADVERTISES RESOLVES")
     _, _, html = GET(f"/audits/{aid}")

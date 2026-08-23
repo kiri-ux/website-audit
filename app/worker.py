@@ -1069,13 +1069,13 @@ def _reap_abandoned():
             print(f"[worker] closed cancelled audit {row['id']}", flush=True)
             n += 1
             continue
-        msg = (f"The worker running this stopped responding {mins} minutes "
-               f"ago, at \u201c{row.get('progress') or 'an early step'}\u201d, "
-               f"and recorded no error. That combination means the process "
-               f"went away rather than failed \u2014 an out-of-memory kill or "
-               f"the instance being recycled. Nothing was wrong with the "
-               f"site. Re-run it; the stored crawl is reused, so the "
-               f"client's server is not touched again.")
+        msg = (f"This run stopped responding {mins} minutes ago, at "
+               f"\u201c{row.get('progress') or 'an early step'}\u201d, and "
+               f"recorded no error. That combination means it was interrupted "
+               f"rather than failed \u2014 a deploy going out mid-scan, or the "
+               f"instance being recycled. Nothing was wrong with the site. "
+               f"Re-run it; the stored crawl is reused, so the client's "
+               f"server is not touched again.")
         db.update_audit(row["id"], status="failed", progress=msg, error=msg,
                         completed_at=time.time())
         print(f"[worker] reaped abandoned audit {row['id']} "

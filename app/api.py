@@ -707,12 +707,31 @@ def _request_stop(audit_id: str, scope):
     if a.get("status") not in _STOPPABLE:
         return a, False
     db.update_audit(audit_id, cancel_at=time.time(),
-                    progress="stopping — waiting for the worker to notice")
-    # A run still sitting in the queue has no worker to notice anything, so
-    # nothing would ever move it out of "stopping". Close it here instead.
-    if a.get("status") == "queued":
-        db.update_audit(audit_id, status="cancelled",
-                        progress="stopped before it started",
+                    progress="stopping at the end of the current step")
+
+    # NOTHING IS COMING FOR THIS ONE.
+    #
+    # Two cases where waiting for the run to notice means waiting forever:
+    #
+    #   * it never started - it is still in the queue, so there is no process
+    #     to read the flag;
+    #   * it was interrupted - a deploy mid-scan, or the instance recycled.
+    #     The process that held it is gone, and the giveaway is that its
+    #     heartbeat stopped moving. Somebody pressing Stop on that row would
+    #     otherwise sit and watch "stopping" until the stall detector caught
+    #     up, and then be told the run "stopped responding" - a fault report,
+    #     for a thing they asked for.
+    #
+    # Both close here, immediately, as stopped.
+    from .ui import STALE_AFTER_S
+    hb = a.get("heartbeat_at")
+    gone = bool(hb) and (time.time() - float(hb)) > STALE_AFTER_S
+    if a.get("status") == "queued" or gone:
+        db.update_audit(audit_id, status="cancelled", error=None,
+                        progress=("stopped before it started"
+                                  if a.get("status") == "queued" else
+                                  "stopped - this run had already been "
+                                  "interrupted, most likely by a deploy"),
                         completed_at=time.time())
     return a, True
 
@@ -723,7 +742,7 @@ def stop_audit_api(audit_id: str, x_api_key: str | None = Header(None)):
     a, stopped = _request_stop(audit_id, p.scope)
     return {"audit_id": audit_id, "stopping": stopped,
             "status": db.get_audit(audit_id, p.scope).get("status"),
-            "note": ("the worker stops at its next step" if stopped else
+            "note": ("stops at the end of the current step" if stopped else
                      f"nothing to stop — this run is {a.get('status')}")}
 
 

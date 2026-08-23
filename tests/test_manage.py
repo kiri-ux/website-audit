@@ -436,8 +436,8 @@ def main():
     _wk2._reap_abandoned()
     check("the abandoned run is marked failed",
           _db2.get_audit(_dead)["status"] == "failed")
-    check("and the message says the process went away, not that the site broke",
-          "went away rather than failed"
+    check("and the message says it was interrupted, not that the site broke",
+          "interrupted rather than failed"
           in (_db2.get_audit(_dead).get("error") or ""))
     check("and names the step it died on",
           "collecting Search Console" in (_db2.get_audit(_dead).get("error") or ""))

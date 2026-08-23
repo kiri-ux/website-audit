@@ -536,7 +536,32 @@ def _shell(title, body, refresh=None, heading=None, crumbs=None):
     makes the tool read as part of adtini rather than a separate site opened
     in a new tab, which is the whole point of the exercise.
     """
-    r = f"<meta http-equiv='refresh' content='{refresh}'>" if refresh else ""
+    # A META REFRESH DOES NOT CARE WHAT YOU ARE DOING.
+    #
+    # The dashboard reloads every 8 seconds while any run is in flight, and
+    # the new-audit form is on the dashboard - so typing a client name with a
+    # scan running meant watching the page blink and the field empty itself
+    # every eight seconds. There is no way to cancel a meta refresh.
+    #
+    # A timer can be cancelled, so it is a timer now: same interval, same
+    # behavior on an idle page, but it holds off while anything on the page
+    # is focused or has been typed into, and gets out of the way of a form
+    # somebody is filling in. `data-refresh` is what the audit status page
+    # (which has no form) still reloads on.
+    r = ""
+    if refresh:
+        r = (f"<script>(function(){{var S={int(refresh)}*1000;"
+             "function busy(){"
+             "var a=document.activeElement;"
+             "if(a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName))return true;"
+             "var f=document.querySelectorAll("
+             "'form input[type=text],form input:not([type]),"
+             "form input[type=number],form textarea');"
+             "for(var i=0;i<f.length;i++){"
+             "if(f[i].value&&f[i].value!==f[i].defaultValue)return true;}"
+             "return false;}"
+             "setInterval(function(){if(!busy())location.reload();},S);"
+             "})();</script>")
     trail = ""
     if crumbs:
         parts = []
@@ -805,7 +830,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
              "copilot": "Copilot"}
     if not caps.get("known"):
         AIVIS_ATTR = ""
-        AIVIS_NOTE = "the worker has not reported its keys"
+        AIVIS_NOTE = "keys not reported yet"
     elif plats:
         # THE COUNT, NOT THE ROLL-CALL.
         #
@@ -822,7 +847,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
         # Disabled rather than merely discouraged. A ticked box that cannot do
         # anything is worse than one that explains why it is greyed out.
         AIVIS_ATTR = "disabled"
-        AIVIS_NOTE = ("no AI platform keys on the worker &mdash; set "
+        AIVIS_NOTE = ("no AI platform keys set &mdash; add "
                       "OPENAI_API_KEY, ANTHROPIC_API_KEY, PERPLEXITY_API_KEY "
                       "or GEMINI_API_KEY there")
 
@@ -1697,14 +1722,30 @@ def audit_html(a):
         # heartbeat at all, so a missing value means "unknown", never "dead".
         hb = a.get("heartbeat_at")
         stale = bool(hb) and (_time.time() - float(hb)) > STALE_AFTER_S
-        if stale:
+        if stale and a.get("cancel_at"):
+            # ASKED TO STOP, AND THEN INTERRUPTED.
+            #
+            # Without this the stall detector wins and the page reports "this
+            # run has stopped responding" - which reads as a fault, on a run
+            # the person deliberately ended. Pressing Stop again closes the
+            # row outright; the API sees the dead heartbeat and does not wait.
+            inner = (f"<div class='card'><b>Stopping</b>"
+                     f"<p class='sub'>This run was interrupted before it could "
+                     f"stop cleanly - most often a deploy going out mid-scan. "
+                     f"Everything answered before that point is kept.</p>"
+                     f"<form method='post' action='/audits/{e(a['id'])}/stop' "
+                     f"style='margin-top:12px'>"
+                     f"<button class='btn' type='submit'>Close it out"
+                     f"</button></form></div>")
+            refresh = None
+        elif stale:
             mins = int((_time.time() - float(hb)) // 60)
             inner = (rail + f"<div class='marks'>{marks}</div>"
                      f"<div class='card' style='margin-top:16px'>"
                      f"<b>This run has stopped responding.</b>"
                      f"<p class='sub'>The last progress update was {mins} minutes "
                      f"ago, at &ldquo;{e(a.get('progress') or cur)}&rdquo;. That "
-                     f"usually means the worker was restarted mid-run — a deploy, "
+                     f"usually means the run was interrupted — a deploy, "
                      f"or the instance being recycled — rather than anything wrong "
                      f"with the site. Rerunning picks up the stored pages, so it "
                      f"will not go back out to the client's server.</p>"
@@ -1725,7 +1766,7 @@ def audit_html(a):
             # as broken.
             stopping = bool(a.get("cancel_at"))
             act = ("<p class='sub' style='margin-top:12px'><b>Stopping.</b> "
-                   "Waiting for the worker to reach its next step; everything "
+                   "It stops at the end of the step it is on; everything "
                    "answered so far is kept.</p>" if stopping else
                    f"<form method='post' action='/audits/{e(a['id'])}/stop' "
                    f"style='margin-top:12px'>"

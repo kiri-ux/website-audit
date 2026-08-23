@@ -111,18 +111,21 @@ def main():
     dead = ui.audit_html({**base, "heartbeat_at": time.time() - 3600})
     old = ui.audit_html({**base, "heartbeat_at": None})
 
-    check("a live run still auto-refreshes", "http-equiv='refresh'" in live)
+    # WAS a meta refresh. It is a cancellable timer now - a meta refresh
+    # cannot be held off, and the dashboard carries the new-audit form, so it
+    # blanked whatever was being typed every eight seconds.
+    check("a live run still auto-refreshes", "location.reload()" in live)
     check("a live run shows the phase it is in", "judgment 20/44" in live)
     check("a dead run says so", "stopped responding" in dead)
     check("a dead run stops auto-refreshing at a corpse",
-          "http-equiv='refresh'" not in dead)
+          "location.reload()" not in dead)
     check("a dead run offers the rerun", "/audits/abc123/rerun" in dead)
     check("and offers it WITHOUT re-crawling the client's server",
           "reuse_crawl" in dead)
     # Runs that predate the column have no heartbeat. Unknown must not read as
     # dead — calling a live run dead is the worse error of the two.
     check("a run with no heartbeat is treated as live, not dead",
-          "stopped responding" not in old and "http-equiv='refresh'" in old)
+          "stopped responding" not in old and "location.reload()" in old)
 
     print("\nTHE RERUN ROUTE ACCEPTS WHAT THE PANEL SENDS IT")
     sig = inspect.signature(api.rerun_audit)
@@ -217,8 +220,10 @@ def main():
     none = _box({"known": True, "ai_platforms": []})
     check("with no keys, the box is disabled rather than merely discouraged",
           "disabled" in none, none[:80])
-    check("and it names the variables to set, on the right service",
-          "OPENAI_API_KEY" in none and "worker" in none)
+    # The pill no longer says the word "worker" - that is our architecture,
+    # not a fact about this checkbox. It still has to name the variables.
+    check("and it names the variables to set",
+          "OPENAI_API_KEY" in none and "PERPLEXITY_API_KEY" in none)
     unknown = _box({})
     # Never disable on ignorance. A worker that has not reported since its last
     # deploy may be perfectly well configured, and locking the box would be a
