@@ -23,6 +23,7 @@ that mentions you by name and gets a mention back proves very little.
 """
 from __future__ import annotations
 import hashlib
+import re
 from dataclasses import dataclass, field, asdict
 
 
@@ -121,6 +122,18 @@ SERVICE_TEMPLATES = [
     "Who is the best {service} in {location}?",
     "How do I find a good {service} in {location}?",
     "How much does {an_service} cost in {location}?",
+]
+
+# WITHOUT A HEAD NOUN, THE SENTENCE HAS TO CHANGE SHAPE.
+#
+# When the industry gives us no noun, the service is the bare thing itself -
+# "criminal defense", "family law" - and "Who is the best criminal defense in
+# Knoxville?" is not a sentence anybody says. Asking who to HIRE FOR it is,
+# and it measures the same thing.
+NOUNLESS_SERVICE_TEMPLATES = [
+    "Who should I hire for {service} in {location}?",
+    "Who is best for {service} in {location}?",
+    "How much does {service} cost in {location}?",
 ]
 
 
@@ -245,6 +258,16 @@ def build_panel(p: ClientProfile, target_size: int = 40) -> list[Query]:
 
     def add(intent, text, prompted):
         text = " ".join(text.split())
+        # THE LAST LINE OF DEFENCE AGAINST AN EMPTY SLOT.
+        #
+        # Every caller is guarded, and a template with a hole in it still
+        # reached five platforms once. This is cheap and it cannot be
+        # forgotten: a question with a missing noun has a tell - a stranded
+        # article or a space before its punctuation - and none of them are
+        # things a person types.
+        if re.search(r"\b(a|an|the|best|top-rated)\s*[?.,]", text) or \
+                re.search(r"\s[?.]", text) or "  " in text:
+            return
         k = text.lower()
         if k in seen:
             return
@@ -281,8 +304,17 @@ def build_panel(p: ClientProfile, target_size: int = 40) -> list[Query]:
         for t in COMPARISON_TEMPLATES:
             add("comparison", t.format(brand=p.brand, competitor=comp), True)
 
-    for t in (RETAIL_QUESTION_TEMPLATES if p.products else QUESTION_TEMPLATES):
-        add("question", t.format(category=p.category), False)
+    # AND NEITHER DO THE OPEN QUESTIONS.
+    #
+    # The category guard was put on the location templates and not on these,
+    # so a client we could not classify was asked "What should I look for when
+    # choosing a ?" and "How much does a usually cost?" - questions with a
+    # hole where the noun goes, fired at five platforms and counted in the
+    # rates like any other. A template with an empty slot is not a question.
+    if p.category:
+        for t in (RETAIL_QUESTION_TEMPLATES if p.products
+                  else QUESTION_TEMPLATES):
+            add("question", t.format(category=p.category), False)
 
     # SERVICES ARE THE BEST QUERIES WE HAVE, so they go in as their own
     # searches rather than as "the best company for family law". The crawl
@@ -291,7 +323,8 @@ def build_panel(p: ClientProfile, target_size: int = 40) -> list[Query]:
     where = locations[0] if locations else "my area"
     for svc in p.services[:4]:
         phrase = _service_phrase(svc, p.category)
-        for t in SERVICE_TEMPLATES:
+        for t in (SERVICE_TEMPLATES if p.category
+                  else NOUNLESS_SERVICE_TEMPLATES):
             # "a estate planning attorney" - the article has to follow the
             # word it precedes, not the template author's assumption.
             an = ("an " if phrase[:1].lower() in "aeiou" else "a ") + phrase

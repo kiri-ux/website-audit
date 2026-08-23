@@ -106,24 +106,80 @@ def capture(url: str, selector: str = "", width: int = 1280, height: int = 820,
                     # own homepage under a promise of red outlines. That is
                     # the caption lying, and the honest answer is to have no
                     # picture for that check.
+                    # THE FIRST MATCH IS NOT ALWAYS A VISIBLE ONE.
+                    #
+                    # A hidden mobile nav, a print-only footer, an element
+                    # with zero height - `.first` finds them, scrolling to
+                    # them does nothing, and the capture comes back as the top
+                    # of the page with no red on it. Which is exactly what
+                    # shipped: a homepage hero under a caption promising an
+                    # outline. Pick the first match that is actually on the
+                    # page and has a box.
+                    target = None
                     try:
-                        n = page.locator(selector).count()
+                        loc = page.locator(selector)
+                        for i in range(min(loc.count(), 12)):
+                            el = loc.nth(i)
+                            if not el.is_visible():
+                                continue
+                            box = el.bounding_box()
+                            if box and box["width"] > 8 and box["height"] > 8:
+                                target = el
+                                break
                     except Exception:  # noqa: BLE001
-                        n = 0
-                    if not n:
+                        target = None
+                    if target is None:
                         print(f"[screenshot] {url}: selector {selector!r} "
-                              f"matched nothing — no evidence shot",
+                              f"matched nothing visible — no evidence shot",
                               flush=True)
                         return None
                     page.add_style_tag(content=(
                         f"{selector} {{ outline: 3px solid #d03b3b !important; "
                         f"outline-offset: 2px !important; }}"))
                     try:
-                        page.locator(selector).first.scroll_into_view_if_needed(
-                            timeout=2500)
-                        page.wait_for_timeout(250)
+                        target.scroll_into_view_if_needed(timeout=2500)
+                        page.wait_for_timeout(200)
+                        # A LITTLE HEADROOM, BUT ONLY WHERE THERE IS ROOM.
+                        #
+                        # A flat scrollBy pushed the element straight back out
+                        # of frame whenever the browser had aligned it to the
+                        # BOTTOM edge, which is what it does for anything near
+                        # the end of a long page - the footer, every time.
+                        # Nudge only when the element is jammed against the
+                        # top, and only by what fits above it.
+                        top = target.evaluate(
+                            "e => e.getBoundingClientRect().top")
+                        if top < 60:
+                            page.evaluate(
+                                "n => window.scrollBy(0, -n)",
+                                min(160, max(0, 60 - top) + 100))
+                            page.wait_for_timeout(200)
                     except Exception:
                         pass      # highlighted but not scrolled to is still useful
+                    # AND PROVE THE MARK IS IN FRAME.
+                    #
+                    # A sticky header, a scroll-locked body, a modal - any of
+                    # them can swallow the scroll silently. If the outlined
+                    # element is not inside the viewport after all that, the
+                    # picture would show no red, and no picture is the honest
+                    # answer.
+                    try:
+                        # getBoundingClientRect, NOT bounding_box(). The
+                        # Playwright box is page-relative here, so comparing
+                        # it to the viewport height rejected every element
+                        # below the fold - including the footer, which is the
+                        # one this was written for. The DOM rectangle is
+                        # viewport-relative by definition.
+                        rect = target.evaluate(
+                            "e => {const r = e.getBoundingClientRect();"
+                            " return {top: r.top, bottom: r.bottom};}")
+                        if rect["top"] > height - 40 or rect["bottom"] < 40:
+                            print(f"[screenshot] {url}: {selector!r} would not "
+                                  f"stay in frame — no evidence shot",
+                                  flush=True)
+                            return None
+                    except Exception:  # noqa: BLE001
+                        pass
                 png = page.screenshot(type="png")
             finally:
                 browser.close()

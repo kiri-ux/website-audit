@@ -678,6 +678,17 @@ def _ai_visibility(a, audit_id, findings, extras, step):
         # renders a whole "who gets cited in your category" table from it, and
         # nothing ever put it here, so that table has never appeared.
         qtext = {q.id: q.text for q in queries}
+        # THE ANSWER ITSELF, NOT JUST WHETHER IT LINKED TO US.
+        #
+        # The examples table listed the questions and the verdict and left the
+        # reader asking the obvious next thing: so what did it SAY? The text
+        # is right here in the run and was being thrown away with everything
+        # else. A sentence of it is worth more than the percentage above it.
+        answers = {}
+        for r in (run.get("raw") or []):
+            key = (r.get("query_id"), r.get("platform"))
+            if key not in answers and r.get("text"):
+                answers[key] = " ".join(str(r["text"]).split())[:400]
         wins, losses = [], []
         for r in (run.get("results") or []):
             if not r.get("ok"):
@@ -686,11 +697,15 @@ def _ai_visibility(a, audit_id, findings, extras, step):
             if not q:
                 continue
             if r.get("cited") and len(wins) < 3:
-                wins.append({"question": q, "platform": r.get("platform")})
+                wins.append({"question": q, "platform": r.get("platform"),
+                             "answer": answers.get((r.get("query_id"),
+                                                    r.get("platform")), "")})
             elif not r.get("cited") and len(losses) < 3:
                 others = [d for d in (r.get("other_domains") or [])][:3]
                 losses.append({"question": q, "platform": r.get("platform"),
-                               "cited_instead": others})
+                               "cited_instead": others,
+                               "answer": answers.get((r.get("query_id"),
+                                                      r.get("platform")), "")})
             if len(wins) >= 3 and len(losses) >= 3:
                 break
         # THE WHOLE RUN, ON DISK, BEFORE WE DERIVE ANYTHING FROM IT.

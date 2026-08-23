@@ -477,8 +477,22 @@ class _Doc(BaseDocTemplate):
                          leftMargin=0.95 * inch, rightMargin=0.95 * inch,
                          topMargin=0.62 * inch, bottomMargin=0.72 * inch, **kw)
         self.meta = meta
+        # THE FRAME'S OWN PADDING WAS THE MISALIGNMENT.
+        #
+        # reportlab's Frame defaults to 6pt of padding on every side. So the
+        # text column started 6pt inside the margin - headings, rules, body
+        # copy - while every full-measure table in here is built at exactly
+        # 6.6in, which is 12pt WIDER than what the padded frame offers. A
+        # table too wide for its frame is centered on the overflow, so each one
+        # hung 6pt off the left and 6pt off the right of everything else.
+        #
+        # That is the "fix alignment" on the cover table, the severity pill
+        # under each finding heading, and the gradient cap that looked wider
+        # than the panel it caps. One number, three symptoms.
         frame = Frame(self.leftMargin, self.bottomMargin,
-                      self.width, self.height, id="main")
+                      self.width, self.height, id="main",
+                      leftPadding=0, rightPadding=0,
+                      topPadding=0, bottomPadding=0)
         self.addPageTemplates([PageTemplate(id="all", frames=[frame],
                                             onPage=self._chrome)])
 
@@ -823,6 +837,26 @@ SEVERITY_LEGEND = [
 # One line under the name, in the client's vocabulary. Only for the rows that
 # actually need it - a gloss under "Pages have no viewport tag" would be
 # noise, and glossing everything is how a table stops being scannable.
+# What the red outline is actually around, per checkpoint. Mirrors
+# engine/screenshots.SELECTORS - if a selector is added there, its plain-
+# English name belongs here or the caption falls back to saying nothing.
+MARK_LABEL = {
+    "ONP-08": "every H1 heading on the page",
+    "ONP-14": "the images with no alt text",
+    "ONP-17": "the links with no words in them",
+    "ONP-32": "every H1 heading on the page",
+    "ONP-33": "the headings, in the order they appear",
+    "ONP-42": "the images, whose filenames were checked",
+    "ONP-44": "the images with no responsive versions",
+    "ONP-45": "the images that load eagerly",
+    "PERF-19": "the images checked for weight and format",
+    "MOB-05": "the links and buttons, sized for a thumb",
+    "MOB-06": "the body text, checked for legible size",
+    "EEAT-05": "the footer, where trust signals live",
+    "EEAT-06": "the footer, where trust signals live",
+}
+
+
 CHECK_MEANS = {
     "ONP-12": "Whether the page uses real headings and lists rather than "
               "styled text, which is how a machine reads its structure.",
@@ -933,13 +967,17 @@ def _ai_intro(v) -> str:
     """
     shown = _ai_platforms(v)
     who = (", ".join(shown[:-1]) + " and " + shown[-1]) if len(shown) > 1 \
-        else (shown[0] if shown else "the AI assistants")
+        else (shown[0] if shown else "the AI tools")
     n = v.get("questions") or 0
-    return (f"We asked {who} {n} questions of two kinds: some that name you "
-            f"directly, to see whether the assistant knows you at all, and "
-            f"most that do not - the ones a person asks when they are looking "
-            f"for what you do and have never heard of you. Both are below, "
-            f"marked, with what the assistant said back.")
+    # WAS "assistant", which is what the industry calls these and not what a
+    # client calls them. They are the things that now answer a search before
+    # a list of links appears; "AI tools" needs no explaining and no glossary.
+    return (f"People increasingly ask ChatGPT and Google's AI answers the "
+            f"questions they used to type into a search box, and those "
+            f"answers link out to a handful of websites. This section is "
+            f"about whether yours is one of them.\n"
+            f"We put {n} questions to {who} and recorded, for each answer, "
+            f"whether it named you and whether it linked to your site.")
 
 
 def _asked_by_name(question, brand) -> bool:
@@ -963,64 +1001,87 @@ def _asked_by_name(question, brand) -> bool:
 
 
 def _ai_examples(v, S, brand=""):
-    """The questions themselves - what got cited and what did not."""
+    """
+    The questions, the verdicts and what was actually said.
+
+    A FOUR-COLUMN TABLE COULD NOT CARRY THIS.
+    #
+    Result / Question / How it was asked / Cited instead - four columns of
+    which two were usually blank, and a reader who asked, fairly, "what are
+    these saying, and what is cited versus not cited?" The answer to that is
+    not another column. It is one block per question that reads as a sentence:
+    what was asked, what came back, and the answer's own words.
+    """
     wins = v.get("cited_examples") or []
     miss = v.get("missed_examples") or []
     if not wins and not miss:
         return []
+
+    GOOD = (colors.HexColor("#E4F1E8"), colors.HexColor("#1E7A45"))
+    BAD = (colors.HexColor("#F7E4E7"), colors.HexColor("#A6192E"))
+
     out = [Spacer(1, 12),
-           Paragraph("What they were asked", S["h3"]),
-           # WAS: "A percentage says how often. These say what about." Cute,
-           # and it explains a percentage to someone looking at a table of
-           # questions. Say what the table is.
-           Paragraph("Six of the questions, and what came back.", S["small"]),
-           Spacer(1, 6)]
-    rows = []
+           Paragraph("What was asked, and what came back", S["h3"]),
+           Paragraph(
+               "<b>Linked to you</b> means the answer used your website as one "
+               "of its sources, with a link a reader can follow. <b>Did not "
+               "link to you</b> means it answered from somewhere else. Only "
+               "the link sends anyone to you.", S["small"]),
+           Spacer(1, 8)]
 
-    def kind(q):
-        # THE PARAGRAPH ABOVE USED TO SAY NONE OF THESE NAMED THE CLIENT.
-        # Three of them did, and those three are the ones that got cited -
-        # which is the actual finding, and it only reads as one if the table
-        # says which kind each question was.
-        return Paragraph(
-            "<font color='#4A5461'>"
-            + ("By name" if _asked_by_name(q, brand) else "Not by name")
-            + "</font>", S["cellsm"])
+    def block(item, cited):
+        q = item.get("question")
+        named = _asked_by_name(q, brand)
+        plat = _ai_platforms({"platforms": [item.get("platform") or ""]})
+        asked = (f"Asked of {plat[0]}" if plat and plat[0] else "Asked")
+        asked += (", using your name" if named else ", without naming you")
+        others = [d for d in (item.get("cited_instead") or []) if d][:3]
+        if cited:
+            verdict = "It linked to your site."
+        elif others:
+            verdict = ("It did not link to you. It linked to "
+                       + ", ".join(others) + " instead.")
+        else:
+            verdict = "It did not link to you, or to any source we could name."
 
-    for w in wins[:3]:
-        q = w.get("question")
-        rows.append([_pill("Cited", {"Cited": (colors.HexColor("#E4F1E8"),
-                                               colors.HexColor("#1E7A45"))},
-                           S, 0.72 * inch),
-                     Paragraph(f"\u201c{_p(q)}\u201d", S["cell"]),
-                     kind(q),
-                     Paragraph(_p(""), S["cellsm"])])
+        inner = [Paragraph(f"<b>\u201c{_p(q)}\u201d</b>", S["cell"]),
+                 Spacer(1, 2),
+                 Paragraph(f"<font color='#8096AC'>{_p(asked)}</font>",
+                           S["cellsm"]),
+                 Spacer(1, 4),
+                 Paragraph(_p(verdict), S["cellsm"])]
+        # THE ANSWER'S OWN WORDS, WHERE WE HAVE THEM.
+        #
+        # Stored from the run since the build that stopped throwing the raw
+        # answers away; an older audit has none, and prints the verdict alone
+        # rather than an empty quotation mark.
+        ans = " ".join(str(item.get("answer") or "").split())
+        if ans:
+            if len(ans) > 260:
+                ans = ans[:257].rsplit(" ", 1)[0] + "\u2026"
+            inner += [Spacer(1, 5),
+                      Paragraph(f"<font color='#52514e'>\u201c{_p(ans)}"
+                                f"\u201d</font>", S["cellsm"])]
+
+        pill = _pill("Linked to you" if cited else "Did not link",
+                     {"Linked to you": GOOD, "Did not link": BAD}, S,
+                     1.15 * inch)
+        t = Table([[pill, inner]], colWidths=[1.25 * inch, 5.35 * inch])
+        t.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (0, 0), 10),
+            ("RIGHTPADDING", (1, 0), (1, 0), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ("LINEBELOW", (0, 0), (-1, -1), 0.4, LINE),
+        ]))
+        return KeepTogether([t])
+
+    for w in wins[:2]:
+        out.append(block(w, True))
     for m in miss[:3]:
-        q = m.get("question")
-        others = m.get("cited_instead") or []
-        who = ", ".join(others[:2]) if others else "nobody we could attribute"
-        rows.append([_pill("Not cited", {"Not cited": (
-                        colors.HexColor("#F7E4E7"),
-                        colors.HexColor("#A6192E"))}, S, 0.72 * inch),
-                     Paragraph(f"\u201c{_p(q)}\u201d", S["cell"]),
-                     kind(q),
-                     Paragraph(f"<font color='#4A5461'>{_p(who)}</font>",
-                               S["cellsm"])])
-    t = Table([[Paragraph("<b>Result</b>", S["cellsm"]),
-                Paragraph("<b>Question asked</b>", S["cellsm"]),
-                Paragraph("<b>How it was asked</b>", S["cellsm"]),
-                Paragraph("<b>Cited instead</b>", S["cellsm"])]] + rows,
-              colWidths=[0.8 * inch, 3.05 * inch, 1.0 * inch, 1.7 * inch])
-    t.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.6, LINE),
-        ("LINEBELOW", (0, 1), (-1, -2), 0.4, colors.HexColor("#F1F4F7")),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-    ]))
-    out.append(t)
+        out.append(block(m, False))
     return out
 
 
@@ -1040,7 +1101,8 @@ def _ai_visibility(meta, S):
     _brand = (_ctx.get("brand") or meta.get("client") or "").strip()
     out = [Paragraph("AI Search Visibility", S["h2"]),
            _rule(),
-           Paragraph(_p(_ai_intro(v)), S["small"]),
+           Paragraph(_p(_ai_intro(v)).replace("\n", "<br/><br/>"),
+                     S["small"]),
            Spacer(1, 8)]
 
     cite = v.get("citation_rate") or 0
@@ -1078,13 +1140,13 @@ def _ai_visibility(meta, S):
                 Paragraph(_p(sub), _sub)]
 
     tiles = Table([[
-        _tile3(f"{cite}%", "linked to you",
-               "the assistant used your site as a source"),
-        _tile3(f"{ment}%", "named you",
-               "said the brand, no link"),
-        _tile3(v.get("client_citations") or 0, "citations",
-               f"across {_plats} assistant{'s' if _plats != 1 else ''}"),
-    ]], colWidths=[2.18 * inch, 2.18 * inch, 2.18 * inch])
+        _tile3(f"{cite}%", "of answers linked to you",
+               "your site was one of the sources"),
+        _tile3(f"{ment}%", "of answers named you",
+               "said your name, linked elsewhere"),
+        _tile3(v.get("client_citations") or 0, "links to your site",
+               f"across {_plats} tool{'s' if _plats != 1 else ''}"),
+    ]], colWidths=[2.2 * inch, 2.2 * inch, 2.2 * inch])
     tiles.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BACKGROUND", (0, 0), (-1, -1), SURFACE),
@@ -1099,10 +1161,12 @@ def _ai_visibility(meta, S):
 
     if ment > cite:
         out.append(Spacer(1, 8))
-        out.append(_banner("", f"Mentioned is not cited. Assistants named you in "
-                               f"{ment}% of answers but linked to you in only "
-                               f"{cite}% — the gap is visibility you are already "
-                               f"earning and not being credited for.", SEQ, S))
+        out.append(_banner("", f"Being named is not the same as being linked "
+                               f"to. These tools said your name in {ment}% of "
+                               f"answers and linked to your site in only "
+                               f"{cite}% - so they already know who you are, "
+                               f"and are sending the reader somewhere else "
+                               f"for the detail.", SEQ, S))
 
     # A GOOGLE REDIRECT IS NOT A COMPETITOR.
     #
@@ -1120,18 +1184,26 @@ def _ai_visibility(meta, S):
                       for x in _NOT_A_SOURCE)]
     if sov:
         out.append(Spacer(1, 12))
-        out.append(Paragraph("Who gets cited in your category", S["h3"]))
+        out.append(Paragraph("Sources these answers used", S["h3"]))
         # WHAT THE NUMBERS MEAN, BEFORE THE NUMBERS.
         #
         # A column headed "Share" showing 7.4%, 4.3%, 4.3% invites the reading
         # "nobody has much" - when what it actually says is that citations are
         # spread across dozens of sources and these are the largest slices.
+        # WHAT THE GRID IS, IN ONE READING.
+        #
+        # "Every source these assistants linked to, counted. Share is that
+        # source's portion of ALL citations given…" - two abstractions and a
+        # capitalised ALL, explaining a table nobody had been told the purpose
+        # of. The purpose is the point: these are the sites the answers are
+        # BUILT from, and being on the list is what being cited means.
         out.append(Paragraph(
-            f"Every source these assistants linked to across the "
-            f"{v.get('questions') or 0} questions, counted. Share is that "
-            f"source's portion of ALL citations given - the field is wide, so "
-            f"the leader holds a small slice, and the ranking is what matters "
-            f"rather than the percentage.", S["small"]))
+            f"When these tools answered the {v.get('questions') or 0} "
+            f"questions, they built their answers out of these websites. "
+            f"Being linked to means being on this list, so it is worth "
+            f"knowing who is on it and where you sit. The share is small for "
+            f"everyone because the answers pull from dozens of sites; the "
+            f"order is what matters.", S["small"]))
         out.append(Spacer(1, 6))
         rows = [[Paragraph("<b>Source cited</b>", S["cellsm"]), "",
                  Paragraph("<b>Share of all</b>", S["cellsm"]),
@@ -1149,14 +1221,18 @@ def _ai_visibility(meta, S):
                           else f"{d.get('share')}%", S["cellsm"]),
                 Paragraph(str(d.get("citations") or 0), S["cellsm"]),
             ])
-        t = Table(rows, colWidths=[2.3 * inch, 2.1 * inch, 0.9 * inch, 1.25 * inch])
+        t = Table(rows, colWidths=[2.3 * inch, 2.1 * inch, 0.9 * inch,
+                                   1.25 * inch])
         t.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("LINEBELOW", (0, 0), (-1, -1), 0.4, LINE),
             ("TOPPADDING", (0, 0), (-1, -1), 5),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ("LEFTPADDING", (0, 0), (-1, -1), 3)]))
-        out.append(t)
+        # ONE PAGE, OR THE NEXT ONE - never a header here and one row there.
+        # This table split with a single domain stranded on the following
+        # page under nothing at all.
+        out.append(KeepTogether([t]))
         gap = v.get("citation_gap")
         if gap and v.get("top_competitor_domain"):
             out.append(Spacer(1, 6))
@@ -1232,7 +1308,7 @@ def _strength(text, S, width=6.55 * inch):
         ("LEFTPADDING", (0, 0), (-1, -1), 13),
         ("RIGHTPADDING", (0, 0), (-1, -1), 14),
         ("TOPPADDING", (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 11),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
     ]))
     return t
 
@@ -1435,8 +1511,9 @@ def _hero_shot(meta, S):
             Spacer(1, 14)]
 
 
-def _evidence(meta, S):
+def _evidence(meta, S, catalog=None):
     """Annotated screenshots — the problem, in a picture, on their own site."""
+    catalog = catalog or {}
     shots = (meta.get("extras") or {}).get("screenshot_blobs") or []
     # THE HERO ALREADY SHOWED THEM THE HOMEPAGE.
     #
@@ -1448,17 +1525,18 @@ def _evidence(meta, S):
     if not shots:
         return []
     from reportlab.platypus import Image as RLImage
-    out = [Paragraph("What This Looks Like", S["h2"]),
-           _rule(),
+    head = [Paragraph("What This Looks Like", S["h2"]),
+            _rule(),
            # WAS: "Captured from your live site. Red outlines mark the
            # elements the check flagged." Two problems: it described our
            # process rather than their site, and it promised outlines that
            # only some findings have — an HTTPS failure has nothing on the
            # page to outline, so the reader hunts for a mark that was never
            # drawn.
-           Paragraph("Your homepage as it loaded, with anything the check "
-                     "flagged marked in red.", S["small"]),
-           Spacer(1, 8)]
+            Paragraph("Pages as they loaded, with the thing each check "
+                      "flagged outlined in red.", S["small"]),
+            Spacer(1, 8)]
+    out = []
     for sh in shots[:3]:
         try:
             iw, ih = _png_size(sh["png"])
@@ -1467,10 +1545,26 @@ def _evidence(meta, S):
                        sw * ((ih / iw) if (iw and ih) else 820 / 1280))
         except Exception:
             continue
-        cap = Paragraph(f"<font color='#52514e'>{_p(sh.get('caption'))}</font>",
+        # WHAT IS ACTUALLY MARKED, NOT THE CHECKPOINT'S NAME.
+        #
+        # The caption read "Expert-written content - http://ootenlawfirm.com/"
+        # under a picture of a homepage, and the client's question was simply
+        # "what is this?" - fair, because the checkpoint name describes what
+        # we were LOOKING for, not what the red box is around.
+        mark = MARK_LABEL.get(sh.get("checkpoint") or "")
+        name = (catalog.get(sh.get("checkpoint") or "", {}) or {}).get(
+            "checkpoint") or sh.get("caption") or ""
+        where = (sh.get("url") or "").split("//")[-1].rstrip("/")
+        cap_txt = (f"In red: {mark}. " if mark else "")
+        cap_txt += f"Checked for \u201c{name}\u201d on {where}." if name \
+            else where
+        cap = Paragraph(f"<font color='#52514e'>{_p(cap_txt)}</font>",
                         S["muted"])
         out.append(KeepTogether([img, Spacer(1, 3), cap, Spacer(1, 14)]))
-    return out
+    if not out:
+        return []
+    # The heading travels with the first shot; the rest follow.
+    return [KeepTogether(head + [out[0]])] + out[1:]
 
 
 def _severity_counts(findings: dict) -> dict:
@@ -1802,9 +1896,17 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                 # canonicalization is — so the good news reads as jargon and
                 # gets skipped, which is a waste of the one section that is
                 # not asking them for anything.
-                story.append(Spacer(1, 4))
+                # AND THE HEADING GOES WITH THEM.
+                #
+                # KeepTogether around the grid alone left "Current Strengths"
+                # at the foot of page 2 with four inches of nothing under it
+                # and the cards on page 3. The heading is not content; it
+                # travels with the block it names. `story` already carries the
+                # heading, so it is pulled back off and bound to the grid.
+                head = story.pop()
                 for fl in _strength_grid(list(items), S):
-                    story.append(fl)
+                    story.append(KeepTogether([head, Spacer(1, 4), fl]))
+                    head = Spacer(1, 0)
                 # NO DEFINITION BUBBLE UNDER THE STRENGTHS.
                 #
                 # `block` is what gets scanned for terms to define, and adding
@@ -1881,7 +1983,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                 story.append(b)
             story.append(Spacer(1, 12))
 
-    for fl in _evidence(meta, S):
+    for fl in _evidence(meta, S, catalog):
         story.append(fl)
 
     # ------------------------------------------------ area snapshot

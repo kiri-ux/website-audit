@@ -555,6 +555,44 @@ def main():
     check("everything drawn stays inside the flowable's own box",
           not [t for t in rec.texts if t["y"] > h or t["y"] < -1])
 
+    print("\nEVERYTHING HANGS FROM ONE LEFT EDGE")
+    # THE BUG, REPLAYED.
+    #
+    # reportlab's Frame defaults to 6pt of padding, so the text column started
+    # 6pt inside the margin while every full-measure table here is built at
+    # exactly 6.6in - 12pt wider than the padded frame. A table too wide for
+    # its frame is centered on the overflow, so each one hung 6pt off the left
+    # of every heading, rule and paragraph on the page.
+    _cat = {"TECH-01": {"prefix": "TECH", "checkpoint": "Robots.txt"}}
+    _F = {"TECH-01": {"status": "Fail", "severity": "High",
+                      "evidence": "broken", "recommendation": "fix",
+                      "confidence": 1.0, "source": "crawl"}}
+    _pdf = build_pdf({"client": "Alignment Co", "url": "https://a.test/",
+                      "pages_crawled": 3, "coverage": "1/1",
+                      "generated": "2026-08-23", "build": "t"},
+                     {"overall": {"score": 70, "rating": "Strong"},
+                      "sections": {}}, _F, _cat)
+    try:
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(_pdf)) as _d:
+            words = _d.pages[0].extract_words()
+        def _x(prefix):
+            for w in words:
+                if w["text"].startswith(prefix):
+                    return round(w["x0"], 1)
+            return None
+        head_x = _x("Comprehensive")     # a heading paragraph
+        cell_x = _x("Prepared")          # a full-measure table's first cell
+        client_x = _x("Alignment")       # the h2
+        check("the cover table starts where the headings start",
+              head_x is not None and cell_x is not None
+              and abs(head_x - cell_x) < 1.5, f"{head_x} vs {cell_x}")
+        check("and so does the client name",
+              client_x is not None and abs(client_x - cell_x) < 1.5,
+              f"{client_x} vs {cell_x}")
+    except ImportError:
+        print("  SKIP  pdfplumber not installed")
+
     print("\nTHE AI SECTION COUNTS ASSISTANTS, NOT CHARACTERS")
     # "14 citations across 48 assistants" - `platforms` is stored as a
     # comma-separated STRING and len() counted its characters.

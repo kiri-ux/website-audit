@@ -184,6 +184,23 @@ def main():
           str([t for t in texts if "dui" in t.lower()][:1]))
     check("and the articles agree with the words after them",
           not [t for t in texts if " a estate" in t or " a attorney" in t])
+    # A TEMPLATE WITH AN EMPTY SLOT IS NOT A QUESTION.
+    #
+    # "What should I look for when choosing a ?" and "How much does a usually
+    # cost?" were fired at five platforms and counted in the rates like any
+    # other answer, because the guard was on the location templates and not on
+    # the open ones.
+    _hole = profile_from_audit("Someone", "https://someone.test/",
+                               {"locations": [{"city": "Knoxville",
+                                               "region": "Tennessee"}],
+                                "sections": ["/criminal-defense"]}, "")
+    holes = [q.text for q in _bp(_hole)]
+    check("no question is left with a hole where a noun goes",
+          not [t for t in holes
+               if " a ?" in t or " a usually" in t or "  " in t
+               or " the ?" in t], str(holes[:3]))
+    check("and the services still carry the panel on their own",
+          any("criminal defense" in t for t in holes), str(holes[-2:]))
     # A client we cannot classify gets service questions, never "business".
     bare = profile_from_audit("Someone", "https://someone.test/",
                               {"sections": ["/roof-repair"]},
