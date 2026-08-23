@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-57"
-BUILD_NOTES = ("Gemini wants the older grounding tool shape on some "
-               "models; it is asked with both before being written off")
+BUILD = "2026.08.20-58"
+BUILD_NOTES = ("The collectors never heartbeat, so a slow Search Console "
+               "pass was reported as a dead worker")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

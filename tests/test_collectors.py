@@ -307,6 +307,53 @@ def main():
     except Exception as e:
         check("PDF parseable", False, str(e))
 
+    print("\nA SLOW PHASE IS NOT A DEAD WORKER")
+    # THE BUG THE STATUS PAGE SURFACED: the collectors stamped one progress
+    # line before them and the next one after ALL of them. URL Inspection is
+    # up to 25 calls at a 45-second timeout, so a Search Console pass working
+    # perfectly could run fifteen minutes in silence — and the status page,
+    # which calls a run dead when the heartbeat is ten minutes old, told the
+    # operator their worker had been recycled. On a run that was fine.
+    #
+    # A stall detector is only as good as the heartbeat it watches.
+    import time as _t2
+    import engine.collectors.analytics as _A
+    _real_api, _real_budget = _A._api, _A.GSC_INSPECT_BUDGET_S
+    _A.GSC_INSPECT_BUDGET_S = 1
+    _beats = []
+
+    def _slow(url, tok, payload=None, timeout=60):
+        _t2.sleep(0.35)
+        return {"inspectionResult": {"indexStatusResult": {
+            "verdict": "PASS", "coverageState": "Submitted and indexed"}}}
+
+    _A._api = _slow
+    try:
+        _urls = [f"https://x.test/{i}" for i in range(10)]
+        _blocks, _failed, _skipped = _A._inspect(
+            "https://x.test/", "tok", _urls,
+            progress=lambda d, t: _beats.append((d, t)))
+    finally:
+        _A._api, _A.GSC_INSPECT_BUDGET_S = _real_api, _real_budget
+    check("the inspection loop reports progress per URL",
+          len(_beats) == len(_blocks) and _beats[0] == (0, 10), str(_beats[:2]))
+    check("and the worker is wired to that callback",
+          "progress=_beat" in __import__("inspect").getsource(
+              __import__("app.worker", fromlist=["x"])._after_crawl))
+
+    print("\nAND A CAPPED SAMPLE SAYS WHAT IT DROPPED")
+    # Stopping early is right — these rows are a SAMPLE, and twelve answers
+    # the same question as twenty-five. Stopping early while implying the
+    # sample was complete is the failure this codebase keeps finding.
+    check("the budget stops the loop", _skipped > 0 and len(_blocks) < 10,
+          f"{len(_blocks)} done, {_skipped} skipped")
+    _rows = _A._coverage_rows(_blocks, _failed, 118, _skipped)
+    check("and the checkpoint says how many were not reached",
+          "not reached before the inspection time budget" in
+          _rows["GSC-05"]["evidence"], _rows["GSC-05"]["evidence"][-70:])
+    check("with the count, not just the fact",
+          f"{_skipped} more" in _rows["GSC-05"]["evidence"])
+
     print("\n" + "=" * 68)
     print(f"  {len(FAILURES)} FAILED: {FAILURES}" if FAILURES
           else "  ALL CHECKS PASSED — collectors degrade honestly; PDF ships")

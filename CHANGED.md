@@ -1,7 +1,56 @@
-# Changed files — build 2026.08.20-57
+# Changed files — build 2026.08.20-58
 
 Cumulative delta since **2026.08.18-16**. Packed by `pack.py`.
 Extension is **1.4.4** — unchanged since ‑50.
+
+---
+
+## "This run has stopped responding" on a run that was fine
+
+The collectors phase stamped one progress line before it and the next one
+after all of it. In between: Search Console's search-analytics calls, the
+appearance dimension, **up to 25 URL Inspection calls at a 45-second timeout**,
+GA4, and the backlink profile.
+
+Worst case that is a nineteen-minute silence. The status page calls a run dead
+when the heartbeat is ten minutes old — so a Search Console pass working
+perfectly was reported to you as a recycled container.
+
+A stall detector is only as good as the heartbeat it watches. Every slow loop
+inside a phase has to touch it, or the detector ends up reporting the phase
+instead of the fault.
+
+Now:
+
+```
+Search Console: inspecting URL 7 of 25
+collecting Analytics data
+collecting the backlink profile
+```
+
+## And the inspection pass has a budget
+
+Four minutes, then it stops and reports what it got. Stopping early is the
+right call — these rows are a **sample**, and twelve URLs answer the same
+question as twenty-five. Stopping early while implying the sample was complete
+is the failure this codebase keeps finding, so the count travels with the row:
+
+> 3 of 118 pages found on the site were inspected; **7 more were not reached
+> before the inspection time budget ran out.**
+
+`GSC_INSPECT_BUDGET_S` overrides it if four minutes turns out to be wrong.
+
+---
+
+## About your stalled run
+
+It may well have been the deploy — uploading ‑57 restarts the worker, and a
+restart mid-run produces exactly that page. "Rerun from the stored pages" is
+the right button either way: it picks up the crawl already stored and does not
+go back out to the client's server.
+
+What this build changes is that the next time it happens you will be able to
+tell the difference, because a healthy slow phase now says what it is doing.
 
 ---
 

@@ -322,11 +322,42 @@ def _inspect_urls(art, limit: int) -> list[str]:
     return [p.url for p in ok[:limit]]
 
 
-def _inspect(prop_url: str, tok: str, urls: list[str]) -> tuple[list[dict], int]:
-    """Inspect each URL. Returns (index-status blocks, count of failed calls)."""
+# How long the whole inspection pass may take before it stops and reports what
+# it got. Twenty-five URLs at a 45-second timeout is a nineteen-minute worst
+# case on a phase that used to emit no progress at all, so a healthy-but-slow
+# run and a dead worker were indistinguishable from outside.
+GSC_INSPECT_BUDGET_S = int(os.getenv("GSC_INSPECT_BUDGET_S", "240"))
+
+
+def _inspect(prop_url: str, tok: str, urls: list[str],
+             progress=None) -> tuple[list[dict], int, int]:
+    """
+    Inspect each URL. Returns (blocks, failed calls, urls not reached).
+
+    `progress(done, total)` is called after every URL. THIS PHASE HAD NO
+    HEARTBEAT: the worker stamped one progress line before the collectors and
+    the next one after all of them, so a Search Console pass working normally
+    through twenty-five URL Inspection calls looked exactly like a container
+    that had been recycled mid-run — and the status page told the operator
+    their worker had died, on a run that was fine.
+    """
     global _SEEN_INSPECT_KEYS
-    got, failed = [], 0
-    for u in urls:
+    got, failed, skipped = [], 0, 0
+    t0 = time.time()
+    for i, u in enumerate(urls):
+        # A BUDGET, AND IT SAYS WHAT IT DROPPED.
+        #
+        # Stopping early is the right call — the rows are a SAMPLE, and a
+        # sample of twelve answers the same question as a sample of
+        # twenty-five. Stopping early and implying the sample was complete is
+        # the failure this codebase keeps finding, so the count travels.
+        if time.time() - t0 > GSC_INSPECT_BUDGET_S:
+            skipped = len(urls) - i
+            print(f"[gsc] inspection budget of {GSC_INSPECT_BUDGET_S}s reached "
+                  f"— {skipped} of {len(urls)} URLs not inspected", flush=True)
+            break
+        if progress:
+            progress(i, len(urls))
         try:
             r = _api(INSPECT_API, tok, {"inspectionUrl": u,
                                         "siteUrl": prop_url,
@@ -346,7 +377,7 @@ def _inspect(prop_url: str, tok: str, urls: list[str]) -> tuple[list[dict], int]
         idx["_url"] = u
         idx["_rich"] = res.get("richResultsResult") or {}
         got.append(idx)
-    return got, failed
+    return got, failed, skipped
 
 
 def _cov(blocks: list[dict], needle: str) -> list[str]:
@@ -355,7 +386,8 @@ def _cov(blocks: list[dict], needle: str) -> list[str]:
             if n in str(b.get("coverageState", "")).lower()]
 
 
-def _coverage_rows(blocks: list[dict], failed: int, site_total: int) -> dict:
+def _coverage_rows(blocks: list[dict], failed: int, site_total: int,
+                   skipped: int = 0) -> dict:
     """GSC-05..11 from a sample of URL Inspection verdicts."""
     n = len(blocks)
     if not n:
@@ -364,6 +396,9 @@ def _coverage_rows(blocks: list[dict], failed: int, site_total: int) -> dict:
              if site_total > n else f"all {n} pages found on the site were inspected")
     if failed:
         scope += f" ({failed} inspection call(s) failed)"
+    if skipped:
+        scope += (f"; {skipped} more were not reached before the inspection "
+                  f"time budget ran out")
 
     indexed = [b["_url"] for b in blocks if b.get("verdict") == "PASS"]
     excluded = [b["_url"] for b in blocks if b.get("verdict") != "PASS"]
@@ -587,7 +622,8 @@ _NO_API = ("Search Console does not expose this report through any API. It is "
 
 def collect_gsc(site_url: str, refresh_token: str | None = None,
                 days: int = 90, property_url: str | None = None,
-                artifact=None, known: dict | None = None) -> dict:
+                artifact=None, known: dict | None = None,
+                progress=None) -> dict:
     """
     `property_url` is an operator override, chosen from the dropdown on the
     audit form. It wins over the automatic match, because the person picking it
@@ -673,11 +709,12 @@ def collect_gsc(site_url: str, refresh_token: str | None = None,
     # ---- GSC-05..11 index coverage, sampled through URL Inspection ----------
     urls = _inspect_urls(artifact, GSC_INSPECT_SAMPLE)
     if urls:
-        blocks, failed = _inspect(prop_url or site_url, tok, urls)
+        blocks, failed, skipped = _inspect(prop_url or site_url, tok, urls,
+                                           progress=progress)
         if blocks:
             site_total = sum(1 for p in artifact.pages.values()
                              if not p.error and 200 <= p.status_code < 300)
-            out.update(_coverage_rows(blocks, failed, site_total))
+            out.update(_coverage_rows(blocks, failed, site_total, skipped))
             print(f"[gsc] inspected {len(blocks)}/{len(urls)} URLs "
                   f"({failed} failed)", flush=True)
         else:

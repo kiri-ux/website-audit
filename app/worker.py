@@ -246,6 +246,24 @@ def _after_crawl(a, opts, audit_id, art, findings, step):
         return _score_and_save(a, opts, audit_id, art, findings,
                                {"context": _context_of(art)}, step)
     step("checking", "collecting Search Console, Analytics and backlink data")
+    # HEARTBEAT THROUGH THE SLOW PART.
+    #
+    # This phase stamped one progress line before it and the next one after
+    # all of it. URL Inspection is up to twenty-five calls at a 45-second
+    # timeout, so a Search Console pass working perfectly could run for
+    # fifteen minutes in silence — and the status page, which decides a run is
+    # dead when the heartbeat is ten minutes old, told the operator their
+    # worker had been recycled. On a run that was fine.
+    #
+    # A stall detector is only as good as the heartbeat it watches. Every slow
+    # loop inside a phase has to touch it, or the detector reports the phase
+    # rather than the fault.
+    def _beat(done, total):
+        db.update_audit(audit_id,
+                        progress=f"Search Console: inspecting URL "
+                                 f"{done + 1} of {total}",
+                        heartbeat_at=time.time())
+
     # The crawl and the findings so far both feed Search Console: the artifact
     # gives URL Inspection something to sample and the link graph to read, and
     # PERF-11 already holds the CrUX field data the Core Web Vitals report is
@@ -253,7 +271,8 @@ def _after_crawl(a, opts, audit_id, art, findings, step):
     # into measurements.
     gsc = collect_gsc(a["target_url"], opts.get("gsc_refresh_token"),
                       property_url=opts.get("gsc_property"),
-                      artifact=art, known=findings)
+                      artifact=art, known=findings, progress=_beat)
+    step("checking", "collecting Analytics data")
     ga4 = collect_ga4(opts.get("ga4_property_id"),
                       opts.get("ga4_refresh_token"),
                       site_url=a["target_url"])
@@ -269,6 +288,7 @@ def _after_crawl(a, opts, audit_id, art, findings, step):
         else:
             why = next(iter(rows.values()), {}).get("evidence", "")
             print(f"[worker] {audit_id} {name} EMPTY — {why}", flush=True)
+    step("checking", "collecting the backlink profile")
     findings.update(collect_backlinks(art.host))
 
     # Business context: what the crawl learned about the CLIENT rather than

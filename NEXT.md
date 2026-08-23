@@ -1,16 +1,17 @@
-# 2026.08.20-57
+# 2026.08.20-58
 
 **Do**
 
-- Upload the zip, wait for Render.
-- Run a scan. Tick "Reuse the last crawl", "Ask the AI assistants", "Consent & privacy".
-- Run the capture on that new audit. (Scan first — each scan makes a new audit.)
+- Upload the zip, wait for Render to finish before starting a run.
+- Click "Rerun from the stored pages" on the stalled audit, or start a fresh scan.
 
 **Check**
 
-- Ours to fix: empty. Gemini should be measured now.
-- "Full consent scan" link at the top of the report, next to the PDF buttons.
-- GEO-29 (Gemini) shows a citation rate instead of Need Access.
+- During the run the progress line moves: "Search Console: inspecting URL 7 of 25",
+  then "collecting Analytics data", then "collecting the backlink profile".
+- No false "This run has stopped responding" on a healthy run.
+- Ours to fix: empty. Gemini should be measured.
+- "Full consent scan" link at the top of the report.
 
 **Pending**
 
