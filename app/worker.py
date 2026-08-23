@@ -646,6 +646,22 @@ def _ai_visibility(a, audit_id, findings, extras, step):
                                "cited_instead": others})
             if len(wins) >= 3 and len(losses) >= 3:
                 break
+        # THE WHOLE RUN, ON DISK, BEFORE WE DERIVE ANYTHING FROM IT.
+        #
+        # Every question, answer and citation existed in memory and was thrown
+        # away once the rates were computed - so when the report needed
+        # examples, the only way to get them was to ask every assistant again
+        # and pay for it twice. The derived block below is still what the PDF
+        # reads; this is the raw material behind it, and it is what lets a
+        # future renderer show more without a re-run.
+        try:
+            put_artifact(audit_id, "aivis_run.json", json.dumps(
+                {"aggregate": agg, "results": run.get("results") or [],
+                 "questions": {q.id: q.text for q in queries}},
+                default=str).encode())
+        except Exception as exc:  # noqa: BLE001
+            print(f"[worker] {audit_id} AI run not stored: "
+                  f"{type(exc).__name__}: {exc}", flush=True)
         extras["ai_visibility"] = {
             **{k: agg.get(k) for k in
                ("citation_rate", "mention_rate", "unprompted_citation_rate",

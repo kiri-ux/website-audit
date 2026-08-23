@@ -29,8 +29,25 @@ from reportlab.platypus import Flowable
 # so they do not inherit the paragraph styles and would otherwise stay in
 # Helvetica while everything around them changed — the kind of mismatch that
 # reads as "assembled from two documents".
-from .fonts import register as _register_fonts, BODY as F, BOLD as FB, ITALIC as FI
-_register_fonts()
+# BIND AFTER REGISTERING, NEVER DURING THE IMPORT LINE.
+#
+# This said:
+#
+#     from .fonts import register as _register_fonts, BODY as F, ...
+#     _register_fonts()
+#
+# `from X import BODY as F` copies the CURRENT value of fonts.BODY into this
+# module - which, at import time, is still the "Helvetica" default. register()
+# then rebinds fonts.BODY to GT Walsheim and this module never hears about it.
+# So the paragraphs were in the brand face and every mark drawn straight onto
+# the canvas - the gauge number, the bar labels, the legends - stayed in
+# Helvetica, in the same document, a quarter inch apart.
+#
+# pdf_report.py already had a comment warning about exactly this. The charts
+# did not.
+from . import fonts as _fonts
+_fonts.register()
+F, FB, FI = _fonts.BODY, _fonts.BOLD, _fonts.ITALIC
 
 # Vici brand palette — Atlas Blue #002D58, Velocity Blue #0066B3, Ink #212121,
 # Parchment #FDFBF7, with the brand's own 50% and 10% fades. Kept in step with
@@ -393,38 +410,28 @@ class SegmentBar(Flowable):
         self.note = note
         self.height = bar_h + 30 + (11 if note else 0)
 
-    # A count that does not fit inside its own segment is not a count that
-    # gets dropped. Critical was 4 of 41 issues - a segment about eleven
-    # points wide - so the number vanished and the bar said there were three
-    # severities. Anything under this width gets its number in the gutter
-    # ABOVE the bar with a tick pointing at its segment.
+    # A count too narrow to sit inside its own segment is not drawn in the
+    # bar at all.
+    #
+    # It was, briefly: 4 Critical out of 111 is an eleven-point block, so the
+    # number went into a gutter above the bar with a tick pointing down at its
+    # segment. Accurate, and it read as an error mark hovering over the chart
+    # - two small floating numbers at different heights on two adjacent
+    # charts, which is worse than the thing it fixed.
+    #
+    # Nothing is lost by leaving it out. The legend directly underneath prints
+    # "Critical 4" in words, which is where a reader looks for the exact
+    # figure anyway; the bar's job is the proportion.
     _TIGHT = 22
-
-    def _callouts(self):
-        """[(center_x, count, color)] for segments too narrow to label."""
-        total = sum(max(0, n) for _, n, _ in self.segments) or 1
-        out, x = [], 0.0
-        for _label, n, col in self.segments:
-            if n <= 0:
-                continue
-            w = self.width * n / total
-            if w <= self._TIGHT:
-                out.append((x + w / 2, n, col))
-            x += w
-        return out
 
     def wrap(self, aw, ah):
         self.width = min(self.width, aw)
-        self.gutter = 13 if self._callouts() else 0
-        self.height = (self.bar_h + 30 + (11 if self.note else 0)
-                       + self.gutter)
         return self.width, self.height
 
     def draw(self):
         c = self.canv
         total = sum(max(0, n) for _, n, _ in self.segments) or 1
-        gutter = getattr(self, "gutter", 0)
-        y = self.height - self.bar_h - gutter
+        y = self.height - self.bar_h
         x = 0.0
         # ROUND THE BAR, NOT THE SEGMENTS.
         #
@@ -452,15 +459,6 @@ class SegmentBar(Flowable):
                 c.drawCentredString(x + w / 2, y + self.bar_h * 0.32, str(n))
             x += w
         c.restoreState()
-
-        # …and the ones that did not fit, above the bar, tied to their segment.
-        for cx, n, col in self._callouts():
-            c.setStrokeColor(col if col not in (TRACK, LINE) else INK2)
-            c.setLineWidth(0.8)
-            c.line(cx, y + self.bar_h + 1, cx, y + self.bar_h + 4)
-            c.setFillColor(INK if col in (TRACK, LINE) else col)
-            c.setFont(FB, 7.5)
-            c.drawCentredString(cx, y + self.bar_h + 6, str(n))
 
         # legend — every segment gets its word, so color is never load-bearing
         lx, ly = 0.0, y - 15

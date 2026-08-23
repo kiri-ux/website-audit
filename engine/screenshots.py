@@ -22,15 +22,28 @@ import os
 
 # checkpoint id -> CSS selector for the thing that is wrong.
 # Only checks where a box points at something a human would recognise.
+#
+# THIS MAP HAD DRIFTED FROM THE CATALOG, WHICH IS WHY NO RED BOX EVER APPEARED.
+#
+# It listed ONP-30 and ONP-31 as "images missing alt text". In the catalog
+# ONP-30 is "Proper length" (meta descriptions) and ONP-31 is "Pages don't have
+# an H1 heading"; the alt-text row is ONP-14. So the two ids most likely to
+# fail on a real site pointed at selectors for a different check, and the
+# checks that DID fail fell through to the page-level list, which produces an
+# unboxed shot - and the report only prints boxed ones. Every id below is now
+# checked against seed/checkpoints.csv.
 SELECTORS = {
-    "ONP-08": "h1",                                   # duplicate / multiple H1
-    "ONP-09": "h1",
-    "ONP-30": "img:not([alt]), img[alt='']",          # images missing alt text
-    "ONP-31": "img:not([alt]), img[alt='']",
+    "ONP-08": "h1",                                   # more than one H1
+    "ONP-14": "img:not([alt]), img[alt='']",          # images missing alt text
+    "ONP-17": "a:empty",                              # links with no anchor text
+    "ONP-32": "h1",                                   # one H1 per page
+    "ONP-33": "h2, h3, h4",                           # heading hierarchy
+    "ONP-42": "img",                                  # image filenames
+    "ONP-44": "img:not([srcset])",                    # responsive images
     "ONP-45": "img:not([loading])",                   # no lazy loading
     "PERF-19": "img",                                 # unoptimised images
     "MOB-05": "a, button",                            # tap targets
-    "SCHEMA-01": "",                                  # nothing visual — page shot
+    "MOB-06": "p",                                    # font readability
     "EEAT-05": "footer",                              # trust signals
     "EEAT-06": "footer",
 }
@@ -107,18 +120,37 @@ def pick_targets(findings: dict, catalog: dict, start_url: str, limit: int = 3):
     findings the client is being asked to read.
     """
     from .scoring import top_issues
-    out, seen_urls = [], set()
-    for cid, f in top_issues(findings, catalog, 30):
-        if len(out) >= limit:
-            break
-        sel = SELECTORS.get(cid)
-        if sel is None and cid not in PAGE_LEVEL:
-            continue
-        pages = [p for p in (f.get("affected_pages") or []) if str(p).startswith("http")]
-        url = pages[0] if pages else start_url
-        if url in seen_urls:
-            continue
-        seen_urls.add(url)
-        name = (catalog.get(cid, {}) or {}).get("checkpoint", cid)
-        out.append((cid, url, sel or "", f"{name} — {url}"))
+    ranked = top_issues(findings, catalog, 30)
+
+    # BOXED SHOTS FIRST, ALWAYS.
+    #
+    # A single pass in priority order filled all three slots with page-level
+    # checks - a title-tag problem, a schema problem, an HTTPS problem - none
+    # of which has anything on the page to outline. The report only prints
+    # shots with a mark on them, so the section vanished and the client asked
+    # where the red outlines were.
+    #
+    # Priority still decides the order WITHIN each group; what changes is that
+    # a check with something to point at never loses its slot to one without.
+    def scan(want_boxed):
+        for cid, f in ranked:
+            if len(out) >= limit:
+                return
+            sel = SELECTORS.get(cid)
+            if want_boxed and not sel:
+                continue
+            if not want_boxed and (sel or cid not in PAGE_LEVEL):
+                continue
+            pages = [p for p in (f.get("affected_pages") or [])
+                     if str(p).startswith("http")]
+            url = pages[0] if pages else start_url
+            if (cid, url) in seen or url in {u for _c, u in seen}:
+                continue
+            seen.add((cid, url))
+            name = (catalog.get(cid, {}) or {}).get("checkpoint", cid)
+            out.append((cid, url, sel or "", f"{name} — {url}"))
+
+    out, seen = [], set()
+    scan(True)
+    scan(False)
     return out

@@ -33,6 +33,10 @@ from reportlab.platypus import (BaseDocTemplate, CondPageBreak, Flowable,
 
 from .charts import (ScoreGauge, SectionBars, SegmentBar, MiniMeter, GradRule,
                      DefBadge, Lamp, severity_segments, coverage_segments)
+# The MODULE, never `from .fonts import BODY`. The names on it are rebound by
+# register(); a copy taken at import time is a copy of "Helvetica".
+from . import fonts as _fonts
+from . import redact as _redact
 
 # ---- palette (matches the HTML report) -------------------------------------
 # ---- Vici brand palette, from VICI_ColorPalette_2025 ----------------------
@@ -314,7 +318,14 @@ def _p(text):
 
 def _pl(text):
     """
-    Escaped AND linkified: the form every piece of running prose should use.
+    Escaped, redacted AND linkified: what every piece of running prose uses.
+
+    The redaction runs HERE, at render, not only in the collector that wrote
+    the string. Findings are stored and the PDF renders fresh from the store,
+    so a report produced last week still carries last week's wording - which
+    is how a client read "the middle sections are omitted from the material"
+    and a list of our demand-side platforms in the same document, both from
+    code that had already been fixed. See engine/redact.py.
 
     `_linkify` was applied at three call sites out of a dozen, so the same
     URL printed as a clickable path in Top Findings and as forty characters
@@ -324,7 +335,7 @@ def _pl(text):
     Not folded into `_p` because `_p` also renders the cover's Website row and
     the methodology line, where the whole point is to print the domain.
     """
-    return _linkify(_p(text))
+    return _linkify(_p(_redact.client(text)))
 
 
 def _rule(width=1.75 * inch):
@@ -414,10 +425,10 @@ def _styles():
     # with brand headlines over Roboto body copy if only one set of files is
     # installed, which is a good deal better than losing both.
     #
-    # Imported INSIDE the function and read after register() on purpose: these
-    # are module-level names that register() rebinds, so a module-level `from
-    # .fonts import BODY` would capture "Helvetica" before the fonts loaded.
-    from . import fonts as _fonts
+    # Read AFTER register() on purpose: these are module-level names that
+    # register() rebinds, so `from .fonts import BODY` anywhere would capture
+    # "Helvetica" before the fonts loaded. The module itself is imported at the
+    # top of this file; only the values are taken here.
     _fonts.register()
     BODY, BOLD = _fonts.BODY, _fonts.BOLD
     HEAD, HEAD_BOLD = _fonts.HEAD, _fonts.HEAD_BOLD
@@ -473,7 +484,11 @@ class _Doc(BaseDocTemplate):
 
     def _chrome(self, canvas, doc):
         canvas.saveState()
-        canvas.setFont("Helvetica", 7.5)
+        # The footer is drawn straight onto the canvas, so it inherits no
+        # paragraph style - and it was the one line of the document still
+        # hard-coded to Helvetica, on every page, under copy set in the brand
+        # face. Read the registered name at DRAW time, not at import.
+        canvas.setFont(_fonts.BODY, 7.5)
         canvas.setFillColor(MUTED)
         canvas.setStrokeColor(LINE)
         y = self.bottomMargin - 16
@@ -565,7 +580,9 @@ def _pill(label, palette, S, width=0.82 * inch):
     """A rounded, filled label. Color plus text, never color alone."""
     bg, fg = palette.get(label, (TRACK, INK2))
     st = ParagraphStyle("pill", parent=S["cellsm"], textColor=fg,
-                        fontName="Helvetica-Bold", fontSize=7.5, leading=9.5,
+                        # Same reason as the footer: a literal font name here
+                        # put every status pill in Helvetica.
+                        fontName=_fonts.BOLD, fontSize=7.5, leading=9.5,
                         alignment=1)
     t = Table([[Paragraph(_p(label), st)]], colWidths=[width])
     t.setStyle(TableStyle([
@@ -575,6 +592,12 @@ def _pill(label, palette, S, width=0.82 * inch):
         ("LEFTPADDING", (0, 0), (-1, -1), 3), ("RIGHTPADDING", (0, 0), (-1, -1), 3),
         ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
+    # HANG IT FROM THE LEFT EDGE, like the heading above it.
+    #
+    # A Table defaults to hAlign="CENTER", so a 0.62in pill in a 0.68in column
+    # sat 3pt right of the margin - just far enough that the severity chip
+    # under every finding heading looked nudged out of line with it.
+    t.hAlign = "LEFT"
     return t
 
 
@@ -888,11 +911,23 @@ def _ai_visibility(meta, S):
     _plats = len(v.get("platforms") or []) or len(
         [x for x in str(v.get("platforms") or "").split(",") if x.strip()])
 
+    # THREE LINES, THREE STYLES, EACH WITH ITS OWN LEADING.
+    #
+    # This was one Paragraph carrying <font size=21> on the first line inside a
+    # style whose leading is 9.5pt. reportlab measures a paragraph from the
+    # STYLE's leading, not from the glyphs, so the table row was sized for
+    # three 9.5pt lines while the ink needed twenty-one - and the third line
+    # was cut in half by the bottom of the tile.
+    _big = ParagraphStyle("aibig", parent=S["cellsm"], fontName=_fonts.BOLD,
+                          fontSize=21, leading=24, textColor=INK)
+    _lead = ParagraphStyle("ailead", parent=S["cellsm"], fontName=_fonts.BOLD,
+                           fontSize=8.5, leading=11, textColor=INK)
+    _sub = ParagraphStyle("aisub", parent=S["cellsm"], fontSize=7.5,
+                          leading=9.5, textColor=colors.HexColor("#4A5461"))
+
     def _tile3(big, lead, sub):
-        return Paragraph(
-            f"<font size=21><b>{big}</b></font><br/>"
-            f"<font size=8.5 color='#212121'><b>{lead}</b></font><br/>"
-            f"<font size=7.5 color='#4A5461'>{sub}</font>", S["cellsm"])
+        return [Paragraph(_p(big), _big), Paragraph(_p(lead), _lead),
+                Paragraph(_p(sub), _sub)]
 
     tiles = Table([[
         _tile3(f"{cite}%", "linked to you",
@@ -1593,7 +1628,14 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                 story.append(Spacer(1, 4))
                 for fl in _strength_grid(list(items), S):
                     story.append(fl)
-                block.extend(items)
+                # NO DEFINITION BUBBLE UNDER THE STRENGTHS.
+                #
+                # `block` is what gets scanned for terms to define, and adding
+                # the strengths put a full-width "Canonical tag" bubble under
+                # three cards that had ALREADY said, in plain English, what
+                # canonicalization is. The term is defined at its next real
+                # appearance instead - beside a finding, where the reader needs
+                # it to act on something. Deliberately not appended.
             else:
                 # Short lists read better as prose than as bullets; a bulleted
                 # list of two items looks like a form that was filled in.
@@ -1669,22 +1711,28 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     # No forced page break here: the exec summary rarely fills a page, and a
     # break left a third of page 2 blank. KeepTogether keeps the chart intact.
     story.append(Spacer(1, 6))
-    story.append(Paragraph("Scores by Area", S["h2"]))
-    story.append(_rule())
-
     secs = [(k, v) for k in ORDER if (v := (scores.get("sections") or {}).get(k))]
     # Ranked worst-first: the reader should not have to scan a table to find
     # where the work is. Unassessed areas sort last — they are not "worst".
     ranked = sorted(secs, key=lambda kv: (kv[1].get("score") is None,
                                           kv[1].get("score") if kv[1].get("score")
                                           is not None else 0))
-    story.append(Paragraph(
-        "Ordered by severity, with the areas to fix first at the top.",
-        S["small"]))
-    story.append(Spacer(1, 8))
-    story.append(KeepTogether(
+    # THE HEADING TRAVELS WITH THE CHART.
+    #
+    # KeepTogether was around the chart ALONE, so when the chart did not fit
+    # reportlab moved the chart and left "Scores by Area", its rule and its
+    # one-line intro sitting at the top of the previous page with eight inches
+    # of nothing under them. A heading is not content; binding the whole block
+    # is what "don't split a header from its section" actually means here.
+    story.append(KeepTogether([
+        Paragraph("Scores by Area", S["h2"]),
+        _rule(),
+        Paragraph("Ordered by severity, with the areas to fix first at the "
+                  "top.", S["small"]),
+        Spacer(1, 8),
         SectionBars([(SHORT_NAMES.get(k, SECTION_NAMES[k]), v.get("score"),
-                      v.get("rating")) for k, v in ranked], width=6.55 * inch)))
+                      v.get("rating")) for k, v in ranked], width=6.55 * inch),
+    ]))
     story.append(Spacer(1, 16))
 
     story.append(Paragraph("Score by Area", S["h3"]))
@@ -1754,7 +1802,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             rows.append([Paragraph(cid, S["cellsm"]),
                          Paragraph(_p(m.get("checkpoint")), S["cell"]),
                          _pill(f.get("severity"), SEV_PILL, S, 0.66 * inch),
-                         Paragraph(_linkify(_agree(_p(f.get("evidence")))),
+                         Paragraph(_linkify(_agree(_p(_redact.client(f.get("evidence"))))),
                                    S["cell"])])
         t = Table(rows, colWidths=[0.62 * inch, 1.6 * inch, 0.78 * inch, 3.5 * inch],
                   repeatRows=1)
@@ -1784,7 +1832,15 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                  Paragraph("<b>Volume</b>", S["cellsm"]),
                  Paragraph("<b>Difficulty</b>", S["cellsm"]),
                  Paragraph("<b>Ranking URL</b>", S["cellsm"])]]
-        for r in rk["rows"][:25]:
+        # ONE PAGE, AND SAY WHAT WAS LEFT OFF.
+        #
+        # 25 rows ran a row and a half past the bottom, so the table broke and
+        # page nine carried a repeated header and one keyword. Twenty fits
+        # under the heading and the intro with room for the two-line URLs, and
+        # the count below says how many more there are rather than letting the
+        # list end without explanation.
+        _SHOWN = 20
+        for r in rk["rows"][:_SHOWN]:
             vol = r.get("search_volume")
             rows.append([
                 Paragraph(_p(r.get("keyword")), S["cell"]),
@@ -1803,7 +1859,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
               ("ALIGN", (1, 0), (3, -1), "RIGHT")]
         # Page-one positions get the emphasis; everything else stays quiet, so
         # the eye lands on what is already winning.
-        for i, r in enumerate(rk["rows"][:25], start=1):
+        for i, r in enumerate(rk["rows"][:_SHOWN], start=1):
             if (r.get("position") or 999) <= 10:
                 # Light tint, dark text. The full-strength ramp color put a
                 # mid-blue number on a mid-blue field and lost the number.
@@ -1811,6 +1867,14 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                 st.append(("TEXTCOLOR", (1, i), (1, i), SEV_PILL["Low"][1]))
         t.setStyle(TableStyle(st))
         story.append(t)
+        _more = max(0, len(rk["rows"]) - _SHOWN)
+        if _more:
+            story.append(Spacer(1, 6))
+            story.append(Paragraph(
+                f"<font color='#52514e'>Showing the top {_SHOWN} by position. "
+                f"{_more} further ranking keyword"
+                f"{'s' if _more != 1 else ''} came back in the same pull.</font>",
+                S["small"]))
     elif rk and not rk.get("available"):
         story.append(Paragraph("Keyword Rankings &amp; Industry Benchmarks", S["h2"]))
         story.append(_rule())
@@ -1957,10 +2021,14 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         # appearing to certify that a client is in the clear.
         _pre = []
         if k == "CONS":
-            _pre = [_banner("", "What this section is. A record of what the "
-                                "site did during one automated visit - which "
-                                "tags fired, when, and what the banner did. "
-                                "Privacy law varies by state and changes; "
+            # WAS, in front: "What this section is. A record of what the site
+            # did during one automated visit - which tags fired, when, and
+            # what the banner did." The heading above it already says what the
+            # section is, and the rows below show the tags and the timing - so
+            # it explained the table to someone who was looking at the table.
+            # What earns its place is the legal caveat, which is the whole
+            # reason the banner exists.
+            _pre = [_banner("", "Privacy law varies by state and changes; "
                                 "this is not a legal opinion and does not "
                                 "certify compliance. Use it to decide what to "
                                 "fix and, where it matters, what to take to "
@@ -2007,7 +2075,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                          Paragraph(_p(m.get("checkpoint")), S["cell"]),
                          _pill(_status_word(f["status"], cid), STATUS_PILL, S,
                                0.86 * inch),
-                         Paragraph(_linkify(_agree(_p(f.get("evidence")))),
+                         Paragraph(_linkify(_agree(_p(_redact.client(f.get("evidence"))))),
                                    S["cell"])])
         t = Table(data, colWidths=[0.72 * inch, 1.68 * inch, 0.95 * inch, 3.15 * inch],
                   repeatRows=1)

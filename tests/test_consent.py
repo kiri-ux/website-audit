@@ -642,6 +642,35 @@ def main():
           "No consent detail was stored" in _none)
     check("and says how to get it", "Re-run" in _none)
 
+    print("\nOUR MEDIA STACK NEVER REACHES A CLIENT'S PDF")
+    # THE BUG, REPLAYED.
+    #
+    # CONS-04 stopped naming the demand-side platforms three builds ago. A
+    # report rendered afterwards still listed them - because the collector fix
+    # only applies to runs that happen after it, and findings are STORED. The
+    # PDF renders fresh from the store, so the redaction has to run there too.
+    from engine.redact import client as _client
+    stored = ("13 trackers fired before any consent interaction: Beeswax "
+              "conversion, Beeswax segment, DoubleClick / Floodlight, "
+              "Floodlight, Google Ads, Google Analytics, Meta Pixel, The "
+              "Trade Desk, Yahoo, xAd/GroundTruth.")
+    out = _client(stored)
+    check("no platform is named in the client copy",
+          not any(n in out for n in ("Beeswax", "Trade Desk", "xAd",
+                                     "Floodlight", "Yahoo")), out)
+    check("the count survives, because the count is the finding",
+          "13" in out, out)
+    check("and it is called what we call it in front of a client",
+          "marketing pixel" in out, out)
+    check("a sentence that merely mentions one vendor is left alone",
+          _client("Google Analytics fired before consent.")
+          == "Google Analytics fired before consent.")
+
+    # And end to end, through the renderer that actually ships it.
+    from engine.pdf_report import _pl
+    check("the PDF's prose helper applies the same redaction",
+          "Beeswax" not in _pl(stored), _pl(stored)[:70])
+
     print("\n" + "=" * 68)
     if FAILED:
         print(f"  {len(FAILED)} FAILED: {FAILED}")

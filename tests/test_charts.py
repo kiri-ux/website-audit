@@ -531,24 +531,57 @@ def main():
     check("so an existing report stops printing unticked phases as defects",
           "Not requested on this run" in html4)
 
-    print("\nEVERY COUNT IS PRINTED, INCLUDING THE ONE THAT DOES NOT FIT")
+    print("\nA COUNT TOO SMALL FOR ITS SEGMENT IS STILL READABLE")
+    # 4 Critical out of 111 is an 11pt block on a 3in bar - too narrow for the
+    # number to sit inside it. That is fine, and it is NOT the same as the
+    # number going missing: the legend under the bar carries every count in
+    # words. What this guards is that the figure is somewhere a reader can
+    # find it, whatever the bar does with it.
+    tight = SegmentBar(severity_segments(
+        {"Critical": 4, "High": 18, "Medium": 70, "Low": 19}),
+        width=3.05 * inch)
+    rec, w, h = _render(tight, avail_w=3.05 * inch)
+    legend = [t["t"] for t in rec.texts if " " in t["t"]]
+    check("the narrow segment's count is in the legend",
+          "Critical 4" in legend, str(legend))
+    check("and every other count is too",
+          {"High 18", "Medium 70", "Low 19"} <= set(legend), str(legend))
+    # The bar's top edge is the top of the flowable. Anything drawn at or
+    # above it is the floating callout that got rejected on sight.
+    top = h - tight.bar_h * 0.05
+    check("nothing floats above the bar",
+          not [t for t in rec.texts if t["y"] >= top],
+          str([t["t"] for t in rec.texts if t["y"] >= top]))
+    check("everything drawn stays inside the flowable's own box",
+          not [t for t in rec.texts if t["y"] > h or t["y"] < -1])
+
+    print("\nTHE CHARTS ARE SET IN THE SAME FACE AS THE COPY")
     # THE BUG, REPLAYED.
     #
-    # 4 Critical out of 41 issues is an 11pt segment on a 3in bar, and the
-    # count was drawn only when the segment was wider than 22pt. So the
-    # severity strip printed 9, 18, 10 and silently dropped the number the
-    # whole bar exists to make urgent.
-    tight = SegmentBar(severity_segments(
-        {"Critical": 4, "High": 9, "Medium": 18, "Low": 10}), width=3.05 * inch)
-    rec, w, h = _render(tight, avail_w=3.05 * inch)
-    nums = [t["t"] for t in rec.texts if t["t"] in ("4", "9", "18", "10")]
-    check("the narrow segment's count is drawn somewhere",
-          "4" in nums, str(nums))
-    check("every segment count appears exactly once",
-          sorted(nums) == sorted(["4", "9", "18", "10"]), str(nums))
-    out_of_box = [t for t in rec.texts if t["y"] > h or t["y"] < -1]
-    check("the callout stays inside the flowable's own box",
-          not out_of_box, str(out_of_box[:2]))
+    # charts.py opened with `from .fonts import BODY as F` and THEN called
+    # register(). `from X import Y` copies the value; register() rebinds
+    # fonts.BODY afterwards and this module never hears about it. So every
+    # paragraph was in the brand face and everything drawn on the canvas - the
+    # gauge number, the bar labels, the legends, the footer - stayed in
+    # Helvetica, in the same document.
+    from engine import charts as _charts, fonts as _f, pdf_report as _pr
+    _f.register()
+    check("the chart module tracks the registered body face",
+          _charts.F == _f.BODY, f"{_charts.F} vs {_f.BODY}")
+    check("and the registered bold face", _charts.FB == _f.BOLD,
+          f"{_charts.FB} vs {_f.BOLD}")
+    src = open(os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "engine", "pdf_report.py")).read()
+    # Comments are allowed to say the word; code is not.
+    code = [l for l in src.splitlines()
+            if "Helvetica" in l and not l.lstrip().startswith("#")]
+    check("no literal Helvetica is left in the PDF renderer's code",
+          not code, str(code[:2]))
+    gauge = ScoreGauge(69, "Needs Improvement")
+    rec, w, h = _render(gauge)
+    check("the gauge draws in the registered face, not a built-in",
+          all(t["font"].startswith(_f.BODY.split("-")[0]) for t in rec.texts),
+          str({t["font"] for t in rec.texts}))
 
     print("\nEVERY BAR IN THE DOCUMENT IS ROUNDED")
     # The score bars and the inline section meters were the last square ones,

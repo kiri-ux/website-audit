@@ -447,40 +447,15 @@ def _call_model(prompt: str, timeout: int = 90) -> str:
 
 # OUR PLUMBING, CUT OUT AT THE BOUNDARY.
 #
-# The prompt already forbids this. It shipped anyway, in the report's single
+# The prompt above already forbids this. It shipped anyway, in one report's
 # most prominent sentence: "The middle sections are omitted from the material,
-# but the visible content shows no substantive information." The client read
-# it and asked what it meant, which is the correct reaction to a report that
-# describes its own input slicing.
+# but the visible content shows no substantive information." A rule in a prompt
+# is a request; this is the guarantee.
 #
-# A rule in a prompt is a request. This is the guarantee - the same lesson as
-# the em-dashes, applied at the same kind of boundary. Any SENTENCE that talks
-# about our material rather than about their site is dropped; the rest of the
-# evidence stands.
-_META_PHRASES = (
-    "the material", "provided material", "material provided", "the excerpt",
-    "the sample", "the snippet", "the content provided", "provided content",
-    "was omitted", "are omitted", "is omitted", "were omitted", "omitted from",
-    "truncated", "not retrieved", "were retrieved", "was retrieved",
-    "not provided", "no content was provided", "the text supplied",
-    "in the supplied", "our crawl", "the crawl", "this excerpt",
-)
-
-
-def _scrub(ev: str) -> str:
-    """Evidence with any sentence about our process removed."""
-    import re as _re
-    text = (ev or "").strip()
-    if not text:
-        return text
-    parts = _re.split(r"(?<=[.!?])\s+", text)
-    keep = [s for s in parts
-            if not any(p in s.lower() for p in _META_PHRASES)]
-    # Everything was process talk: that is not evidence about the site, and
-    # the caller's low-confidence path already turns it into Need Access.
-    out = " ".join(keep).strip()
-    return out or ""
-
+# The rules themselves live in engine/redact.py, because the SAME scrub has to
+# run again at render time - findings are stored, and a report produced before
+# this existed still says what it said then.
+from .redact import scrub as _scrub
 
 def _finding(status, evidence, severity="Medium", rec="", conf=1.0, src="llm_judgment"):
     return {"status": status, "value": {}, "evidence": evidence,
