@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-62"
-BUILD_NOTES = ("Two captions removed: the hollow-bar note, and the list of "
-               "AI platforms we do not pay for")
+BUILD = "2026.08.20-63"
+BUILD_NOTES = ("Vici brand palette in the PDF, and Agdasima / GT Walsheim "
+               "register from static/fonts when the files are dropped in")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

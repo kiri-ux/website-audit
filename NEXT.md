@@ -1,32 +1,23 @@
-# 2026.08.20-61
+# 2026.08.20-63
 
 **Do**
 
-- Upload the zip. It only contains what changed since ‑60, so it's under
-  GitHub's 100-file limit.
-- Reload any existing report and re-open its PDF. Most of these are render-time
-  changes and apply to audits you already have — no rerun.
+- Upload the zip.
+- Drop the font files into `static/fonts/` (see the README in that folder):
+  - `Agdasima-Regular.ttf` and `Agdasima-Bold.ttf` — free from Google Fonts
+  - `GTWalsheimPro-Regular.ttf` and `-Bold.ttf` — from your Grilli Type licence
+- Re-open any existing PDF. The palette applies immediately, no rerun.
 
 **Check**
 
-- Title reads "Comprehensive SEO & AI Search Audit".
-- PDF saves as `The Ooten Law Firm_Website Audit_08232026.pdf`.
-- Bars are rounded; "Need your access" tile is gone; no caption under the gauge.
-- CONS-04 says "13 marketing pixels fired before any consent interaction" —
-  no platform names.
-- "Consent and privacy has the most ground to make up", not "CONS".
-
-**Needs a rerun** (written at scan time, not render time)
-
-- Judgment wording: no "no useful depth on any topic", no "were not retrieved
-  for review", no mention of omitted sections.
+- Worker log shows `[fonts] Agdasima registered for headlines` and
+  `[fonts] GT Walsheim Pro registered for body copy`. A missing line means that
+  family stayed on Roboto.
+- Severity ramp is Atlas Blue -> Velocity Blue; Fail is Cardinal, Warning Gold.
 
 **Pending**
 
-- Brand fonts — I can't read vicimediainc.com from here. Send me the font names
-  (or the .ttf files) and I'll wire them in.
-- Strengths as bubbles with a definition each.
-- Markets as pills on the cover.
-- LCP / Core Web Vitals definitions in the glossary.
-- Screenshot placement — which finding it sits under.
+- AI Search Visibility section: reword, and build it out with examples.
+- Strengths as bubbles, markets as pills, headers not splitting.
+- Copy pass: LCP definition, PERF-10, "Publish data only you have".
 - Pick a word to replace "Pass".

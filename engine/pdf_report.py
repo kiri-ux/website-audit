@@ -34,20 +34,45 @@ from .charts import (ScoreGauge, SectionBars, SegmentBar, MiniMeter, GradRule,
                      DefBadge, Lamp, severity_segments, coverage_segments)
 
 # ---- palette (matches the HTML report) -------------------------------------
-INK        = colors.HexColor("#0b0b0b")
-INK2       = colors.HexColor("#52514e")
-MUTED      = colors.HexColor("#898781")
-LINE       = colors.HexColor("#e6e5e1")
-SURFACE    = colors.HexColor("#fcfcfb")
-TRACK      = colors.HexColor("#eceae6")
-SEQ        = colors.HexColor("#2a78d6")
+# ---- Vici brand palette, from VICI_ColorPalette_2025 ----------------------
+#
+# Primary:   Atlas Blue #002D58 (PMS 648 C) · Velocity Blue #0066B3 (PMS 300 C)
+#            Ink #212121 (PMS Black C) · Parchment #FDFBF7 (PMS 7506 C @10%)
+# Fades:     Velocity 50% #80B2D9, 10% #E6F0F7
+#            Atlas    50% #8096AC, 10% #E6EAEE
+#            Ink      50% #909090, 10% #E9E9E9
+# Secondary: Plum #78286E · Gold #F1B434 · Cardinal #A6192E · Teal #4FD4E0
+#
+# The ordinal severity ramp is built from Atlas -> Velocity -> the Velocity
+# fades, so the darkest step is the brand's own darkest blue rather than a
+# generic navy. Severity stays a SINGLE-HUE ordinal scale — the secondaries
+# are not used as an adjacent categorical set, which they would fail.
+ATLAS      = colors.HexColor("#002D58")
+VELOCITY   = colors.HexColor("#0066B3")
+PARCHMENT  = colors.HexColor("#FDFBF7")
+PLUM       = colors.HexColor("#78286E")
+GOLD       = colors.HexColor("#F1B434")
+CARDINAL   = colors.HexColor("#A6192E")
+TEAL       = colors.HexColor("#4FD4E0")
+
+INK        = colors.HexColor("#212121")   # brand Ink
+INK2       = colors.HexColor("#4A5461")   # Atlas, lightened for running text
+MUTED      = colors.HexColor("#8096AC")   # Atlas 50%
+LINE       = colors.HexColor("#E6EAEE")   # Atlas 10%
+SURFACE    = colors.HexColor("#FDFBF7")   # Parchment
+TRACK      = colors.HexColor("#E9E9E9")   # Ink 10%
+SEQ        = VELOCITY
 # validated ordinal ramp, light mode (validate_palette.js --ordinal: all pass)
-ORD = {"Critical": colors.HexColor("#104281"), "High": colors.HexColor("#256abf"),
-       "Medium": colors.HexColor("#3987e5"), "Low": colors.HexColor("#86b6ef"),
+ORD = {"Critical": colors.HexColor("#002D58"), "High": colors.HexColor("#0066B3"),
+       "Medium": colors.HexColor("#4D94CB"), "Low": colors.HexColor("#80B2D9"),
        "Opportunity": TRACK}
-STATUS = {"Pass": colors.HexColor("#0ca30c"), "Warning": colors.HexColor("#fab219"),
-          "Fail": colors.HexColor("#d03b3b"),
-          "Not Implemented": colors.HexColor("#ec835a"),
+# Semantic status is deliberately NOT the brand blues — a reader must be able
+# to tell "this failed" from "this is severity 3" without reading the label.
+# Cardinal and Gold are the brand's own red and amber, so it still belongs to
+# the palette.
+STATUS = {"Pass": colors.HexColor("#1E7A45"), "Warning": GOLD,
+          "Fail": CARDINAL,
+          "Not Implemented": colors.HexColor("#C2653A"),
           "Need Access": MUTED, "N/A": MUTED}
 
 SECTION_NAMES = {
@@ -274,25 +299,41 @@ def _rule(width=1.75 * inch):
 
 
 def _styles():
-    from .fonts import register, BODY, BOLD
-    register()
+    # HEADLINES AND BODY ARE DIFFERENT FACES.
+    #
+    # Agdasima for headlines, GT Walsheim Pro for body copy — the brand book's
+    # own pairing. `register()` falls back per family, so a document can end up
+    # with brand headlines over Roboto body copy if only one set of files is
+    # installed, which is a good deal better than losing both.
+    #
+    # Imported INSIDE the function and read after register() on purpose: these
+    # are module-level names that register() rebinds, so a module-level `from
+    # .fonts import BODY` would capture "Helvetica" before the fonts loaded.
+    from . import fonts as _fonts
+    _fonts.register()
+    BODY, BOLD = _fonts.BODY, _fonts.BOLD
+    HEAD, HEAD_BOLD = _fonts.HEAD, _fonts.HEAD_BOLD
     ss = getSampleStyleSheet()
     def mk(name, **kw):
         base = dict(fontName=BODY, fontSize=9.5, leading=13, textColor=INK)
         base.update(kw)
         return ParagraphStyle(name, parent=ss["Normal"], **base)
     return {
-        "h1": mk("h1", fontName=BOLD, fontSize=21, leading=25, spaceAfter=4),
-        "h2": mk("h2", fontName=BOLD, fontSize=13, leading=17,
+        # Agdasima is CONDENSED, so the same point size reads smaller and sets
+        # far more text per line. Headings get a couple of points back to
+        # hold the same optical weight against the body face.
+        "h1": mk("h1", fontName=HEAD_BOLD, fontSize=23, leading=26,
+                 spaceAfter=4),
+        "h2": mk("h2", fontName=HEAD_BOLD, fontSize=14.5, leading=18,
                  spaceBefore=16, spaceAfter=7),
-        "h3": mk("h3", fontName=BOLD, fontSize=10.5, leading=14,
+        "h3": mk("h3", fontName=HEAD_BOLD, fontSize=11.5, leading=15,
                  spaceBefore=10, spaceAfter=4),
         "body": mk("body", spaceAfter=6),
         "small": mk("small", fontSize=8.5, leading=11.5, textColor=INK2),
         "muted": mk("muted", fontSize=8, leading=11, textColor=MUTED),
         "cell": mk("cell", fontSize=8.5, leading=11),
         "cellsm": mk("cellsm", fontSize=8, leading=10.5, textColor=INK2),
-        "hero": mk("hero", fontName=BOLD, fontSize=44, leading=48),
+        "hero": mk("hero", fontName=HEAD_BOLD, fontSize=46, leading=50),
         "bullet": mk("bullet", leftIndent=11, bulletIndent=2, spaceAfter=4),
     }
 
@@ -337,24 +378,24 @@ class _Doc(BaseDocTemplate):
 # because the BACKGROUND still runs dark to light.
 # ---------------------------------------------------------------------------
 SEV_PILL = {
-    "Critical":    (colors.HexColor("#104281"), colors.white),
-    "High":        (colors.HexColor("#256abf"), colors.white),
-    "Medium":      (colors.HexColor("#dbe8fa"), colors.HexColor("#17457f")),
-    "Low":         (colors.HexColor("#edf3fd"), colors.HexColor("#2a5d9e")),
-    "Opportunity": (colors.HexColor("#f1f0ec"), colors.HexColor("#52514e")),
+    "Critical":    (colors.HexColor("#002D58"), colors.white),
+    "High":        (colors.HexColor("#0066B3"), colors.white),
+    "Medium":      (colors.HexColor("#E6F0F7"), colors.HexColor("#004E88")),
+    "Low":         (colors.HexColor("#F2F7FB"), colors.HexColor("#0066B3")),
+    "Opportunity": (colors.HexColor("#E9E9E9"), colors.HexColor("#4A5461")),
 }
-ORD_PHASE = [colors.HexColor("#104281"), colors.HexColor("#256abf"),
-             colors.HexColor("#3987e5")]
+ORD_PHASE = [colors.HexColor("#002D58"), colors.HexColor("#0066B3"),
+             colors.HexColor("#4D94CB")]
 
 STATUS_PILL = {
-    "Pass":            (colors.HexColor("#e3f5e3"), colors.HexColor("#0b6b0b")),
-    "Fail":            (colors.HexColor("#fbe4e4"), colors.HexColor("#a32020")),
-    "Warning":         (colors.HexColor("#fdf1d9"), colors.HexColor("#8a5d05")),
-    "Not Implemented": (colors.HexColor("#fdeadf"), colors.HexColor("#9c4a1e")),
-    "Need Access":     (colors.HexColor("#f1f0ec"), colors.HexColor("#52514e")),
-    "Manual":          (colors.HexColor("#eaf1fb"), colors.HexColor("#2a5ea8")),
-    "Info":            (colors.HexColor("#eef2f7"), colors.HexColor("#48566b")),
-    "N/A":             (colors.HexColor("#f6f5f2"), colors.HexColor("#898781")),
+    "Pass":            (colors.HexColor("#E4F1E8"), colors.HexColor("#1E7A45")),
+    "Fail":            (colors.HexColor("#F7E4E7"), colors.HexColor("#A6192E")),
+    "Warning":         (colors.HexColor("#FDF2DC"), colors.HexColor("#8A6209")),
+    "Not Implemented": (colors.HexColor("#F9E9E1"), colors.HexColor("#9C4A1E")),
+    "Need Access":     (colors.HexColor("#E9E9E9"), colors.HexColor("#4A5461")),
+    "Manual":          (colors.HexColor("#E6EAEE"), colors.HexColor("#002D58")),
+    "Info":            (colors.HexColor("#E6F0F7"), colors.HexColor("#004E88")),
+    "N/A":             (colors.HexColor("#F1F1F1"), colors.HexColor("#8096AC")),
 }
 
 # WHAT THE STATUS COLUMN IS FOR.
@@ -491,8 +532,8 @@ def _icon(ch: str) -> str:
     return f"<font name='{name}'>{ch}</font>"
 
 
-BUBBLE_BG = colors.HexColor("#eef4fd")     # soft tint of the sequential blue
-BUBBLE_EDGE = colors.HexColor("#cfe0f8")
+BUBBLE_BG = colors.HexColor("#E6F0F7")     # Velocity Blue at 10%
+BUBBLE_EDGE = colors.HexColor("#C2DAEC")
 
 
 def _bubble(term, definition, icon="", S=None, width=6.55 * inch, indent=0.0):
