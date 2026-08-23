@@ -133,8 +133,18 @@ def main():
     f_open = [_opening(t["finding"], 3) for t in five]
     check("headline findings do not all open identically",
           len(set(f_open)) > 1 or len(f_open) < 2, str(f_open))
-    check("'what's working' is prose, not one bullet per section",
-          len(working) <= 3, f"{len(working)} sentences")
+    # WAS: len(working) <= 3, on the rule that strengths should be prose
+    # rather than one bullet per section. That rule was written when these
+    # rendered as sentences. They render as half-width cards now, each with a
+    # plain-English line about what the area is — so grouping three clean
+    # areas into one sentence produced one wide card naming three areas and
+    # explaining none of them. One area per entry is the point; what still
+    # matters is that each entry is a card's worth of text, not a paragraph.
+    check("each strength is one card's worth of text",
+          all(len(w) <= 140 for w in working),
+          str([len(w) for w in working]))
+    check("strengths do not run past a page of cards",
+          len(working) <= 6, f"{len(working)} strengths")
 
     print("\n4. THE OPENING IS ABOUT THIS CLIENT")
     ov = s["overview"]
@@ -246,6 +256,46 @@ def main():
     check("no 'Https' / 'Seo' / 'E-e-a-t' mangling",
           not re.search(r"\bHttps\b|\bSeo\b|\bE-e-a-t\b|\bGeo\b|\bHtml\b", cased),
           str(re.findall(r"\bHttps\b|\bSeo\b|\bE-e-a-t\b|\bGeo\b|\bHtml\b", cased)))
+
+    print("\n9. THE REPORT NEVER DESCRIBES ITS OWN INPUT")
+    # THE BUG, REPLAYED.
+    #
+    # The single most prominent sentence in one report read: "The middle
+    # sections are omitted from the material, but the visible content shows no
+    # substantive information." That is our page-slicing, printed under "Top
+    # issue", and the client's reaction was to ask what it meant. The prompt
+    # already forbade it; a rule in a prompt is a request, so the guarantee is
+    # a scrub at the parse boundary.
+    from engine.judgment import _scrub
+    leaked = ("The middle sections are omitted from the material, but the "
+              "visible content shows no explanations of legal processes. "
+              "Three practice-area pages carry only a nav menu.")
+    cleaned = _scrub(leaked)
+    check("a sentence about our own material is dropped",
+          "omitted from the material" not in cleaned, cleaned)
+    check("and the sentence about their site survives",
+          "nav menu" in cleaned, cleaned)
+    check("evidence that is ALL process talk comes back empty, not garbled",
+          _scrub("No editorial content pages were retrieved for review.") == "")
+    body = " ".join([s["overview"], s["opportunity"], *working,
+                     *[t["finding"] for t in five]])
+    for phrase in ("the material", "the excerpt", "were retrieved",
+                   "omitted from"):
+        check(f"'{phrase}' appears nowhere in the client copy",
+              phrase not in body.lower(), body[:80])
+
+    print("\n10. URLS ARE LINKS, NOT FORTY CHARACTERS OF ADDRESS")
+    from engine.pdf_report import _pl
+    marked = _pl("Check the Family Law page "
+                 "(https://ootenlawfirm.com/practice-areas/family-law/).")
+    check("a printed URL becomes a clickable path",
+          "<link href=" in marked and "/practice-areas/family-law/" in marked,
+          marked[:90])
+    check("and the host is not repeated in the visible label",
+          ">ootenlawfirm.com<" not in marked, marked[:90])
+    check("a bare domain keeps the domain as its label",
+          "https://ootenlawfirm.com" in _pl("See https://ootenlawfirm.com")
+          and ">/</u>" not in _pl("See https://ootenlawfirm.com"))
 
     print("\n" + "=" * 68)
     print(f"  {len(FAILURES)} FAILED: {FAILURES}" if FAILURES

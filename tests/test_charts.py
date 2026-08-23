@@ -531,6 +531,56 @@ def main():
     check("so an existing report stops printing unticked phases as defects",
           "Not requested on this run" in html4)
 
+    print("\nEVERY COUNT IS PRINTED, INCLUDING THE ONE THAT DOES NOT FIT")
+    # THE BUG, REPLAYED.
+    #
+    # 4 Critical out of 41 issues is an 11pt segment on a 3in bar, and the
+    # count was drawn only when the segment was wider than 22pt. So the
+    # severity strip printed 9, 18, 10 and silently dropped the number the
+    # whole bar exists to make urgent.
+    tight = SegmentBar(severity_segments(
+        {"Critical": 4, "High": 9, "Medium": 18, "Low": 10}), width=3.05 * inch)
+    rec, w, h = _render(tight, avail_w=3.05 * inch)
+    nums = [t["t"] for t in rec.texts if t["t"] in ("4", "9", "18", "10")]
+    check("the narrow segment's count is drawn somewhere",
+          "4" in nums, str(nums))
+    check("every segment count appears exactly once",
+          sorted(nums) == sorted(["4", "9", "18", "10"]), str(nums))
+    out_of_box = [t for t in rec.texts if t["y"] > h or t["y"] < -1]
+    check("the callout stays inside the flowable's own box",
+          not out_of_box, str(out_of_box[:2]))
+
+    print("\nEVERY BAR IN THE DOCUMENT IS ROUNDED")
+    # The score bars and the inline section meters were the last square ones,
+    # three inches from bars that were not.
+    class _Shape(_Rec):
+        def __init__(self):
+            super().__init__()
+            self.square, self.round = 0, 0
+
+        def rect(self, x, y, w, h, stroke=1, fill=0):
+            # Gradient bands are always square rects, drawn INSIDE a rounded
+            # clip - they are not the shape under test. Only a bar-height
+            # rect is.
+            if h >= 5:
+                self.square += 1
+            super().rect(x, y, w, h, stroke=stroke, fill=fill)
+
+        def roundRect(self, x, y, w, h, r, stroke=1, fill=0):
+            self.round += 1
+            _Rec.rect(self, x, y, w, h, stroke=stroke, fill=fill)
+
+    for name, fl in (("inline section meter", MiniMeter(70, height=6)),
+                     ("unscored inline meter", MiniMeter(None, height=6)),
+                     ("scores by area", SectionBars(
+                         [("Technical SEO", 82, "Strong")], width=6.4 * inch))):
+        sh = _Shape()
+        fl.canv = sh
+        fl.wrap(6.6 * inch, 800)
+        fl.draw()
+        check(f"{name} draws its track with rounded corners", sh.round >= 1,
+              f"round={sh.round} square={sh.square}")
+
     print("\n" + "=" * 68)
     print(f"  {len(FAILURES)} FAILED: {FAILURES}" if FAILURES
           else "  ALL CHECKS PASSED — charts cannot report unmeasured as zero")

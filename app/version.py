@@ -12,9 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-67"
-BUILD_NOTES = ("Consent rows stop saying Pass and carry a disclaimer; the "
-               "-60 files are re-included in case they never landed")
+BUILD = "2026.08.20-68"
+BUILD_NOTES = ("Score on page 1, hero at its real proportions, every bar "
+               "rounded, every count printed, every URL a link, and the "
+               "report stops describing its own input")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

@@ -312,6 +312,21 @@ def _p(text):
     return _dashes(_h.escape(str(text if text is not None else "")))
 
 
+def _pl(text):
+    """
+    Escaped AND linkified: the form every piece of running prose should use.
+
+    `_linkify` was applied at three call sites out of a dozen, so the same
+    URL printed as a clickable path in Top Findings and as forty characters
+    of raw address in the appendix two pages later. One helper, used
+    everywhere text from a finding reaches a Paragraph.
+
+    Not folded into `_p` because `_p` also renders the cover's Website row and
+    the methodology line, where the whole point is to print the domain.
+    """
+    return _linkify(_p(text))
+
+
 def _rule(width=1.75 * inch):
     """
     The section mark, in one place.
@@ -350,7 +365,10 @@ def _linkify(text: str) -> str:
         url = m.group(1).rstrip(".,;")
         try:
             from urllib.parse import urlparse
-            path = urlparse(url).path or "/"
+            u = urlparse(url)
+            # A bare domain has no path worth printing. "/" as a link label is
+            # not a shorter way of saying anything, so the host stands in.
+            path = u.path if u.path not in ("", "/") else (u.netloc or url)
         except Exception:  # noqa: BLE001
             path = url
         label = path if len(path) <= 42 else path[:39] + "..."
@@ -432,8 +450,20 @@ class _Doc(BaseDocTemplate):
     """Adds a running footer with page numbers and the build id."""
 
     def __init__(self, buf, meta, **kw):
+        # ONE MEASURE FOR THE WHOLE DOCUMENT.
+        #
+        # The margins were 0.72in, giving a 7.06in frame, while every table,
+        # panel and chart in here is built at 6.6in. reportlab centers a table
+        # narrower than its frame, so headings, rules and body copy hung from
+        # the left margin and everything in a table sat 0.23in to the right of
+        # them - including the gradient cap on the score panel, which is drawn
+        # as a flowable and therefore did NOT move, so it overhung the panel it
+        # is supposed to be the top edge of.
+        #
+        # Matching the margin to the content measure fixes all of it at once
+        # and needs no per-table alignment: 8.5 - 6.6 = 1.9, half each side.
         super().__init__(buf, pagesize=LETTER,
-                         leftMargin=0.72 * inch, rightMargin=0.72 * inch,
+                         leftMargin=0.95 * inch, rightMargin=0.95 * inch,
                          topMargin=0.62 * inch, bottomMargin=0.72 * inch, **kw)
         self.meta = meta
         frame = Frame(self.leftMargin, self.bottomMargin,
@@ -961,7 +991,7 @@ SECTION_MEANS = {
 }
 
 
-def _strength(text, S):
+def _strength(text, S, width=6.55 * inch):
     """One strength as a card, with a plain-English line about the area."""
     from .report import SECTION_NAMES as _SN
     low = (text or "").lower()
@@ -976,12 +1006,12 @@ def _strength(text, S):
         gloss = means[0] if len(means) == 1 else f"{means[0]}; {means[1]}"
         gloss = gloss[0].upper() + gloss[1:] + "."
 
-    inner = [Paragraph(_p(text), S["cell"])]
+    inner = [Paragraph(_pl(text), S["cell"])]
     if gloss:
         inner.append(Spacer(1, 3))
         inner.append(Paragraph(
             f"<font color='#4A5461'>{_p(gloss)}</font>", S["cellsm"]))
-    t = Table([[inner]], colWidths=[6.55 * inch])
+    t = Table([[inner]], colWidths=[width])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F2F7F4")),
         ("ROUNDEDCORNERS", [10, 10, 10, 10]),
@@ -992,7 +1022,36 @@ def _strength(text, S):
         ("TOPPADDING", (0, 0), (-1, -1), 10),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 11),
     ]))
-    return KeepTogether([t, Spacer(1, 7)])
+    return t
+
+
+def _strength_grid(items, S):
+    """
+    Strength cards two to a row, each half the measure.
+
+    A full-measure card holding one short sentence is a band of pale green
+    across the page with an inch of empty space on the right of it, three
+    times over. Half-width puts them side by side, which is also how they
+    read: parallel pieces of good news, not a sequence.
+    """
+    if not items:
+        return []
+    half = 3.18 * inch
+    cards = [_strength(it, S, width=half) for it in items]
+    rows = [cards[i:i + 2] for i in range(0, len(cards), 2)]
+    for r in rows:
+        while len(r) < 2:
+            r.append("")
+    grid = Table(rows, colWidths=[3.28 * inch, 3.28 * inch])
+    grid.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (0, -1), 10),
+        ("RIGHTPADDING", (1, 0), (1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    return [grid]
 
 
 def _market_pills(raw, S):
@@ -1057,13 +1116,19 @@ class Shot(Flowable):
     page, and it reads as a paste rather than as part of the document.
     """
 
-    def __init__(self, png, width, height, radius=7):
+    def __init__(self, png, width, height, radius=7, draw_h=None):
         super().__init__()
         self.png, self.width, self.height, self.radius = png, width, height, radius
+        # The height the image is DRAWN at, which can exceed the box. A tall
+        # capture is cropped to the top of the page rather than squeezed into
+        # the box - squeezing is what made the homepage look smushed.
+        self.draw_h = draw_h or height
 
     def wrap(self, aw, ah):
         if self.width > aw:
-            self.height *= aw / self.width
+            k = aw / self.width
+            self.height *= k
+            self.draw_h *= k
             self.width = aw
         return self.width, self.height + 5
 
@@ -1085,14 +1150,40 @@ class Shot(Flowable):
         p.roundRect(0, 0, w, h, r)
         c.clipPath(p, stroke=0, fill=0)
         try:
-            c.drawImage(ImageReader(io.BytesIO(self.png)), 0, 0, width=w,
-                        height=h, preserveAspectRatio=False, mask="auto")
+            dh = self.draw_h or h
+            # Top-aligned inside the clip: y is where the BOTTOM of the image
+            # goes, so a taller-than-box image hangs below and is cropped.
+            c.drawImage(ImageReader(io.BytesIO(self.png)), 0, h - dh, width=w,
+                        height=dh, preserveAspectRatio=False, mask="auto")
         except Exception:  # noqa: BLE001
             pass
         c.restoreState()
         c.setStrokeColor(colors.HexColor("#E6EAEE"))
         c.setLineWidth(0.6)
         c.roundRect(0, 0, w, h, r, stroke=1, fill=0)
+
+
+def _png_size(png: bytes):
+    """
+    (width, height) from the PNG header, without an image library.
+
+    Pillow is not in requirements — the annotation is done in CSS before the
+    capture precisely so no image library is needed — so the only honest way
+    to know a screenshot's shape is to read its IHDR, which is at a fixed
+    offset in every PNG ever written. Assuming a shape instead is what
+    squashed the homepage: an 1280x820 viewport drawn into a 1280x620 box,
+    with preserveAspectRatio off, is a 25% vertical squeeze applied to the
+    first picture in the document.
+    """
+    try:
+        if png[:8] == b"\x89PNG\r\n\x1a\n" and png[12:16] == b"IHDR":
+            import struct
+            w, h = struct.unpack(">II", png[16:24])
+            if w and h:
+                return int(w), int(h)
+    except Exception:  # noqa: BLE001
+        pass
+    return None, None
 
 
 def _hero_shot(meta, S):
@@ -1108,10 +1199,22 @@ def _hero_shot(meta, S):
         or next((s for s in shots if not s.get("boxed")), None)
     if not home or not home.get("png"):
         return []
-    # Top of the page only. A full-length capture at this width is two inches
-    # of legible header over eight inches of thumbnail nobody can read.
+    # ITS OWN SHAPE, NOT AN ASSUMED ONE.
+    #
+    # The capture is a 1280x820 viewport (engine/screenshots.capture), and
+    # this drew it 1280x620 with preserveAspectRatio off - every face on the
+    # page a quarter too short. Read the header; fall back to the viewport
+    # shape only if the bytes will not parse.
     w = 6.55 * inch
-    return [Spacer(1, 4), Shot(home["png"], w, w * 620 / 1280), Spacer(1, 14)]
+    iw, ih = _png_size(home["png"])
+    ratio = (ih / iw) if (iw and ih) else (820 / 1280)
+    # A full-page capture would run past the bottom of the page and print as a
+    # strip of thumbnail. Cap the BOX and crop to the top of the image; the
+    # image itself is still drawn at its own proportions.
+    full = w * ratio
+    return [Spacer(1, 4),
+            Shot(home["png"], w, min(full, 4.35 * inch), draw_h=full),
+            Spacer(1, 14)]
 
 
 def _evidence(meta, S):
@@ -1140,7 +1243,10 @@ def _evidence(meta, S):
            Spacer(1, 8)]
     for sh in shots[:3]:
         try:
-            img = Shot(sh["png"], 6.4 * inch, 6.4 * inch * 820 / 1280)
+            iw, ih = _png_size(sh["png"])
+            sw = 6.4 * inch
+            img = Shot(sh["png"], sw,
+                       sw * ((ih / iw) if (iw and ih) else 820 / 1280))
         except Exception:
             continue
         cap = Paragraph(f"<font color='#52514e'>{_p(sh.get('caption'))}</font>",
@@ -1245,15 +1351,13 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         facts.append(("Business model",
                       _VERT.get(str(_bm).strip().lower(),
                                 str(_bm).replace("_", " ").strip().capitalize())))
-    if meta.get("primary_markets"):
-        # PILLS, NOT THE PASTED STRING.
-        #
-        # Thirteen counties arrive exactly as they were typed into the form —
-        # separated by the multiplication sign someone's spreadsheet used —
-        # and print as a wall of text with "TN" thirteen times. The form shows
-        # them as pills; the cover should too.
-        facts.append(("Primary markets",
-                      _market_pills(meta["primary_markets"], S)))
+    # PRIMARY MARKETS IS NOT A FINDING.
+    #
+    # Thirteen counties the client typed into our own form, printed back to
+    # them as thirteen pills across four rows, is the largest block on the
+    # first page and it tells them something they told us. The snapshot is
+    # for what we OBSERVED. `_market_pills` stays — it is still the right
+    # rendering if this ever earns its place back — but the row does not.
     if meta.get("primary_conversion"):
         facts.append(("Primary conversion", meta["primary_conversion"]))
     if meta.get("channels"):
@@ -1283,10 +1387,6 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         if words:
             facts.append(("Structured data found", words))
     if facts:
-        # The homepage, before the facts about it. This is the first thing in
-        # the document that is recognizably THEIR site.
-        for fl in _hero_shot(meta, S):
-            story.append(fl)
         story.append(Paragraph("Current Site Snapshot", S["h3"]))
         story.append(Spacer(1, 3))
         story.append(_kv_table(
@@ -1427,6 +1527,16 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     ]))
     story.append(grid)
 
+    # THE HOMEPAGE GOES HERE, NOT AT THE TOP.
+    #
+    # It was the first thing after the cover facts, and four inches of
+    # screenshot pushed the score gauge - the number the whole document is
+    # about - onto page two. Sitting between the coverage bars and the
+    # Executive Summary it does the same job (this report is about a real
+    # site) without costing the reader the headline.
+    for fl in _hero_shot(meta, S):
+        story.append(fl)
+
     # ------------------------------------------------ executive summary
     # One definition per term, at first use, document-wide. Seeded here rather
     # than beside the findings because the summary is where the words first
@@ -1436,7 +1546,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         story.append(Paragraph("Executive Summary", S["h2"]))
         story.append(_rule())
         if summary.get("overview"):
-            story.append(Paragraph(_p(summary["overview"]), S["body"]))
+            story.append(Paragraph(_pl(summary["overview"]), S["body"]))
         if summary.get("headline"):
             story.append(_banner("", summary["headline"], SEQ, S))
             story.append(Spacer(1, 8))
@@ -1470,7 +1580,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             story.append(Paragraph(title, S["h3"]))
             block = []
             if isinstance(items, str):
-                story.append(Paragraph(_p(items), S["body"]))
+                story.append(Paragraph(_pl(items), S["body"]))
                 block.append(items)
             elif key == "working":
                 # STRENGTHS AS CARDS, EACH SAYING WHAT THE AREA IS.
@@ -1480,14 +1590,15 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                 # canonicalization is — so the good news reads as jargon and
                 # gets skipped, which is a waste of the one section that is
                 # not asking them for anything.
-                for it in items:
-                    story.append(_strength(it, S))
-                    block.append(it)
+                story.append(Spacer(1, 4))
+                for fl in _strength_grid(list(items), S):
+                    story.append(fl)
+                block.extend(items)
             else:
                 # Short lists read better as prose than as bullets; a bulleted
                 # list of two items looks like a form that was filled in.
                 for it in items:
-                    story.append(Paragraph(_p(it), S["body"]))
+                    story.append(Paragraph(_pl(it), S["body"]))
                     block.append(str(it))
             if block:
                 _define(" ".join(block))
@@ -1529,16 +1640,16 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                                        S["muted"]))
             block.append(Spacer(1, 4))
             block.append(Paragraph(
-                f"<b>What we found.</b> {_linkify(_p(t.get('finding')))}",
+                f"<b>What we found.</b> {_pl(t.get('finding'))}",
                                    S["body"]))
             if t.get("why"):
-                block.append(Paragraph(f"<b>Why it matters.</b> {_p(t['why'])}",
+                block.append(Paragraph(f"<b>Why it matters.</b> {_pl(t['why'])}",
                                        S["body"]))
             # Scope, not instructions — see SERVICE_ACTION in summarise.py.
             if t.get("service") or t.get("action"):
                 block.append(Paragraph(
                     f"<b>How we handle it.</b> "
-                    f"{_p(t.get('service') or t.get('action'))}", S["body"]))
+                    f"{_pl(t.get('service') or t.get('action'))}", S["body"]))
             # KeepTogether covers the finding itself. The definition bubbles are
             # appended OUTSIDE it: bundling them made the block tall enough to
             # jump a page break, leaving half of page 2 blank.
@@ -1758,7 +1869,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                 # where the title starts.
                 mid = ParagraphStyle("phasecap", parent=S["small"],
                                      textColor=INK2, leftIndent=0.72 * inch)
-                block.append(Paragraph(_p(phase["rationale"]), mid))
+                block.append(Paragraph(_pl(phase["rationale"]), mid))
             block.append(Spacer(1, 5))
 
             # Work items, not instructions: the checkpoint name is what we are
@@ -1766,7 +1877,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             cells = []
             for a in actions[:14]:
                 label = str(a).split(" — ")[0].strip().rstrip(".")
-                cells.append(Paragraph(f"•  {_p(label)}", S["cellsm"]))
+                cells.append(Paragraph(f"•  {_pl(label)}", S["cellsm"]))
             if cells:
                 pairs = [cells[i:i + 2] for i in range(0, len(cells), 2)]
                 if len(pairs[-1]) == 1:
@@ -2035,7 +2146,7 @@ def _banner(title, body, color, S):
     # quote. An empty <b></b> would leave a stray blank line.
     head = f"<b>{_p(title)}</b><br/>" if title else ""
     t = Table([[Paragraph(head + f"<font size={'8.5' if title else '10'}>"
-                          f"{_p(body)}</font>", S["body"])]],
+                          f"{_pl(body)}</font>", S["body"])]],
               colWidths=[6.6 * inch])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), SURFACE),

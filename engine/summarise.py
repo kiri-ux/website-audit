@@ -458,11 +458,14 @@ _JUDGMENT_ACTIONS = {
         "Connect the brand to the entities Google already knows",
     "semantic relationships": "Link related topics so the coverage reads whole",
     "citation-worthy content": "Create material worth quoting",
-    # "Publish data only you have" reads as a riddle. Say what it is: a number
-    # or a finding that came from this business and exists nowhere else, which
-    # is the one kind of content nobody can copy.
-    "original research": "Publish a number only you have - your own survey, "
-                         "case results, or pricing data",
+    # "Publish data only you have" read as a riddle, and "Publish a number
+    # only you have" was the same riddle with a number in it. What this
+    # actually asks for is a page built from the firm's own records - how long
+    # their cases take, what they cost, how often they settle - because that
+    # is the one kind of page a competitor cannot copy and an AI assistant has
+    # to cite rather than paraphrase.
+    "original research": "Publish figures from your own records - typical "
+                         "timelines, costs and outcomes",
     "statistics & data usage": "Support claims with figures worth citing",
     "expert quotes": "Quote named experts, including your own",
     "author entity optimization": "Establish your authors as recognized names",
@@ -590,6 +593,20 @@ def roadmap_item(name: str) -> str:
 
 
 SEV_RANK = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Opportunity": 4}
+
+# What each score band actually buys them, in the reader's terms. Keyed on the
+# band names in engine/scoring.BANDS.
+SCORE_MEANS = {
+    "Excellent": "the fundamentals are in place and the work from here is "
+                 "competitive rather than corrective",
+    "Strong": "the site is in good shape, with a short list of specific gaps",
+    "Needs Improvement": "the site works, but enough is missing that it is "
+                         "not competing on equal footing",
+    "Weak": "several of the basics search engines and AI assistants rely on "
+            "are missing",
+    "Critical": "the foundations are not in place, and that is holding back "
+                "everything built on top of them",
+}
 
 
 def _group_issues(findings: dict, catalog: dict, meta: dict, limit: int = 5) -> list:
@@ -746,14 +763,21 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
         else:
             notable.append((code, v, passes))
 
+    # ONE AREA, ONE CARD.
+    #
+    # These used to be grouped into a single sentence - "Canonicalization,
+    # International SEO and Mobile SEO came back clean" - to avoid four
+    # identical-looking bullets. That reasoning holds for PROSE and not for
+    # what the renderer actually does with them: it draws each entry as a
+    # card with a plain-English line about the area underneath, so grouping
+    # produced one wide card naming three areas and explaining none of them.
+    # Three areas that came back clean are three pieces of good news.
     working = []
-    if clean:
-        total_pass = sum(n for _, n in clean)
-        names = _listy([n for n, _ in clean])
+    for name, passes in clean:
         working.append(
-            f"{names} came back clean — {total_pass} checks across those areas "
-            f"with nothing outstanding." if len(clean) > 1 else
-            f"{names} came back clean, with all {total_pass} checks passing.")
+            f"{name} came back clean - all {passes} checks passing."
+            if passes != 1 else
+            f"{name} came back clean - the one check here passed.")
     for code, v, passes in notable[:2]:
         working.append(
             f"{SECTION_NAMES.get(code, code)} is in good shape at {v['score']} out "
@@ -871,8 +895,15 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
         urgent = sum(1 for f in findings.values()
                      if f["status"] in FAILING
                      and f.get("severity") in ("Critical", "High"))
+        # SAY WHAT THE NUMBER MEANS, NOT ITS LABEL.
+        #
+        # "It scores 69 out of 100 (needs improvement)." puts our internal
+        # band name in brackets and leaves the reader to work out what it
+        # buys them. The band is still what decides the sentence - it is just
+        # written out as a consequence instead of a tag.
         parts.append(
-            f"It scores {o['score']} out of 100 ({str(o['rating']).lower()}). "
+            f"It scores {o['score']} out of 100, which means "
+            f"{SCORE_MEANS.get(str(o['rating']), 'there is work to do here')}. "
             + (f"{n_fail} things are worth fixing, and {urgent} of those should "
                f"be resolved within 30 days."
                if urgent else

@@ -690,14 +690,18 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             f"&lsquo;reuse the last crawl&rsquo; to fill them."
             f"</div></div>")
 
-    if not b["manual"] and not b["vendor"] and not stale:
-        # Both lists empty. Saying nothing looks like the panel failed to
-        # render; saying so is a small piece of good news at the top of a
-        # review.
-        out.append("<div style='margin-top:12px' class='sm'>"
-                   "<b style='color:var(--good)'>Nothing outstanding.</b> "
-                   "Every checkpoint either has an answer, needs the client's "
-                   "access, or does not apply to this site.</div>")
+    # NO PANEL WHEN THERE IS NOTHING IN IT.
+    #
+    # This used to print the header and a "Nothing outstanding" line, on the
+    # argument that silence looks like a render failure. It does not: it looks
+    # like a clean run. What it actually produced was a box at the top of
+    # every good report headed "Before this goes out", which trains the reader
+    # to scroll past the one place we put things that need doing.
+    #
+    # `out` starts with the header alone, so anything longer than one element
+    # means a section rendered and the panel has a reason to exist.
+    if len(out) == 1:
+        return []
     out.append("</div>")
     return out
 

@@ -987,8 +987,13 @@ def collect_lighthouse(url: str) -> dict:
     # say so rather than presenting it as INP.
     out["PERF-12"] = (_f("Warning" if tbt and tbt > 200 else "Pass",
                          {"total_blocking_time_ms": tbt, "proxy_for": "INP"},
-                         f"Total Blocking Time {round(tbt or 0)}ms — a LAB PROXY for "
-                         f"INP, which can only be measured from real user traffic.",
+                         # WAS: "a LAB PROXY for INP, which can only be
+                         # measured from real user traffic" — shouted, and
+                         # three clauses about our method before the reader
+                         # gets to what it means for them.
+                         f"Total Blocking Time is {round(tbt or 0)}ms. This "
+                         f"stands in for INP, which needs real visitor data "
+                         f"Google has not published for this site yet.",
                          "Medium" if tbt and tbt > 200 else "Low", "", 0.6)
                       if tbt is not None else
                       _f("Need Access", {}, "INP requires field data.", "Low", "", 0.0))

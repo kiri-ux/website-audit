@@ -329,12 +329,12 @@ class SectionBars(Flowable):
                 c.drawRightString(self.width, y + bar_h * 0.25, "—")
                 continue
 
+            radius = min(bar_h / 2.0, 4.0)
             c.setFillColor(TRACK)
             # Rounded, and the fill is clipped to the track's own rounded
             # shape so a short bar keeps square inner ends rather than
             # floating as a separate pill inside the track.
-            c.roundRect(bar_x, y, bar_w, bar_h,
-                        min(bar_h / 2.0, 4.0), stroke=0, fill=1)
+            c.roundRect(bar_x, y, bar_w, bar_h, radius, stroke=0, fill=1)
             fill_w = bar_w * max(0.0, min(1.0, sc / 100.0))
             # EVERY bar gets the SAME ramp.
             #
@@ -348,7 +348,18 @@ class SectionBars(Flowable):
             # Length is the whole message. The three worst are already called
             # out by a bold label in full-strength ink, which is emphasis
             # applied to the label rather than to the measurement.
+            # ROUND THE FILL TOO.
+            #
+            # The track was rounded and the gradient inside it was not, so a
+            # bar at 100 had square ends sitting a half-point proud of a
+            # rounded outline - which reads as a rendering fault rather than a
+            # style. Same clip trick the segment bar uses.
+            c.saveState()
+            clip = c.beginPath()
+            clip.roundRect(bar_x, y, bar_w, bar_h, radius)
+            c.clipPath(clip, stroke=0, fill=0)
             _grad_rect(c, bar_x, y, fill_w, bar_h)
+            c.restoreState()
 
             # Fit the value to its own column. "70  Needs Improvement" is more
             # than twice the width of "100  Strong", and at a fixed size the
@@ -382,14 +393,38 @@ class SegmentBar(Flowable):
         self.note = note
         self.height = bar_h + 30 + (11 if note else 0)
 
+    # A count that does not fit inside its own segment is not a count that
+    # gets dropped. Critical was 4 of 41 issues - a segment about eleven
+    # points wide - so the number vanished and the bar said there were three
+    # severities. Anything under this width gets its number in the gutter
+    # ABOVE the bar with a tick pointing at its segment.
+    _TIGHT = 22
+
+    def _callouts(self):
+        """[(center_x, count, color)] for segments too narrow to label."""
+        total = sum(max(0, n) for _, n, _ in self.segments) or 1
+        out, x = [], 0.0
+        for _label, n, col in self.segments:
+            if n <= 0:
+                continue
+            w = self.width * n / total
+            if w <= self._TIGHT:
+                out.append((x + w / 2, n, col))
+            x += w
+        return out
+
     def wrap(self, aw, ah):
         self.width = min(self.width, aw)
+        self.gutter = 13 if self._callouts() else 0
+        self.height = (self.bar_h + 30 + (11 if self.note else 0)
+                       + self.gutter)
         return self.width, self.height
 
     def draw(self):
         c = self.canv
         total = sum(max(0, n) for _, n, _ in self.segments) or 1
-        y = self.height - self.bar_h
+        gutter = getattr(self, "gutter", 0)
+        y = self.height - self.bar_h - gutter
         x = 0.0
         # ROUND THE BAR, NOT THE SEGMENTS.
         #
@@ -411,12 +446,21 @@ class SegmentBar(Flowable):
             c.setFillColor(col)
             c.rect(x, y, w, self.bar_h, stroke=0, fill=1)
             # count inside the segment only when it comfortably fits
-            if w > 22:
+            if w > self._TIGHT:
                 c.setFillColor(colors.white if col not in (TRACK, LINE) else INK2)
                 c.setFont(FB, 8)
                 c.drawCentredString(x + w / 2, y + self.bar_h * 0.32, str(n))
             x += w
         c.restoreState()
+
+        # …and the ones that did not fit, above the bar, tied to their segment.
+        for cx, n, col in self._callouts():
+            c.setStrokeColor(col if col not in (TRACK, LINE) else INK2)
+            c.setLineWidth(0.8)
+            c.line(cx, y + self.bar_h + 1, cx, y + self.bar_h + 4)
+            c.setFillColor(INK if col in (TRACK, LINE) else col)
+            c.setFont(FB, 7.5)
+            c.drawCentredString(cx, y + self.bar_h + 6, str(n))
 
         # legend — every segment gets its word, so color is never load-bearing
         lx, ly = 0.0, y - 15
@@ -451,24 +495,33 @@ class MiniMeter(Flowable):
 
     def draw(self):
         c = self.canv
+        # Same shape as every other bar in the document. These sit inches from
+        # the rounded bars in Scores by Area and were the only square ones
+        # left, which made them read as a different kind of object.
+        r = self.height / 2.0
         if self.score is None:
             c.saveState()
             c.setStrokeColor(LINE)
             c.setLineWidth(0.6)
             c.setDash(2, 2)
-            c.rect(0, 0, self.width, self.height, stroke=1, fill=0)
+            c.roundRect(0, 0, self.width, self.height, r, stroke=1, fill=0)
             c.restoreState()
             return
         c.setFillColor(TRACK)
-        c.rect(0, 0, self.width, self.height, stroke=0, fill=1)
+        c.roundRect(0, 0, self.width, self.height, r, stroke=0, fill=1)
         # Same ramp as the big bars, and the same band density.
         #
         # Band count comes from the width — see _grad_rect. Hard-coding it
         # here is what made these look striped next to identical-looking bars
         # four times as wide.
+        c.saveState()
+        clip = c.beginPath()
+        clip.roundRect(0, 0, self.width, self.height, r)
+        c.clipPath(clip, stroke=0, fill=0)
         _grad_rect(c, 0, 0,
                    self.width * max(0.0, min(1.0, self.score / 100.0)),
                    self.height)
+        c.restoreState()
 
 
 GOLD = colors.HexColor("#F1B434")

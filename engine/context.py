@@ -110,18 +110,19 @@ class BusinessContext:
         # saying, nothing. The next sentence names the domain, the page count
         # and the score, which is a better first line than either version of
         # this one.
-        if self.locations:
-            n = len(self.locations)
-            where = ""
-            if self.states:
-                st = self.states[:3]
-                where = (" in " + (", ".join(st[:-1]) + " and " + st[-1]
-                                   if len(st) > 1 else st[0]))
-            return (f"{name} lists {n} location{'s' if n != 1 else ''}{where} "
-                    f"in its own markup.")
-        if self.has_ecommerce and self.product_pages:
-            return (f"{name} publishes {self.product_pages} product pages we "
-                    f"could reach.")
+        # AND THE OBSERVED VERSION DID NOT SURVIVE EITHER.
+        #
+        # "The Ooten Law Firm lists 1 location in Tennessee in its own
+        # markup." Three problems in one line: "in its own markup" is our
+        # vocabulary, one location is not worth a sentence, and the reader's
+        # question - "what's the point of that?" - has no good answer. The
+        # count is already in the snapshot table as "Locations found".
+        #
+        # There is no third rewrite of this sentence. The overview now opens
+        # with "We reviewed 63 pages of ootenlawfirm.com for The Ooten Law
+        # Firm and looked at ...", which is about the work they paid for.
+        # `describe()` stays so the stored extras keep their shape.
+        _ = name
         return ""
 
 
