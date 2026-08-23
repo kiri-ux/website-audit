@@ -1,20 +1,22 @@
-# 2026.08.20-58
+# 2026.08.20-59
 
 **Do**
 
-- Upload the zip, wait for Render to finish before starting a run.
-- Click "Rerun from the stored pages" on the stalled audit, or start a fresh scan.
+- Upload the zip. The worker reaps the stuck audit when it boots.
+- Start a fresh scan once Render says live.
 
 **Check**
 
-- During the run the progress line moves: "Search Console: inspecting URL 7 of 25",
-  then "collecting Analytics data", then "collecting the backlink profile".
-- No false "This run has stopped responding" on a healthy run.
-- Ours to fix: empty. Gemini should be measured.
+- "In flight" goes to 0, "stalled" shows 1 briefly, then the old run reads
+  failed with a message about the process going away.
+- During a run the progress line moves: "Search Console: inspecting URL 7 of 25".
+- Ours to fix: empty.
 - "Full consent scan" link at the top of the report.
 
 **Pending**
 
 - Pick a word to replace "Pass" (Met? OK?).
+- Watch worker memory. If runs keep dying ~70s in with no error, the 2GB
+  instance is the suspect, not the code.
 - Parity: gtm_api.py (large) → product pixel checkpoints → remediation layer
   → client share link → run history → batch + CSV + alerts.

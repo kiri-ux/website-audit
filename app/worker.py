@@ -841,6 +841,61 @@ def _publish_capabilities():
               f"{type(exc).__name__}: {exc}", flush=True)
 
 
+def _reap_abandoned():
+    """
+    Fail runs whose worker vanished, so they stop claiming to be in flight.
+
+    THE CASE THIS EXISTS FOR: an audit reached "collecting Search Console,
+    Analytics and backlink data", stamped a heartbeat 73 seconds in, and never
+    wrote another byte. No error was recorded — and that absence is the
+    evidence. Every exception path in this worker writes `error` and sets the
+    status to failed, so a run that stops with `error` still null did not
+    raise. The process went away underneath it: an out-of-memory kill or the
+    instance being recycled.
+
+    Nothing then moved it. The queue had already leased the job, the container
+    that held the lease was gone, and the row sat at `checking` indefinitely —
+    counting under "in flight" on the dashboard, forever, for a run that no
+    process was working on.
+
+    A worker starting up is the right moment to do this: if a run's heartbeat
+    is older than the stall window and no worker is on it, the only honest
+    status is failed, with a message that says what the silence means.
+
+    NOT REQUEUED. If the cause was memory, an automatic retry loops on the
+    same wall at the same point and burns an instance doing it. The rerun
+    button is one click and it reuses the stored crawl.
+    """
+    from .ui import STALE_AFTER_S
+    cutoff = time.time() - STALE_AFTER_S
+    running = ("queued", "crawling", "checking", "scoring")
+    n = 0
+    for row in db.list_audits():
+        if row.get("status") not in running:
+            continue
+        hb = row.get("heartbeat_at")
+        # No heartbeat at all means a run from before heartbeats existed.
+        # Unknown is not dead, and guessing here would fail live work.
+        if not hb or float(hb) > cutoff:
+            continue
+        mins = int((time.time() - float(hb)) // 60)
+        msg = (f"The worker running this stopped responding {mins} minutes "
+               f"ago, at \u201c{row.get('progress') or 'an early step'}\u201d, "
+               f"and recorded no error. That combination means the process "
+               f"went away rather than failed \u2014 an out-of-memory kill or "
+               f"the instance being recycled. Nothing was wrong with the "
+               f"site. Re-run it; the stored crawl is reused, so the "
+               f"client's server is not touched again.")
+        db.update_audit(row["id"], status="failed", progress=msg, error=msg,
+                        completed_at=time.time())
+        print(f"[worker] reaped abandoned audit {row['id']} "
+              f"(no heartbeat for {mins}m)", flush=True)
+        n += 1
+    if n:
+        print(f"[worker] {n} abandoned run(s) marked failed on startup",
+              flush=True)
+
+
 def main():
     # Graceful shutdown matters in production: Render sends SIGTERM on deploy,
     # and we want the in-flight crawl to finish rather than be killed mid-job.
@@ -855,6 +910,7 @@ def main():
     from .config import warn_startup
     warn_startup()
     _publish_capabilities()
+    _reap_abandoned()
     print(f"[worker] up · {version.label()} · {cfg.summary()} · waiting for jobs",
           flush=True)
 

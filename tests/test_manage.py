@@ -413,6 +413,62 @@ def main():
     check("and none of them is a bare class name used elsewhere", not _clash,
           str(_clash))
 
+    print("\nA RUN WHOSE WORKER VANISHED DOES NOT STAY 'IN FLIGHT' FOREVER")
+    # THE CASE: an audit reached "collecting Search Console, Analytics and
+    # backlink data", stamped a heartbeat 73 seconds in, and never wrote
+    # again. `error` was still null — and that absence is the evidence, since
+    # every exception path here records one. The process went away: an OOM
+    # kill or a recycled instance. Nothing moved the row, so it counted under
+    # "in flight" on the dashboard indefinitely for a run nobody was working
+    # on.
+    import time as _t3
+    from app import db as _db2, worker as _wk2
+    _now = _t3.time()
+    _dead = _db2.create_audit("vici", "Dead Co", "https://d.test/", None, None, {})
+    _db2.update_audit(_dead, status="checking",
+                      progress="collecting Search Console, Analytics and "
+                               "backlink data",
+                      heartbeat_at=_now - 1800)
+    _live = _db2.create_audit("vici", "Live Co", "https://l.test/", None, None, {})
+    _db2.update_audit(_live, status="crawling", heartbeat_at=_now - 20)
+    _old = _db2.create_audit("vici", "Old Co", "https://o.test/", None, None, {})
+    _db2.update_audit(_old, status="checking")      # no heartbeat at all
+    _wk2._reap_abandoned()
+    check("the abandoned run is marked failed",
+          _db2.get_audit(_dead)["status"] == "failed")
+    check("and the message says the process went away, not that the site broke",
+          "went away rather than failed"
+          in (_db2.get_audit(_dead).get("error") or ""))
+    check("and names the step it died on",
+          "collecting Search Console" in (_db2.get_audit(_dead).get("error") or ""))
+    check("a live run is untouched",
+          _db2.get_audit(_live)["status"] == "crawling")
+    # Unknown is not dead. A run from before heartbeats existed has none, and
+    # guessing there would fail work that is genuinely running.
+    check("a run with no heartbeat at all is left alone",
+          _db2.get_audit(_old)["status"] == "checking")
+
+    print("\nAND THE DASHBOARD COUNTS IT HONESTLY IN THE MEANTIME")
+    from app.ui import _stalled as _st2
+    check("the stall rule is shared, not re-implemented per page",
+          _st2({"status": "checking", "heartbeat_at": _now - 1800}))
+    check("a fresh heartbeat is not stalled",
+          not _st2({"status": "checking", "heartbeat_at": _now - 5}))
+    check("and a finished audit is never stalled",
+          not _st2({"status": "ready", "heartbeat_at": _now - 999999}))
+    _h2 = _ui.dashboard_html(
+        [{"id": "s1", "client_name": "Stalled Co", "target_url": "https://a.test/",
+          "status": "checking", "heartbeat_at": _now - 1800, "overall_score": None,
+          "overall_rating": None, "coverage": None, "pages_crawled": 118,
+          "created_at": _now - 2000, "options": "{}"}],
+        _N(name="V", email="e"), 0, caps={"consent": True, "aivis": True})
+    _t2 = _re.sub(r"\s+", " ", _re.sub(r"<[^>]+>", " ", _h2))
+    check("it is counted as stalled, not in flight",
+          "0 in flight" in _t2 and "1 stalled" in _t2,
+          _t2[_t2.find("clients") - 20:_t2.find("clients") + 60])
+    check("and the card says stalled instead of spinning",
+          "stalled" in _t2 and "<span class='spin'>" not in _h2)
+
     print("\n" + "=" * 68)
     print(f"  {len(FAILURES)} FAILED: {FAILURES}" if FAILURES
           else "  ALL CHECKS PASSED — delete is complete and scoped; grouping is safe")

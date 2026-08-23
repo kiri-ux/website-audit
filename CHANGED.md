@@ -1,7 +1,71 @@
-# Changed files — build 2026.08.20-58
+# Changed files — build 2026.08.20-59
 
 Cumulative delta since **2026.08.18-16**. Packed by `pack.py`.
 Extension is **1.4.4** — unchanged since ‑50.
+
+---
+
+## No, it was not going back to 0. Now it does.
+
+You were right that it was not the deploy. Here is the record, off your API:
+
+```
+started_at    1787501071
+heartbeat_at  1787501144      <- 73 seconds later
+progress      "collecting Search Console, Analytics and backlink data"
+error         null
+status        checking
+```
+
+**Seventy-three seconds in, then nothing.** So it was not a slow URL
+Inspection pass either — it never got far enough for that to matter.
+
+The `error: null` is the evidence. Every exception path in the worker writes
+`error` and sets the status to failed. A run that stops with `error` still null
+did not raise: **the process went away underneath it.** An out-of-memory kill
+or the instance being recycled. Both look exactly like this and neither leaves
+a Python traceback.
+
+And nothing moved it afterwards. The queue had leased the job to a container
+that no longer existed, so the row sat at `checking` indefinitely — which is
+your answer: it was going to count under "in flight" forever.
+
+### Three fixes
+
+**1. The worker reaps abandoned runs on startup.** A run whose heartbeat is
+older than the stall window, with no worker on it, is marked failed with a
+message that says what the silence means:
+
+> The worker running this stopped responding 16 minutes ago, at "collecting
+> Search Console, Analytics and backlink data", and recorded no error. That
+> combination means the process went away rather than failed — an
+> out-of-memory kill or the instance being recycled. Nothing was wrong with
+> the site.
+
+Deliberately **not** requeued. If the cause is memory, an automatic retry
+walks into the same wall at the same point and burns an instance doing it.
+Re-run is one click and reuses the stored crawl.
+
+**2. The dashboard uses the stall rule the audit page already had.** That rule
+lived on the audit page only, so a dead run kept its spinner and its place in
+"in flight", and the one screen that would have told you otherwise was the one
+you had to click into. Same rule, one helper, used by both. The tiles now read
+`0 in flight · 1 stalled`, and the client card says **stalled** instead of
+spinning.
+
+**3. "Stalled" is counted, not hidden.** Dropping those runs out of "in flight"
+and nowhere else would trade a number that overstates for one that conceals,
+and the entire reason anyone looks at that tile is to decide whether something
+needs them.
+
+---
+
+## What to watch
+
+If runs keep dying around 70 seconds in with `error: null`, the 2GB instance is
+the suspect rather than the code — `reuse_crawl` loads a 118-page artifact into
+memory before the collectors start. The reaper will now tell you each time
+instead of leaving a spinner, so the pattern will be visible if it is real.
 
 ---
 

@@ -542,6 +542,25 @@ def _shell(title, body, refresh=None, heading=None, crumbs=None):
             f"{trail}<div class='wrap'>{body}</div></body></html>")
 
 
+def _stalled(a) -> bool:
+    """
+    Has this run stopped responding?
+
+    One rule, used by the dashboard tiles, the client cards and the audit
+    page. It lived only on the audit page before, which meant the dashboard
+    counted a dead run as in flight indefinitely and the only way to find out
+    was to click into it.
+
+    A run with NO heartbeat at all is from before heartbeats existed, so a
+    missing value means "unknown" and never "dead".
+    """
+    import time as _t
+    if a.get("status") not in ("queued", "crawling", "checking", "scoring"):
+        return False
+    hb = a.get("heartbeat_at")
+    return bool(hb) and (_t.time() - float(hb)) > STALE_AFTER_S
+
+
 def _fmt_when(ts):
     import time as _t
     if not ts:
@@ -644,8 +663,16 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
     for g in groups:
         a = g["latest"]
         col = STATUS_COLOR.get(a["status"], "var(--muted)")
-        spin = "<span class='spin'></span> " if a["status"] in (
-            "crawling", "checking", "scoring") else ""
+        # A STALLED RUN IS NOT A RUNNING ONE, ANYWHERE.
+        #
+        # The audit page has known this rule for builds — heartbeat older than
+        # STALE_AFTER_S means the container is gone — and the dashboard did
+        # not. So a dead run kept its spinner and kept counting under "in
+        # flight" forever, and the only place that would tell you otherwise
+        # was the page you had to click into to find out.
+        dead = _stalled(a)
+        spin = "<span class='spin'></span> " if (a["status"] in (
+            "crawling", "checking", "scoring") and not dead) else ""
         hist = ""
         if g["history"]:
             rows = "".join(
@@ -677,8 +704,9 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
             f"<a class='cname' href='/audits/{a['id']}'>{e(g['client'])}</a>"
             f"<div class='curl'><code>{e(a['target_url'])[:70]}</code></div>"
             f"<div class='cmeta'>"
-            f"<span class='chip {STATUS_PILL.get(a['status'], '')}'>{spin}"
-            f"{e(a['status'].replace('_', ' '))}</span>"
+            f"<span class='chip {'stop' if dead else STATUS_PILL.get(a['status'], '')}'>"
+            f"{spin}"
+            f"{'stalled' if dead else e(a['status'].replace('_', ' '))}</span>"
             f"<span>{e(a.get('overall_rating') or 'Not Assessed')}</span>"
             f"<span>{e(a.get('coverage') or '—')} checks</span>"
             f"<span>{a.get('pages_crawled') or '—'} pages</span>"
@@ -723,14 +751,21 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
     # Averaged over SCORED audits only. Counting an unscored audit as zero
     # would drag the average down for the crime of not having finished yet.
     scored = [a["overall_score"] for a in audits if a["overall_score"] is not None]
-    n_run = sum(1 for a in audits if a["status"] in
-                ("queued", "crawling", "checking", "scoring"))
+    _running = [a for a in audits if a["status"] in
+                ("queued", "crawling", "checking", "scoring")]
+    n_run = sum(1 for a in _running if not _stalled(a))
+    # COUNTED, NOT HIDDEN. Dropping stalled runs out of "in flight" and
+    # nowhere else would trade a number that overstates for a number that
+    # conceals — and the whole reason this tile matters is that someone is
+    # looking at it to decide whether anything needs their attention.
+    n_stalled = sum(1 for a in _running if _stalled(a))
     n_blocked = sum(1 for a in audits if a["status"] == "needs_capture")
     n_failed = sum(1 for a in audits if a["status"] == "failed")
     stats = "<div class='stats'>" + "".join([
         _stat(len(groups), "clients"),
         _stat(len(audits), "audits"),
         _stat(n_run, "in flight", STATUS_COLOR["crawling"]),
+        _stat(n_stalled, "stalled", STATUS_COLOR["failed"]),
         _stat(n_blocked, "need capture", STATUS_COLOR["needs_capture"]),
         _stat(n_failed, "failed", STATUS_COLOR["failed"]),
         _stat(round(sum(scored) / len(scored)) if scored else "—", "mean score"),
