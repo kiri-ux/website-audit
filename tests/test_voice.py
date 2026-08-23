@@ -298,6 +298,26 @@ def main():
     check("the tour of our data sources does not",
           "backlink index" not in off and "no API" not in off, off)
 
+    print("\n9c. A PUNCTUATION SLIP DOES NOT COST A WHOLE CHECKPOINT")
+    # THE BUG, REPLAYED. The internal panel carried, as an entire checkpoint
+    # result: "Judgment call failed: JSONDecodeError: Expecting ',' delimiter:
+    # line 3 column 133 (char 154)". The model had quoted the page inside its
+    # evidence string without escaping the quotes, and one json.loads over the
+    # whole object threw away the status, the severity and the fix with it.
+    from engine.judgment import _parse
+    broken = ('{\n "status": "Fail",\n "evidence": "The page says "we offer '
+              'dedicated support" and little else.",\n "severity": "High",\n '
+              '"recommendation": "Write the process out.",\n "confidence": 0.8\n}')
+    d = _parse(broken)
+    check("the verdict survives an unescaped quote", d.get("status") == "Fail", str(d))
+    check("so does the severity", d.get("severity") == "High")
+    check("so does the fix", "Write the process out" in (d.get("recommendation") or ""))
+    check("and the evidence keeps the quoted words",
+          "dedicated support" in (d.get("evidence") or ""), d.get("evidence"))
+    good = _parse('{"status":"Pass","evidence":"ok","severity":"Low",'
+                  '"recommendation":"","confidence":1.0}')
+    check("valid JSON still parses as JSON", good["status"] == "Pass")
+
     print("\n10. URLS ARE LINKS, NOT FORTY CHARACTERS OF ADDRESS")
     from engine.pdf_report import _pl
     marked = _pl("Check the Family Law page "

@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-76"
-BUILD_NOTES = ("The dashboard stops reloading under your hands while you "
-               "type; Stop closes out a run a deploy already interrupted")
+BUILD = "2026.08.20-77"
+BUILD_NOTES = ("A stray quote in a model reply no longer costs the whole "
+               "checkpoint, and every panel row carries a fix")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

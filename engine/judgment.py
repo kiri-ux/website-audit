@@ -463,6 +463,62 @@ def _finding(status, evidence, severity="Medium", rec="", conf=1.0, src="llm_jud
             "confidence": conf, "source": src}
 
 
+# A MODEL PUT A QUOTE INSIDE A QUOTE, AND THE CHECKPOINT DIED.
+#
+#     Judgment call failed: JSONDecodeError: Expecting ',' delimiter:
+#     line 3 column 133 (char 154)
+#
+# printed in the internal panel, under "ours to fix", as the entire result of
+# a checkpoint. The model had written a perfectly good judgement and quoted
+# the page inside its evidence string without escaping the quotes - and
+# because the whole thing is parsed with one json.loads, a punctuation slip in
+# one field threw away the status, the severity and the recommendation too.
+#
+# The contract says return JSON and it is right to ask. But an answer that is
+# 95% valid should not be worth zero, so the fields are recovered by hand when
+# the parse fails. Regex, deliberately: it cannot raise, and it does not care
+# what is inside the string it is pulling out.
+_FIELD_RE = {
+    "status": r'"status"\s*:\s*"([^"]*)"',
+    "severity": r'"severity"\s*:\s*"([^"]*)"',
+    "confidence": r'"confidence"\s*:\s*([0-9.]+)',
+    # Evidence and recommendation are free text and are exactly where a stray
+    # quote lands, so they are matched up to the NEXT key rather than up to
+    # the next quote.
+    "evidence": r'"evidence"\s*:\s*"(.*?)"\s*,\s*"(?:severity|recommendation|confidence)"',
+    "recommendation": r'"recommendation"\s*:\s*"(.*?)"\s*[,}]\s*(?:"confidence"|$)',
+}
+
+
+def _parse(raw: str) -> dict:
+    """The model's object, however badly it was punctuated."""
+    start, end = raw.find("{"), raw.rfind("}")
+    blob = raw[start:end + 1] if start >= 0 and end > start else raw
+    try:
+        d = json.loads(blob)
+        if isinstance(d, dict):
+            return d
+    except Exception:  # noqa: BLE001
+        pass
+    out = {}
+    for key, pattern in _FIELD_RE.items():
+        m = re.search(pattern, blob, re.S)
+        if not m:
+            continue
+        val = m.group(1).strip()
+        if key == "confidence":
+            try:
+                out[key] = float(val)
+            except ValueError:
+                pass
+        else:
+            # Un-escape what the model DID escape, and leave the rest alone.
+            out[key] = val.replace('\\"', '"').replace("\\n", " ")
+    if not out:
+        raise ValueError("no JSON object in the model's reply")
+    return out
+
+
 def _judge_one(cid, label, material, question, business_model, client):
     prompt = (
         f"You are auditing a website checkpoint for a professional SEO audit.\n\n"
@@ -475,8 +531,7 @@ def _judge_one(cid, label, material, question, business_model, client):
         f"{CONTRACT}")
     try:
         raw = _call_model(prompt)
-        start, end = raw.find("{"), raw.rfind("}")
-        d = json.loads(raw[start:end + 1])
+        d = _parse(raw)
         status = d.get("status")
         if status not in ("Pass", "Fail", "Warning", "Not Implemented"):
             status = "Not Implemented"
@@ -488,9 +543,28 @@ def _judge_one(cid, label, material, question, business_model, client):
         # nothing to say about the site. Say that, rather than printing an
         # empty cell under a severity.
         if not ev:
-            return cid, _finding("Need Access",
-                                 "Not enough of this page was readable to "
-                                 "judge it.", "Low", "", 0.0)
+            # WAS: "Not enough of this page was readable to judge it." - with
+            # no recommendation, so the internal panel grouped two of them
+            # under "ours to fix" with no fix beside them. True and unusable.
+            #
+            # Two different causes, and the material says which: the retrieval
+            # found no page of this kind at all, or it found one and there was
+            # nothing in it worth reading. Naming the right one is the
+            # difference between a to-do and a mystery.
+            empty = str(material or "").lstrip().startswith("(NONE")
+            return cid, _finding(
+                "Need Access",
+                ("The crawl found no page of this kind on the site, so there "
+                 "was nothing to judge."
+                 if empty else
+                 "This page carried no readable text for this check."),
+                "Low",
+                ("If the site does have pages like this, they are not linked "
+                 "from anywhere the crawl reached - check the sitemap."
+                 if empty else
+                 "If the page builds its content in the browser, re-run with "
+                 "Render JavaScript forced."),
+                0.0, "no_material" if empty else "page_unreadable")
 
         # A CHECK WITH NOTHING TO READ IS UNMEASURED, NOT A HIGH-SEVERITY
         # FAILURE AGAINST THE CLIENT.
@@ -520,9 +594,17 @@ def _judge_one(cid, label, material, question, business_model, client):
         return cid, _finding(status, ev, sev,
                              d.get("recommendation", "")[:400], conf)
     except Exception as e:
-        return cid, _finding("Need Access",
-                             f"Judgment call failed: {type(e).__name__}: {e}",
-                             "Medium", "", 0.0, "llm_error")
+        # The class name and message stay - this line is read by us, in the
+        # internal panel, and "something went wrong" would cost a deploy to
+        # diagnose. What it gains is a fix line, so the panel row is a task.
+        return cid, _finding(
+            "Need Access",
+            f"The judgment call failed: {type(e).__name__}: {e}",
+            "Medium",
+            "Re-run this audit; the stored crawl is reused, so the client's "
+            "server is not touched again. If it repeats on the same "
+            "checkpoint, the prompt for it needs looking at.",
+            0.0, "llm_error")
 
 
 def run_judgment(art, business_model=None, client=None,
