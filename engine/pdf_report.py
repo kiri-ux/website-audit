@@ -695,12 +695,12 @@ def _ai_visibility(meta, S):
                 f"{gap} more times than you across the same questions.</font>",
                 S["small"]))
 
-    if v.get("skipped"):
-        out.append(Spacer(1, 6))
-        out.append(Paragraph(
-            f"<font color='#898781'>Not measured: "
-            f"{_p(', '.join(v['skipped']))}. Those platforms are reported as "
-            f"unmeasured rather than as zero visibility.</font>", S["muted"]))
+    # WHICH PLATFORMS WE DO NOT PAY FOR IS NOT THE CLIENT'S BUSINESS.
+    #
+    # "Not measured: perplexity, chatgpt, copilot" named our tooling gaps in
+    # their report and invited the question "so why not?", which has no answer
+    # that helps them. The platforms we DID measure are named beside every
+    # number above; that is the honest scope statement.
     return out
 
 
@@ -1114,8 +1114,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                                           kv[1].get("score") if kv[1].get("score")
                                           is not None else 0))
     story.append(Paragraph(
-        "Ordered by severity, with the areas to fix first at the top. A hollow "
-        "bar means we couldn't assess that area, not that it scored badly.",
+        "Ordered by severity, with the areas to fix first at the top.",
         S["small"]))
     story.append(Spacer(1, 8))
     story.append(KeepTogether(

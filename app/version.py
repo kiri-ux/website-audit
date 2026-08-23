@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-61"
-BUILD_NOTES = ("Report copy pass, and the delta zip is incremental by "
-               "content hash so it fits GitHub's 100-file upload")
+BUILD = "2026.08.20-62"
+BUILD_NOTES = ("Two captions removed: the hollow-bar note, and the list of "
+               "AI platforms we do not pay for")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.
