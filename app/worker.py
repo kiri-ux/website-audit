@@ -173,6 +173,44 @@ def _crawl(a, opts, audit_id, db, step):
     """The crawl phase. Returns None when the audit was parked for capture."""
     step("crawling", "crawling site")
 
+    # DECIDE THE TWO SETTINGS NOBODY CAN KNOW IN ADVANCE.
+    #
+    # "Browser user-agent" and "Render JavaScript" were checkboxes asking the
+    # operator to predict something about a site they had not crawled yet, and
+    # both are expensive to get wrong in ways that do not announce themselves:
+    # the wrong user-agent turns "we were blocked" into "your site is broken",
+    # and JS rendering left off on an app produces 118 empty shells scored as
+    # 118 pages with no content.
+    #
+    # One request to the homepage answers both. Ticking either box still forces
+    # it on — someone who knows the site beats a probe — but the default is now
+    # evidence rather than a guess.
+    forced_ua = bool(opts.get("user_agent"))
+    forced_js = bool(opts.get("render_js"))
+    if not (forced_ua and forced_js):
+        try:
+            from engine.preflight import decide as _pre
+            pf = _pre(a["target_url"])
+        except Exception as exc:  # noqa: BLE001
+            pf = {"checked": False, "error": f"{type(exc).__name__}: {exc}",
+                  "why": [], "user_agent": None, "render_js": False}
+        if pf.get("checked"):
+            if pf.get("user_agent") and not forced_ua:
+                opts["user_agent"] = pf["user_agent"]
+            if pf.get("render_js") and not forced_js:
+                opts["render_js"] = True
+            for line in pf.get("why") or []:
+                # ON THE RECORD, NOT IN A LOG. A run that quietly switched to a
+                # browser user-agent and a run where someone ticked the box are
+                # different facts about the client's site.
+                print(f"[worker] {audit_id} preflight: {line}", flush=True)
+            if pf.get("why"):
+                opts.setdefault("_preflight", []).extend(pf["why"])
+                step("crawling", "crawling site — " + pf["why"][0])
+        elif pf.get("error"):
+            print(f"[worker] {audit_id} preflight could not run "
+                  f"({pf['error']}); crawling with the defaults", flush=True)
+
     def crawl_progress(msg, done, total):
         # Live progress is what makes "slow" distinguishable from "hung".
         db.update_audit(audit_id, progress=f"crawling — {msg}")
@@ -300,6 +338,11 @@ def _after_crawl(a, opts, audit_id, art, findings, step):
     extras = {"context": {**bc.to_dict(), "describe": bc.describe()}}
     if opts.get("_stale_crawl"):
         extras["stale_crawl"] = opts["_stale_crawl"]
+    # What the preflight decided, and why. A crawl that needed a browser
+    # user-agent is a FACT ABOUT THE CLIENT'S SITE, not a setting we happened
+    # to use — it belongs on the record next to the findings it explains.
+    if opts.get("_preflight"):
+        extras["preflight"] = opts["_preflight"]
 
     if dataforseo.configured() and not opts.get("skip_dataforseo"):
         # Lighthouse via DataForSEO FILLS GAPS ONLY. Where PageSpeed Insights
@@ -576,10 +619,39 @@ def _ai_visibility(a, audit_id, findings, extras, step):
         rows = findings_from_run(agg, profile)
         findings.update(rows)
         answered = sum(1 for f in rows.values() if f.get("status") != "Need Access")
+        # THE ANSWERS THEMSELVES, NOT JUST THE RATES.
+        #
+        # Every question, every answer and every citation was computed and
+        # thrown away, leaving a section that could only report percentages —
+        # and a percentage does not tell anyone what to write next. Two
+        # examples do: one question where the assistants cited the client, and
+        # one where they cited somebody else instead.
+        #
+        # `share_of_voice` was worse than unused: the PDF already reads it and
+        # renders a whole "who gets cited in your category" table from it, and
+        # nothing ever put it here, so that table has never appeared.
+        qtext = {q.id: q.text for q in queries}
+        wins, losses = [], []
+        for r in (run.get("results") or []):
+            if not r.get("ok"):
+                continue
+            q = qtext.get(r.get("query_id"))
+            if not q:
+                continue
+            if r.get("cited") and len(wins) < 3:
+                wins.append({"question": q, "platform": r.get("platform")})
+            elif not r.get("cited") and len(losses) < 3:
+                others = [d for d in (r.get("other_domains") or [])][:3]
+                losses.append({"question": q, "platform": r.get("platform"),
+                               "cited_instead": others})
+            if len(wins) >= 3 and len(losses) >= 3:
+                break
         extras["ai_visibility"] = {
             **{k: agg.get(k) for k in
                ("citation_rate", "mention_rate", "unprompted_citation_rate",
                 "client_citations", "top_competitor_domain")},
+            "share_of_voice": (agg.get("share_of_voice") or [])[:8],
+            "cited_examples": wins, "missed_examples": losses,
             "platforms": names, "skipped": skipped,
             "questions": len(queries), "from_audit": True}
         print(f"[worker] {audit_id} AI visibility answered {answered}/"
@@ -612,6 +684,22 @@ def _score_and_save(a, opts, audit_id, art, findings, extras, step):
             and screenshots.available()):
         step("scoring", "capturing evidence screenshots")
         shots = []
+        # THE HOMEPAGE, UNMARKED, FOR THE FRONT OF THE REPORT.
+        #
+        # Not evidence - the thing the document is about. It goes near the top
+        # with rounded corners and a shadow, and it is what makes the rest read
+        # as being about a real site. Captured with no selector so nothing is
+        # outlined on it.
+        try:
+            hero = screenshots.capture(art.start_url)
+            if hero:
+                put_artifact(audit_id, "homepage.png", hero)
+                shots.append({"checkpoint": "", "name": "homepage.png",
+                              "url": art.start_url, "caption": "",
+                              "boxed": False, "kind": "homepage"})
+        except Exception as exc:  # noqa: BLE001
+            print(f"[worker] {audit_id} homepage shot failed: "
+                  f"{type(exc).__name__}: {exc}", flush=True)
         cat_now = db.catalog()
         for cid, url, sel, caption in screenshots.pick_targets(
                 findings, cat_now, art.start_url, limit=3):
@@ -812,6 +900,20 @@ HANDLERS = {"audit": run_audit_job, "ai_monitor": run_ai_monitor_job}
 CAPS_KEY = "_worker"
 
 
+def _font_caps() -> dict:
+    """Registered families, and the files that are missing if any are."""
+    try:
+        from engine.fonts import register, status, _find, _BODY_FACES, _HEAD_FACES
+        register()
+        st = status()
+        missing = [f for _n, f, _b, _i in (_BODY_FACES + _HEAD_FACES)
+                   if not _find(f)]
+        return {"body": st.get("family"), "headings": st.get("heading_family"),
+                "missing": missing}
+    except Exception as exc:  # noqa: BLE001
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
 def _publish_capabilities():
     try:
         from engine.aivis.providers import active_providers
@@ -828,6 +930,12 @@ def _publish_capabilities():
                            and os.getenv("GOOGLE_CLIENT_ID")
                            and os.getenv("GOOGLE_CLIENT_SECRET")),
             "psi_key": bool(os.getenv("PSI_API_KEY")),
+            # WHICH TYPEFACES ACTUALLY REGISTERED, not which files we hoped
+            # for. Fonts load on the WORKER, and the only evidence until now
+            # was one line in a boot log nobody is watching at the moment it
+            # scrolls past — so a font that silently fell back to Roboto
+            # looked exactly like a font that was never uploaded.
+            "fonts": _font_caps(),
         }
         db.put_blob(CAPS_KEY, "capabilities.json",
                     json.dumps(caps).encode())

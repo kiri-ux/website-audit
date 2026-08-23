@@ -468,10 +468,37 @@ def _judge_one(cid, label, material, question, business_model, client):
         status = d.get("status")
         if status not in ("Pass", "Fail", "Warning", "Not Implemented"):
             status = "Not Implemented"
-        return cid, _finding(status, d.get("evidence", "")[:600],
-                             d.get("severity", "Medium"),
-                             d.get("recommendation", "")[:400],
-                             float(d.get("confidence", 0.7)))
+        sev = d.get("severity", "Medium")
+        conf = float(d.get("confidence", 0.7))
+        ev = d.get("evidence", "")[:600]
+
+        # A CHECK WITH NOTHING TO READ IS UNMEASURED, NOT A HIGH-SEVERITY
+        # FAILURE AGAINST THE CLIENT.
+        #
+        # EEAT-05 came back High on "No editorial content pages were retrieved
+        # for review, making it impossible to determine whether content is
+        # attributed to named authors" — a sentence that says in its own words
+        # that nothing was assessed, printed as one of the site's worst
+        # problems. The reader's question was the right one: if it was
+        # impossible to determine, what are we telling them?
+        #
+        # The prompt asks the model to return low confidence when the material
+        # is insufficient, and it does. That signal was then thrown away. It
+        # decides the severity now: a judgment the model itself is unsure of
+        # cannot outrank a measurement.
+        if conf < 0.4 and sev in ("Critical", "High"):
+            sev = "Medium"
+        # And a row whose own evidence says it could not tell is not a finding
+        # about the site at all.
+        if any(p in ev.lower() for p in (
+                "impossible to determine", "could not be determined",
+                "cannot be determined", "no content was provided",
+                "not enough information")):
+            status, sev = "Need Access", "Low"
+            conf = 0.0
+
+        return cid, _finding(status, ev, sev,
+                             d.get("recommendation", "")[:400], conf)
     except Exception as e:
         return cid, _finding("Need Access",
                              f"Judgment call failed: {type(e).__name__}: {e}",

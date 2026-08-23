@@ -27,8 +27,9 @@ from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import (BaseDocTemplate, Frame, PageBreak, PageTemplate,
-                                Paragraph, Spacer, Table, TableStyle, KeepTogether)
+from reportlab.platypus import (BaseDocTemplate, CondPageBreak, Flowable,
+                                Frame, PageBreak, PageTemplate, Paragraph,
+                                Spacer, Table, TableStyle, KeepTogether)
 
 from .charts import (ScoreGauge, SectionBars, SegmentBar, MiniMeter, GradRule,
                      DefBadge, Lamp, severity_segments, coverage_segments)
@@ -235,13 +236,23 @@ def _dedupe_evidence(rows: list) -> list:
             r = difflib.SequenceMatcher(None, pn, n).ratio()
             if r > ratio:
                 best, ratio = pcid, r
+        # PRINT IT AGAIN, WITH A POINTER — NOT A POINTER INSTEAD OF IT.
+        #
+        # "Same finding as ONP-01." saved four lines and cost the reader a
+        # page-flip to find out what ONP-01 said. In an appendix nobody reads
+        # front to back, a cross-reference is a dead end: the row they landed
+        # on is the row they care about.
+        #
+        # The repetition IS the point — it is the same problem showing up
+        # under several checks — so the sentence stays and the pointer moves
+        # to the end where it adds context instead of replacing it.
         if ratio >= 0.93:
-            f = {**f, "evidence": f"Same finding as {best}."}
+            f = {**f, "evidence": f"{ev} (Also reported under {best}.)"}
         elif ratio >= 0.72 and best:
             prev = next(p for p in seen if p[0] == best)[2]
             tail = _distinct_tail(prev, ev)
-            f = {**f, "evidence": (f"As {best}. {tail}" if tail
-                                   else f"Same finding as {best}.")}
+            f = {**f, "evidence": (f"{ev} (Related to {best}.)" if tail
+                                   else f"{ev} (Also reported under {best}.)")}
         seen.append((cid, n, ev))
         out.append((cid, f))
     return out
@@ -312,6 +323,69 @@ def _rule(width=1.75 * inch):
     calling this beats twelve headings each deciding their own width.
     """
     return GradRule(width=width, height=2.6, space_before=0, space_after=3)
+
+
+_URL_RE = __import__("re").compile(r"\(?(https?://[^\s<>)\]]+)\)?")
+
+
+def _linkify(text: str) -> str:
+    """
+    Replace printed URLs with a short clickable label.
+
+    "The Family Law page (https://ootenlawfirm.com/practice-areas/family-law/),
+    Criminal Defense page (https://ootenlawfirm.com/practice-areas/criminal-
+    defense/), and DUI page (https://ootenlawfirm.com/practice-areas/dui/)" is
+    four lines, three of them machine-readable rather than human-readable, in
+    a paragraph whose actual finding is the last clause.
+
+    The URL is not deleted - it becomes the path, underlined and clickable, so
+    the reader can still see WHICH page and still get there. The host is
+    dropped because every one of these is the client's own site and they know
+    what their domain is.
+
+    Runs AFTER escaping, so the text is already safe; the link target has to
+    be escaped separately for the attribute.
+    """
+    def rep(m):
+        url = m.group(1).rstrip(".,;")
+        try:
+            from urllib.parse import urlparse
+            path = urlparse(url).path or "/"
+        except Exception:  # noqa: BLE001
+            path = url
+        label = path if len(path) <= 42 else path[:39] + "..."
+        return (f'<link href="{_h.escape(url, quote=True)}" '
+                f'color="#0066B3"><u>{_h.escape(label)}</u></link>')
+    return _URL_RE.sub(rep, text or "")
+
+
+def _keep_headings_with_content(story, S):
+    """
+    Never leave a heading alone at the foot of a page.
+
+    "Top Findings" printed at the top of one page with its first finding on
+    the next - the heading, its rule, and eight inches of nothing.
+
+    Two ways to fix that, and only one of them is safe. `KeepTogether([heading,
+    next])` binds the heading to whatever follows, which is right until the
+    thing following is a table taller than a page: then reportlab breaks to a
+    new page, still cannot fit it, and you have spent a blank page to change
+    nothing.
+
+    `CondPageBreak` asks a smaller question - "is there at least this much room
+    left?" - and only breaks when the answer is no. It cannot loop, it cannot
+    strand a table, and it is enough: a heading with two inches of space under
+    it always has its first line of content with it.
+    """
+    heads = {id(S[k]) for k in ("h1", "h2", "h3") if k in S}
+    out = []
+    for f in story:
+        if isinstance(f, Paragraph) and id(getattr(f, "style", None)) in heads:
+            # h1 opens a section and gets more room than an h3 sub-head.
+            need = 2.1 if id(f.style) == id(S.get("h2")) else 1.5
+            out.append(CondPageBreak(need * inch))
+        out.append(f)
+    return out
 
 
 def _styles():
@@ -664,6 +738,81 @@ def _access_received(findings: dict) -> str:
 
 
 
+def _ai_intro(v) -> str:
+    """
+    Say what was actually done, in the client's terms.
+
+    WAS: "Measured by asking the assistants real buying questions in your
+    category…" - "the assistants" names nothing, and "real buying questions"
+    is a claim about our method rather than a description of the questions.
+    Someone asking ChatGPT for a criminal defense lawyer in Knoxville is not
+    making a purchase; they are trying to find out who exists.
+    """
+    plats = v.get("platforms")
+    if isinstance(plats, str):
+        names = [p.strip() for p in plats.split(",") if p.strip()]
+    else:
+        names = list(plats or [])
+    pretty = {"chatgpt": "ChatGPT", "claude": "Claude", "gemini": "Gemini",
+              "perplexity": "Perplexity", "ai_overview": "Google AI Overviews",
+              "copilot": "Copilot"}
+    shown = [pretty.get(n.strip().lower(), n.strip().title()) for n in names]
+    who = (", ".join(shown[:-1]) + " and " + shown[-1]) if len(shown) > 1 \
+        else (shown[0] if shown else "the AI assistants")
+    n = v.get("questions") or 0
+    return (f"We asked {who} {n} questions someone would ask when they are "
+            f"looking for a business like yours and do not know your name - "
+            f"the kind that starts \u201cwho is the best\u2026\u201d or "
+            f"\u201cwhat should I look for when\u2026\u201d. None of them "
+            f"named you. This is what those people are told.")
+
+
+def _ai_examples(v, S):
+    """The questions themselves - what got cited and what did not."""
+    wins = v.get("cited_examples") or []
+    miss = v.get("missed_examples") or []
+    if not wins and not miss:
+        return []
+    out = [Spacer(1, 12),
+           Paragraph("What they were asked", S["h3"]),
+           Paragraph("A percentage says how often. These say what about.",
+                     S["small"]),
+           Spacer(1, 6)]
+    rows = []
+    for w in wins[:3]:
+        rows.append([_pill("Cited", {"Cited": (colors.HexColor("#E4F1E8"),
+                                               colors.HexColor("#1E7A45"))},
+                           S, 0.72 * inch),
+                     Paragraph(f"\u201c{_p(w.get('question'))}\u201d",
+                               S["cell"]),
+                     Paragraph(_p(""), S["cellsm"])])
+    for m in miss[:3]:
+        others = m.get("cited_instead") or []
+        who = ", ".join(others[:2]) if others else "nobody we could attribute"
+        rows.append([_pill("Not cited", {"Not cited": (
+                        colors.HexColor("#F7E4E7"),
+                        colors.HexColor("#A6192E"))}, S, 0.72 * inch),
+                     Paragraph(f"\u201c{_p(m.get('question'))}\u201d",
+                               S["cell"]),
+                     Paragraph(f"<font color='#4A5461'>{_p(who)}</font>",
+                               S["cellsm"])])
+    t = Table([[Paragraph("<b>Result</b>", S["cellsm"]),
+                Paragraph("<b>Question asked</b>", S["cellsm"]),
+                Paragraph("<b>Cited instead</b>", S["cellsm"])]] + rows,
+              colWidths=[0.85 * inch, 3.9 * inch, 1.8 * inch])
+    t.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.6, LINE),
+        ("LINEBELOW", (0, 1), (-1, -2), 0.4, colors.HexColor("#F1F4F7")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+    ]))
+    out.append(t)
+    return out
+
+
 def _ai_visibility(meta, S):
     """
     What AI assistants say when asked about this client.
@@ -678,25 +827,36 @@ def _ai_visibility(meta, S):
         return []
     out = [Paragraph("AI Search Visibility", S["h2"]),
            _rule(),
-           Paragraph("Measured by asking the assistants real buying questions "
-                     "in your category and recording what came back. No brand "
-                     "name in the question — this is what someone finds when "
-                     "they are not already looking for you.", S["small"]),
+           Paragraph(_p(_ai_intro(v)), S["small"]),
            Spacer(1, 8)]
 
     cite = v.get("citation_rate") or 0
     ment = v.get("mention_rate") or 0
     unp = v.get("unprompted_citation_rate")
+    # THREE TILES, THREE LABELS THAT WRAP DIFFERENTLY.
+    #
+    # "of answers CITED your site as a source" is three lines, "mentioned the
+    # brand without linking to you" is two, "total citations across 27
+    # platforms" is two — so the numbers sat at the same height and the boxes
+    # did not, which is what read as wonky. The label is now one short line in
+    # every tile, with the qualifier below it, so all three set to the same
+    # depth whatever the numbers are.
+    _plats = len(v.get("platforms") or []) or len(
+        [x for x in str(v.get("platforms") or "").split(",") if x.strip()])
+
+    def _tile3(big, lead, sub):
+        return Paragraph(
+            f"<font size=21><b>{big}</b></font><br/>"
+            f"<font size=8.5 color='#212121'><b>{lead}</b></font><br/>"
+            f"<font size=7.5 color='#4A5461'>{sub}</font>", S["cellsm"])
+
     tiles = Table([[
-        Paragraph(f"<font size=20><b>{cite}%</b></font><br/>"
-                  f"<font size=8 color='#52514e'>of answers CITED your site "
-                  f"as a source</font>", S["cellsm"]),
-        Paragraph(f"<font size=20><b>{ment}%</b></font><br/>"
-                  f"<font size=8 color='#52514e'>mentioned the brand without "
-                  f"linking to you</font>", S["cellsm"]),
-        Paragraph(f"<font size=20><b>{v.get('client_citations') or 0}</b></font><br/>"
-                  f"<font size=8 color='#52514e'>total citations across "
-                  f"{len(v.get('platforms') or [])} platforms</font>", S["cellsm"]),
+        _tile3(f"{cite}%", "linked to you",
+               "the assistant used your site as a source"),
+        _tile3(f"{ment}%", "named you",
+               "said the brand, no link"),
+        _tile3(v.get("client_citations") or 0, "citations",
+               f"across {_plats} assistant{'s' if _plats != 1 else ''}"),
     ]], colWidths=[2.18 * inch, 2.18 * inch, 2.18 * inch])
     tiles.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -708,6 +868,7 @@ def _ai_visibility(meta, S):
         ("TOPPADDING", (0, 0), (-1, -1), 11), ("BOTTOMPADDING", (0, 0), (-1, -1), 11),
     ]))
     out.append(tiles)
+    out += _ai_examples(v, S)
 
     if ment > cite:
         out.append(Spacer(1, 8))
@@ -869,9 +1030,86 @@ def _market_pills(raw, S):
     return grid
 
 
+class Shot(Flowable):
+    """
+    A screenshot with rounded corners and a soft drop shadow.
+
+    reportlab has no image masking, so the rounding is done by drawing the
+    image inside a clipped rounded path - the same trick the segment bar uses
+    for its ends. The shadow is three offset rounded rects at decreasing
+    alpha underneath, which is cheap and prints without banding.
+
+    Without this a screenshot is a hard-edged rectangle butted against the
+    page, and it reads as a paste rather than as part of the document.
+    """
+
+    def __init__(self, png, width, height, radius=7):
+        super().__init__()
+        self.png, self.width, self.height, self.radius = png, width, height, radius
+
+    def wrap(self, aw, ah):
+        if self.width > aw:
+            self.height *= aw / self.width
+            self.width = aw
+        return self.width, self.height + 5
+
+    def draw(self):
+        from reportlab.lib.utils import ImageReader
+        c = self.canv
+        w, h, r = self.width, self.height, self.radius
+        # Shadow first, under everything, offset down and out.
+        for i, (dx, dy, a) in enumerate(((0, -2.5, 0.10), (0, -1.5, 0.09),
+                                         (0, -0.6, 0.08))):
+            c.saveState()
+            c.setFillColor(colors.HexColor("#002D58"))
+            c.setFillAlpha(a)
+            c.roundRect(dx + i * 0.4, dy - i * 0.4, w - i * 0.8, h, r,
+                        stroke=0, fill=1)
+            c.restoreState()
+        c.saveState()
+        p = c.beginPath()
+        p.roundRect(0, 0, w, h, r)
+        c.clipPath(p, stroke=0, fill=0)
+        try:
+            c.drawImage(ImageReader(io.BytesIO(self.png)), 0, 0, width=w,
+                        height=h, preserveAspectRatio=False, mask="auto")
+        except Exception:  # noqa: BLE001
+            pass
+        c.restoreState()
+        c.setStrokeColor(colors.HexColor("#E6EAEE"))
+        c.setLineWidth(0.6)
+        c.roundRect(0, 0, w, h, r, stroke=1, fill=0)
+
+
+def _hero_shot(meta, S):
+    """
+    The homepage, near the top, before any finding.
+
+    It is not evidence and it is not marked up - it is the thing the whole
+    document is about, and putting it on the cover is what makes the rest read
+    as being about a real site rather than about a spreadsheet.
+    """
+    shots = (meta.get("extras") or {}).get("screenshot_blobs") or []
+    home = next((s for s in shots if s.get("kind") == "homepage"), None) \
+        or next((s for s in shots if not s.get("boxed")), None)
+    if not home or not home.get("png"):
+        return []
+    # Top of the page only. A full-length capture at this width is two inches
+    # of legible header over eight inches of thumbnail nobody can read.
+    w = 6.55 * inch
+    return [Spacer(1, 4), Shot(home["png"], w, w * 620 / 1280), Spacer(1, 14)]
+
+
 def _evidence(meta, S):
     """Annotated screenshots — the problem, in a picture, on their own site."""
     shots = (meta.get("extras") or {}).get("screenshot_blobs") or []
+    # THE HERO ALREADY SHOWED THEM THE HOMEPAGE.
+    #
+    # "What This Looks Like" was printing the same unmarked full-page capture
+    # under a caption promising red outlines, for findings like "no HTTPS"
+    # that have nothing on the page to outline. A screenshot earns its place
+    # here only when something on it is marked.
+    shots = [s for s in shots if s.get("boxed")]
     if not shots:
         return []
     from reportlab.platypus import Image as RLImage
@@ -888,8 +1126,7 @@ def _evidence(meta, S):
            Spacer(1, 8)]
     for sh in shots[:3]:
         try:
-            img = RLImage(io.BytesIO(sh["png"]), width=6.4 * inch,
-                          height=6.4 * inch * 820 / 1280, kind="proportional")
+            img = Shot(sh["png"], 6.4 * inch, 6.4 * inch * 820 / 1280)
         except Exception:
             continue
         cap = Paragraph(f"<font color='#52514e'>{_p(sh.get('caption'))}</font>",
@@ -984,8 +1221,16 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     # derived: it is whichever collectors actually returned data.
     facts = []
     if meta.get("business_model") or meta.get("vertical"):
+        # `local_service` is a key in our config, not a description of a
+        # business. Same class of leak as CONS reaching the client.
+        _VERT = {"local_service": "Local service business",
+                 "ecommerce": "Online retailer",
+                 "finance_ymyl": "Finance / regulated advice",
+                 "publisher": "Publisher", "saas": "Software"}
+        _bm = meta.get("business_model") or meta.get("vertical") or ""
         facts.append(("Business model",
-                      meta.get("business_model") or meta.get("vertical")))
+                      _VERT.get(str(_bm).strip().lower(),
+                                str(_bm).replace("_", " ").strip().capitalize())))
     if meta.get("primary_markets"):
         # PILLS, NOT THE PASTED STRING.
         #
@@ -1024,6 +1269,10 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         if words:
             facts.append(("Structured data found", words))
     if facts:
+        # The homepage, before the facts about it. This is the first thing in
+        # the document that is recognizably THEIR site.
+        for fl in _hero_shot(meta, S):
+            story.append(fl)
         story.append(Paragraph("Current Site Snapshot", S["h3"]))
         story.append(Spacer(1, 3))
         story.append(_kv_table(
@@ -1265,7 +1514,8 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                 block.append(Paragraph(f"<font color='#898781'>{rest}</font>",
                                        S["muted"]))
             block.append(Spacer(1, 4))
-            block.append(Paragraph(f"<b>What we found.</b> {_p(t.get('finding'))}",
+            block.append(Paragraph(
+                f"<b>What we found.</b> {_linkify(_p(t.get('finding')))}",
                                    S["body"]))
             if t.get("why"):
                 block.append(Paragraph(f"<b>Why it matters.</b> {_p(t['why'])}",
@@ -1379,7 +1629,8 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             rows.append([Paragraph(cid, S["cellsm"]),
                          Paragraph(_p(m.get("checkpoint")), S["cell"]),
                          _pill(f.get("severity"), SEV_PILL, S, 0.66 * inch),
-                         Paragraph(_agree(_p(f.get("evidence"))), S["cell"])])
+                         Paragraph(_linkify(_agree(_p(f.get("evidence")))),
+                                   S["cell"])])
         t = Table(rows, colWidths=[0.62 * inch, 1.6 * inch, 0.78 * inch, 3.5 * inch],
                   repeatRows=1)
         t.setStyle(TableStyle([
@@ -1594,7 +1845,17 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                               colWidths=[0.46 * inch, 0.15 * inch])
                 ident.setStyle(TableStyle([
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("TOPPADDING", (1, 0), (1, 0), 1),
+                    # SIT ON THE ID'S OWN LINE, not above it.
+                    #
+                    # 1pt of top padding put the bulb's baseline a couple of
+                    # points high, so it floated over the text rather than
+                    # beside it - visible the moment two rows in a column have
+                    # one and the row between them does not.
+                    #
+                    # The cell text is 8pt on 10.5pt leading and the lamp is
+                    # 7pt tall, so about 2.5pt of lead-in drops it onto the
+                    # same optical line as the ID.
+                    ("TOPPADDING", (1, 0), (1, 0), 2.5),
                     ("LEFTPADDING", (0, 0), (-1, -1), 0),
                     ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
@@ -1602,7 +1863,8 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                          Paragraph(_p(m.get("checkpoint")), S["cell"]),
                          _pill(_status_word(f["status"]), STATUS_PILL, S,
                                0.86 * inch),
-                         Paragraph(_agree(_p(f.get("evidence"))), S["cell"])])
+                         Paragraph(_linkify(_agree(_p(f.get("evidence")))),
+                                   S["cell"])])
         t = Table(data, colWidths=[0.72 * inch, 1.68 * inch, 0.95 * inch, 3.15 * inch],
                   repeatRows=1)
         st = [("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -1729,7 +1991,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         story.append(Spacer(1, 8))
         story.append(Paragraph(line, S["body"]))
 
-    doc.build(story)
+    doc.build(_keep_headings_with_content(story, S))
     return buf.getvalue()
 
 

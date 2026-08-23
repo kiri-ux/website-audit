@@ -388,8 +388,12 @@ def service_action(theme_key: str, prefix: str) -> str:
     """The scope line for the client PDF. Never the remediation steps."""
     return (SERVICE_ACTION.get(theme_key)
             or SERVICE_BY_SECTION.get(prefix)
-            or "Covered in the campaign scope — we'll walk you through the "
-               "sequencing on the kickoff call.")
+            # WAS: "Covered in the campaign scope - we'll walk you through
+            # the sequencing on the kickoff call." A promise to explain later,
+            # in the column headed "How we handle it", which is where the
+            # explanation was supposed to be.
+            or "We handle this as part of the build. It is scoped into the "
+               "engagement, not billed separately.")
 
 
 
@@ -454,7 +458,11 @@ _JUDGMENT_ACTIONS = {
         "Connect the brand to the entities Google already knows",
     "semantic relationships": "Link related topics so the coverage reads whole",
     "citation-worthy content": "Create material worth quoting",
-    "original research": "Publish data only you have",
+    # "Publish data only you have" reads as a riddle. Say what it is: a number
+    # or a finding that came from this business and exists nowhere else, which
+    # is the one kind of content nobody can copy.
+    "original research": "Publish a number only you have - your own survey, "
+                         "case results, or pricing data",
     "statistics & data usage": "Support claims with figures worth citing",
     "expert quotes": "Quote named experts, including your own",
     "author entity optimization": "Establish your authors as recognized names",
@@ -678,8 +686,11 @@ def _group_issues(findings: dict, catalog: dict, meta: dict, limit: int = 5) -> 
             # checks" and the appendix is headed "Full Checkpoint Detail", so a
             # third word for the same object left the reader working out
             # whether a signal was a page, a check, or something new.
-            finding += (f" The same gap shows up across "
-                        f"{len(g['members'])} separate checks.")
+            # WAS: "The same gap shows up across 5 separate checks." Our
+            # bookkeeping, phrased as a finding. The number matters - it is
+            # what makes this systemic rather than a one-off - so it stays,
+            # attached to the thing it describes instead of standing alone.
+            finding += (f" Found on {len(g['members'])} separate checks.")
         action = (f.get("recommendation") or "").strip()
         if not action:
             action = next((x.get("recommendation", "").strip()

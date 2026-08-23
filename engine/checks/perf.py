@@ -170,10 +170,13 @@ def perf10(a, c):
               f"from Google rates this site {word}.")
     else:
         passed = score >= 90
-        ev = (f"Lighthouse performance score {score}/100, from a lab test. "
-              f"Google collects real-visitor speed data only for sites above a "
-              f"traffic threshold, and this site is below it, so the lab score "
-              f"is what we have.")
+        # WAS three clauses about our method: lab test, traffic threshold,
+        # "so the lab score is what we have". All true, none of it the
+        # client's problem, and it buried the only number in the sentence.
+        # Lead with the score, and say the caveat once, plainly.
+        ev = (f"Site speed scores {score}/100 in a simulated test. Google has "
+              f"not collected enough real visitor data on this site to report "
+              f"its own speed rating.")
     return finding("Pass" if passed else "Fail",
                    {"lighthouse_performance": score, "crux_assessment": overall},
                    ev,

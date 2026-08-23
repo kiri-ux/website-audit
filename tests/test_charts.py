@@ -206,14 +206,21 @@ def main():
           "addres " not in _agree("1 address is present."),
           _agree("1 address is present."))
 
-    print("\nREPEATED EVIDENCE IS COLLAPSED, NOT DELETED")
+    print("\nREPEATED EVIDENCE IS REPEATED, AND CROSS-REFERENCED")
     from engine.pdf_report import _dedupe_evidence
     same = "83 pages share 25 duplicated title tags."
     d = _dedupe_evidence([("ONP-01", {"status": "Fail", "evidence": same}),
                           ("ONP-23", {"status": "Fail", "evidence": same})])
     check("the first row keeps the detail", d[0][1]["evidence"] == same)
-    check("the second points at it rather than repeating it",
-          d[1][1]["evidence"] == "Same finding as ONP-01.", d[1][1]["evidence"])
+    # WAS: asserted the second row read only "Same finding as ONP-01." That
+    # saved four lines and cost the reader a page-flip in an appendix nobody
+    # reads front to back - the row they landed on is the row they care about.
+    # The finding is printed again and the pointer moved to the end, where it
+    # adds context instead of replacing it.
+    check("the second repeats the finding and says where else it appears",
+          d[1][1]["evidence"].startswith(same)
+          and "Also reported under ONP-01" in d[1][1]["evidence"],
+          d[1][1]["evidence"])
     short = [("A-1", {"status": "Pass", "evidence": "Not detected."}),
              ("A-2", {"status": "Pass", "evidence": "Not detected."})]
     check("short rows are left alone — cross-referencing them is longer",

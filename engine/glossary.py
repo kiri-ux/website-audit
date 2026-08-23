@@ -24,6 +24,26 @@ import re
 
 # term key -> (display name, emoji, pdf glyph, definition, match patterns)
 TERMS = {
+    # Largest Contentful Paint appears as a checkpoint TITLE, so a reader
+    # meets the acronym before any sentence has a chance to explain it.
+    "lcp": (
+        "Largest Contentful Paint", "\u23f1", "\u25d4",
+        "How long until the biggest thing on the screen - usually the main "
+        "image or headline - has finished loading. It is Google's stand-in "
+        "for 'when does the page feel ready'. Under 2.5 seconds is good; "
+        "over 4 is a problem.",
+        (r"\blargest contentful paint\b", r"\blcp\b")),
+    "cls": (
+        "Cumulative Layout Shift", "\u21f2", "\u2195",
+        "How much the page jumps around while it loads. A button that moves "
+        "just as someone taps it is the thing this measures.",
+        (r"\bcumulative layout shift\b", r"\bcls\b")),
+    "inp": (
+        "Interaction to Next Paint", "\u261d", "\u25c9",
+        "How long the page takes to respond after someone taps or clicks. "
+        "Slow here feels broken even when everything else is fast.",
+        (r"\binteraction to next paint\b", r"\binp\b")),
+
     "canonical": (
         "Canonical tag", "🚩", "⚑",
         "A line of code that tells Google which version of a page is the "
