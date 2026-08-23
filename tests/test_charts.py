@@ -555,6 +555,28 @@ def main():
     check("everything drawn stays inside the flowable's own box",
           not [t for t in rec.texts if t["y"] > h or t["y"] < -1])
 
+    print("\nTHE AI SECTION COUNTS ASSISTANTS, NOT CHARACTERS")
+    # "14 citations across 48 assistants" - `platforms` is stored as a
+    # comma-separated STRING and len() counted its characters.
+    from engine.pdf_report import _ai_platforms, _ai_intro, _asked_by_name
+    v = {"platforms": "ai_overview, chatgpt, claude, gemini, perplexity",
+         "questions": 24}
+    check("a stored platform string counts as five, not forty-eight",
+          len(_ai_platforms(v)) == 5, str(_ai_platforms(v)))
+    check("a list of platforms still works",
+          len(_ai_platforms({"platforms": ["chatgpt", "claude"]})) == 2)
+    check("and each one is named the way the client knows it",
+          "Google AI Overviews" in _ai_platforms(v))
+    intro = _ai_intro(v)
+    check("the intro no longer claims none of the questions named them",
+          "None of them named you" not in intro, intro[:60])
+    check("a question carrying the brand is labelled as such",
+          _asked_by_name("Is Ooten Law Firm legit or a scam?",
+                         "The Ooten Law Firm"))
+    check("and a category question is not",
+          not _asked_by_name("Who is the best DUI attorney in Knoxville?",
+                             "The Ooten Law Firm"))
+
     print("\nTHE CHARTS ARE SET IN THE SAME FACE AS THE COPY")
     # THE BUG, REPLAYED.
     #

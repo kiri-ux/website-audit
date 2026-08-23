@@ -805,36 +805,76 @@ def _access_received(findings: dict) -> str:
 
 
 
-def _ai_intro(v) -> str:
+def _ai_platforms(v) -> list:
     """
-    Say what was actually done, in the client's terms.
+    The assistants we asked, named and de-duplicated.
 
-    WAS: "Measured by asking the assistants real buying questions in your
-    category…" - "the assistants" names nothing, and "real buying questions"
-    is a claim about our method rather than a description of the questions.
-    Someone asking ChatGPT for a criminal defense lawyer in Knoxville is not
-    making a purchase; they are trying to find out who exists.
+    THE COUNT WAS THE LENGTH OF A STRING.
+    #
+    The tile read "across 48 assistants". `platforms` is stored as
+    "ai_overview, chatgpt, claude, gemini, perplexity" - a string - and
+    `len()` of a string is its character count. Five became forty-eight, in a
+    client's report, under a number they are meant to trust.
     """
     plats = v.get("platforms")
     if isinstance(plats, str):
         names = [p.strip() for p in plats.split(",") if p.strip()]
     else:
-        names = list(plats or [])
+        names = [str(p).strip() for p in (plats or []) if str(p).strip()]
     pretty = {"chatgpt": "ChatGPT", "claude": "Claude", "gemini": "Gemini",
               "perplexity": "Perplexity", "ai_overview": "Google AI Overviews",
               "copilot": "Copilot"}
-    shown = [pretty.get(n.strip().lower(), n.strip().title()) for n in names]
+    out = []
+    for n in names:
+        label = pretty.get(n.lower(), n.title())
+        if label not in out:
+            out.append(label)
+    return out
+
+
+def _ai_intro(v) -> str:
+    """
+    Say what was actually done, in the client's terms.
+
+    WAS: "…questions someone would ask when they are looking for a business
+    like yours and do not know your name. None of them named you." Two
+    sentences, both wrong about the panel sitting underneath them: a third of
+    the questions DO name the client on purpose (that is how you find out
+    whether an assistant knows you exist at all), and three of those came back
+    cited - so the paragraph contradicted its own table.
+    """
+    shown = _ai_platforms(v)
     who = (", ".join(shown[:-1]) + " and " + shown[-1]) if len(shown) > 1 \
         else (shown[0] if shown else "the AI assistants")
     n = v.get("questions") or 0
-    return (f"We asked {who} {n} questions someone would ask when they are "
-            f"looking for a business like yours and do not know your name - "
-            f"the kind that starts \u201cwho is the best\u2026\u201d or "
-            f"\u201cwhat should I look for when\u2026\u201d. None of them "
-            f"named you. This is what those people are told.")
+    return (f"We asked {who} {n} questions of two kinds: some that name you "
+            f"directly, to see whether the assistant knows you at all, and "
+            f"most that do not - the ones a person asks when they are looking "
+            f"for what you do and have never heard of you. Both are below, "
+            f"marked, with what the assistant said back.")
 
 
-def _ai_examples(v, S):
+def _asked_by_name(question, brand) -> bool:
+    """
+    Did this question hand the assistant the client's name?
+
+    Derived from the text rather than read from a field, because the field
+    (`prompted`) exists on the query and was never carried into the stored
+    example - so every report already produced can be labelled correctly on
+    the next render instead of after another paid run.
+    """
+    q = str(question or "").lower()
+    b = str(brand or "").strip().lower()
+    if not b:
+        return False
+    if b in q:
+        return True
+    # "The Ooten Law Firm" in the profile, "Ooten Law Firm" in the question.
+    core = " ".join(w for w in b.split() if w not in ("the", "a", "an"))
+    return bool(core) and core in q
+
+
+def _ai_examples(v, S, brand=""):
     """The questions themselves - what got cited and what did not."""
     wins = v.get("cited_examples") or []
     miss = v.get("missed_examples") or []
@@ -842,31 +882,47 @@ def _ai_examples(v, S):
         return []
     out = [Spacer(1, 12),
            Paragraph("What they were asked", S["h3"]),
-           Paragraph("A percentage says how often. These say what about.",
-                     S["small"]),
+           # WAS: "A percentage says how often. These say what about." Cute,
+           # and it explains a percentage to someone looking at a table of
+           # questions. Say what the table is.
+           Paragraph("Six of the questions, and what came back.", S["small"]),
            Spacer(1, 6)]
     rows = []
+
+    def kind(q):
+        # THE PARAGRAPH ABOVE USED TO SAY NONE OF THESE NAMED THE CLIENT.
+        # Three of them did, and those three are the ones that got cited -
+        # which is the actual finding, and it only reads as one if the table
+        # says which kind each question was.
+        return Paragraph(
+            "<font color='#4A5461'>"
+            + ("By name" if _asked_by_name(q, brand) else "Not by name")
+            + "</font>", S["cellsm"])
+
     for w in wins[:3]:
+        q = w.get("question")
         rows.append([_pill("Cited", {"Cited": (colors.HexColor("#E4F1E8"),
                                                colors.HexColor("#1E7A45"))},
                            S, 0.72 * inch),
-                     Paragraph(f"\u201c{_p(w.get('question'))}\u201d",
-                               S["cell"]),
+                     Paragraph(f"\u201c{_p(q)}\u201d", S["cell"]),
+                     kind(q),
                      Paragraph(_p(""), S["cellsm"])])
     for m in miss[:3]:
+        q = m.get("question")
         others = m.get("cited_instead") or []
         who = ", ".join(others[:2]) if others else "nobody we could attribute"
         rows.append([_pill("Not cited", {"Not cited": (
                         colors.HexColor("#F7E4E7"),
                         colors.HexColor("#A6192E"))}, S, 0.72 * inch),
-                     Paragraph(f"\u201c{_p(m.get('question'))}\u201d",
-                               S["cell"]),
+                     Paragraph(f"\u201c{_p(q)}\u201d", S["cell"]),
+                     kind(q),
                      Paragraph(f"<font color='#4A5461'>{_p(who)}</font>",
                                S["cellsm"])])
     t = Table([[Paragraph("<b>Result</b>", S["cellsm"]),
                 Paragraph("<b>Question asked</b>", S["cellsm"]),
+                Paragraph("<b>How it was asked</b>", S["cellsm"]),
                 Paragraph("<b>Cited instead</b>", S["cellsm"])]] + rows,
-              colWidths=[0.85 * inch, 3.9 * inch, 1.8 * inch])
+              colWidths=[0.8 * inch, 3.05 * inch, 1.0 * inch, 1.7 * inch])
     t.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LINEBELOW", (0, 0), (-1, 0), 0.6, LINE),
@@ -892,6 +948,8 @@ def _ai_visibility(meta, S):
     v = (meta.get("extras") or {}).get("ai_visibility") or {}
     if not v or v.get("citation_rate") is None:
         return []
+    _ctx = (meta.get("extras") or {}).get("context") or {}
+    _brand = (_ctx.get("brand") or meta.get("client") or "").strip()
     out = [Paragraph("AI Search Visibility", S["h2"]),
            _rule(),
            Paragraph(_p(_ai_intro(v)), S["small"]),
@@ -908,8 +966,10 @@ def _ai_visibility(meta, S):
     # did not, which is what read as wonky. The label is now one short line in
     # every tile, with the qualifier below it, so all three set to the same
     # depth whatever the numbers are.
-    _plats = len(v.get("platforms") or []) or len(
-        [x for x in str(v.get("platforms") or "").split(",") if x.strip()])
+    # FIVE, NOT FORTY-EIGHT. `platforms` is a comma-separated STRING, so
+    # len() counted its characters. See _ai_platforms.
+    _names = _ai_platforms(v)
+    _plats = len(_names)
 
     # THREE LINES, THREE STYLES, EACH WITH ITS OWN LEADING.
     #
@@ -947,7 +1007,7 @@ def _ai_visibility(meta, S):
         ("TOPPADDING", (0, 0), (-1, -1), 11), ("BOTTOMPADDING", (0, 0), (-1, -1), 11),
     ]))
     out.append(tiles)
-    out += _ai_examples(v, S)
+    out += _ai_examples(v, S, brand=_brand)
 
     if ment > cite:
         out.append(Spacer(1, 8))
@@ -956,12 +1016,37 @@ def _ai_visibility(meta, S):
                                f"{cite}% — the gap is visibility you are already "
                                f"earning and not being credited for.", SEQ, S))
 
-    sov = v.get("share_of_voice") or []
+    # A GOOGLE REDIRECT IS NOT A COMPETITOR.
+    #
+    # The chart's top row was vertexaisearch.cloud.google.com with 7.4% - the
+    # host Gemini wraps its citation links in. It is Google's own plumbing
+    # showing through our parser, it outranked the client on their own chart,
+    # and the first question anyone sensible asks is "what is that?".
+    #
+    # Filtered at render, so reports already produced are fixed on reload.
+    _NOT_A_SOURCE = ("vertexaisearch.cloud.google.com", "googleusercontent.com",
+                     "google.com/url", "gstatic.com", "bing.com/ck",
+                     "duckduckgo.com/l", "r.jina.ai", "webcache.googleusercontent")
+    sov = [d for d in (v.get("share_of_voice") or [])
+           if not any(x in str(d.get("domain") or "").lower()
+                      for x in _NOT_A_SOURCE)]
     if sov:
         out.append(Spacer(1, 12))
         out.append(Paragraph("Who gets cited in your category", S["h3"]))
-        rows = [[Paragraph("<b>Domain</b>", S["cellsm"]), "",
-                 Paragraph("<b>Share</b>", S["cellsm"]),
+        # WHAT THE NUMBERS MEAN, BEFORE THE NUMBERS.
+        #
+        # A column headed "Share" showing 7.4%, 4.3%, 4.3% invites the reading
+        # "nobody has much" - when what it actually says is that citations are
+        # spread across dozens of sources and these are the largest slices.
+        out.append(Paragraph(
+            f"Every source these assistants linked to across the "
+            f"{v.get('questions') or 0} questions, counted. Share is that "
+            f"source's portion of ALL citations given - the field is wide, so "
+            f"the leader holds a small slice, and the ranking is what matters "
+            f"rather than the percentage.", S["small"]))
+        out.append(Spacer(1, 6))
+        rows = [[Paragraph("<b>Source cited</b>", S["cellsm"]), "",
+                 Paragraph("<b>Share of all</b>", S["cellsm"]),
                  Paragraph("<b>Citations</b>", S["cellsm"])]]
         for d in sov:
             is_client = bool(d.get("is_client"))
@@ -1041,7 +1126,11 @@ def _strength(text, S, width=6.55 * inch):
         gloss = means[0] if len(means) == 1 else f"{means[0]}; {means[1]}"
         gloss = gloss[0].upper() + gloss[1:] + "."
 
-    inner = [Paragraph(_pl(text), S["cell"])]
+    # "Canonicalization: 6 of 6 checks passed." - the area is the card's
+    # subject, so it is set as one, and what follows is the measurement.
+    head, _, rest = str(text or "").partition(": ")
+    body = (f"<b>{_p(head)}</b><br/>{_p(rest)}" if rest else _pl(text))
+    inner = [Paragraph(body, S["cell"])]
     if gloss:
         inner.append(Spacer(1, 3))
         inner.append(Paragraph(
@@ -1086,7 +1175,13 @@ def _strength_grid(items, S):
         ("TOPPADDING", (0, 0), (-1, -1), 0),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
     ]))
-    return [grid]
+    # ONE BLOCK, NOT TWO HALVES ON TWO PAGES.
+    #
+    # A Table splits at a row boundary by default, so four cards became two at
+    # the foot of one page and two at the top of the next, under no heading -
+    # and the second pair read as an orphaned fragment of something. Four
+    # cards are about two inches; if they do not fit, they move together.
+    return [KeepTogether([grid])]
 
 
 def _market_pills(raw, S):
@@ -1585,25 +1680,19 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         if summary.get("headline"):
             story.append(_banner("", summary["headline"], SEQ, S))
             story.append(Spacer(1, 8))
-        # DEFINE AT FIRST MENTION, BLOCK BY BLOCK.
+        # NO DEFINITIONS IN THE EXECUTIVE SUMMARY.
         #
-        # "Canonicalization", "E-E-A-T", "Core Web Vitals" all get named in
-        # these paragraphs, several pages before the findings that used to carry
-        # their definitions. A term explained after the reader has already met
-        # it twice is not help, it is an index.
+        # They started here on the argument that a term should be explained at
+        # first mention. True, and this is the wrong place to apply it: the
+        # summary is four paragraphs someone reads in one go, and dropping a
+        # tinted box between them to explain a word used once breaks the only
+        # part of the document that is meant to be read straight through.
         #
-        # Per block rather than pooled, which is the fix for two faults at once.
-        # Pooling the text of both paragraphs put the canonical definition
-        # underneath the E-E-A-T paragraph, and it pulled in a definition of
-        # structured data because the word appeared in the OVERVIEW — so the
-        # reader got a definition for a term that is not in either paragraph
-        # above it. Each block now defines only what it introduced, and does it
-        # directly underneath itself.
+        # Every term defined here appears again beside a finding, where the
+        # reader has to act on it - which is where the definition is worth the
+        # interruption. `defined` therefore stays empty until Top Findings.
         def _define(text, limit=3):
-            for b in _bubbles_for(text, S, defined, width=6.55 * inch,
-                                  limit=limit):
-                story.append(b)
-                story.append(Spacer(1, 5))
+            return
 
         if summary.get("overview"):
             _define(str(summary["overview"]), limit=2)

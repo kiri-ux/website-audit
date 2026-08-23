@@ -147,6 +147,52 @@ def main():
     check("citation gap computed", d.get("citation_gap") is not None,
           f"gap={d.get('citation_gap')} vs {d.get('top_competitor_domain')}")
 
+    # ---------- the questions are ones a person would type ----------
+    print("\nTHE PANEL ASKS REAL SEARCHES")
+    # THE BUG, REPLAYED.
+    #
+    # A law firm's panel contained "Which business should I use in Knoxville
+    # Tennessee?", "Recommend a trustworthy business near Knoxville
+    # Tennessee." and "Where can I buy defense attorney in Knoxville?" -
+    # because the industry string "Legal - Defense" never matched a map keyed
+    # on internal vertical ids, so `category` fell back to the literal word
+    # "business", and product templates ran with no products.
+    from engine.aivis.panel import profile_from_audit, build_panel as _bp
+    _ctx = {"brand": "The Ooten Law Firm",
+            "locations": [{"city": "Knoxville", "region": "Tennessee"}],
+            "sections": ["/practice-areas", "/criminal-defense",
+                         "/family-law", "/dui"]}
+    prof = profile_from_audit("The Ooten Law Firm", "https://ootenlawfirm.com/",
+                              _ctx, "Legal - Defense")
+    check("the industry string becomes a searchable noun",
+          prof.category == "defense attorney", prof.category)
+    texts = [q.text for q in _bp(prof)]
+    check("no question calls the client 'a business'",
+          not [t for t in texts if " business" in t.lower()],
+          str([t for t in texts if " business" in t.lower()][:2]))
+    check("nothing asks where to BUY a service",
+          not [t for t in texts if "buy" in t.lower() or "sells" in t.lower()],
+          str([t for t in texts if "buy" in t.lower()][:2]))
+    check("the services become their own searches",
+          any("criminal defense attorney" in t for t in texts)
+          and any("family law attorney" in t for t in texts))
+    check("an index page is not treated as a service",
+          not [t for t in texts if "practice areas" in t.lower()],
+          str([t for t in texts if "practice areas" in t.lower()][:1]))
+    check("an initialism is capitalised the way it is typed",
+          any("DUI attorney" in t for t in texts),
+          str([t for t in texts if "dui" in t.lower()][:1]))
+    check("and the articles agree with the words after them",
+          not [t for t in texts if " a estate" in t or " a attorney" in t])
+    # A client we cannot classify gets service questions, never "business".
+    bare = profile_from_audit("Someone", "https://someone.test/",
+                              {"sections": ["/roof-repair"]},
+                              "01 Other- No Matching Category Below")
+    check("an unclassifiable client gets no category questions, not bad ones",
+          bare.category == "" and
+          not [t for t in (q.text for q in _bp(bare)) if "business" in t.lower()],
+          bare.category)
+
     # ---------- traps did not inflate the numbers ----------
     print("\nACCURACY (traps must not inflate)")
     exp_m = sum(1 for pl in truth["truth"].values() for t in pl.values() if t["mentioned"])

@@ -44,8 +44,11 @@ SELECTORS = {
     "PERF-19": "img",                                 # unoptimised images
     "MOB-05": "a, button",                            # tap targets
     "MOB-06": "p",                                    # font readability
-    "EEAT-05": "footer",                              # trust signals
-    "EEAT-06": "footer",
+    # NOT JUST <footer>. Plenty of themes ship a <div class="site-footer">,
+    # and a selector that matches nothing now means no shot at all - so the
+    # narrow version quietly cost these two checks their evidence.
+    "EEAT-05": "footer, [class*=footer], [id*=footer]",   # trust signals
+    "EEAT-06": "footer, [class*=footer], [id*=footer]",
 }
 
 # Checks worth a plain page shot even with no element to box.
@@ -93,14 +96,32 @@ def capture(url: str, selector: str = "", width: int = 1280, height: int = 820,
                 except Exception:
                     pass          # a chatty page should not cost us the shot
                 if selector:
+                    # NO MATCH MEANS NO SHOT.
+                    #
+                    # The report captions these "with anything the check
+                    # flagged marked in red". When the selector matches
+                    # nothing - "footer" on a site whose footer is a <div> -
+                    # the stylesheet styles nothing, the page is captured
+                    # anyway, and the client gets an unmarked picture of their
+                    # own homepage under a promise of red outlines. That is
+                    # the caption lying, and the honest answer is to have no
+                    # picture for that check.
+                    try:
+                        n = page.locator(selector).count()
+                    except Exception:  # noqa: BLE001
+                        n = 0
+                    if not n:
+                        print(f"[screenshot] {url}: selector {selector!r} "
+                              f"matched nothing — no evidence shot",
+                              flush=True)
+                        return None
                     page.add_style_tag(content=(
                         f"{selector} {{ outline: 3px solid #d03b3b !important; "
                         f"outline-offset: 2px !important; }}"))
                     try:
-                        first = page.locator(selector).first
-                        if first.count() > 0:
-                            first.scroll_into_view_if_needed(timeout=2500)
-                            page.wait_for_timeout(250)
+                        page.locator(selector).first.scroll_into_view_if_needed(
+                            timeout=2500)
+                        page.wait_for_timeout(250)
                     except Exception:
                         pass      # highlighted but not scrolled to is still useful
                 png = page.screenshot(type="png")

@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-71"
-BUILD_NOTES = ("Stop a running audit; reuse-the-last-crawl on by default; "
-               "crawl overrides moved beside Max pages; the Google access "
-               "check runs itself again")
+BUILD = "2026.08.20-72"
+BUILD_NOTES = ("The AI panel asks questions people actually type; five "
+               "assistants counted as five; no definitions in the exec "
+               "summary; an evidence shot always carries a red mark")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

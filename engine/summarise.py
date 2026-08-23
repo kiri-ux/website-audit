@@ -772,17 +772,22 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
     # card with a plain-English line about the area underneath, so grouping
     # produced one wide card naming three areas and explaining none of them.
     # Three areas that came back clean are three pieces of good news.
+    # SAME FACT, THREE TIMES, IN THE SAME WORDS.
+    #
+    # "X came back clean - all N checks passing" under three cards in a row
+    # reads as one sentence stamped out with the nouns swapped, which is
+    # exactly the machine-assembled tell the rest of this file exists to
+    # avoid. The area name is the card's own subject, so the line under it
+    # should be the NUMBER, not a sentence repeating the heading.
     working = []
     for name, passes in clean:
-        working.append(
-            f"{name} came back clean - all {passes} checks passing."
-            if passes != 1 else
-            f"{name} came back clean - the one check here passed.")
+        working.append(f"{name}: {passes} of {passes} checks passed."
+                       if passes != 1 else
+                       f"{name}: the one check here passed.")
     for code, v, passes in notable[:2]:
         working.append(
-            f"{SECTION_NAMES.get(code, code)} is in good shape at {v['score']} out "
-            f"of 100 — {v['failing']} open item"
-            f"{'s' if v['failing'] != 1 else ''} against {passes} passing.")
+            f"{SECTION_NAMES.get(code, code)}: {passes} of {passes + v['failing']} "
+            f"checks passed, scoring {v['score']} out of 100.")
     # NO STRENGTHS MEANS NO STRENGTHS SECTION.
     #
     # This filled the gap with "No area came back Strong. That's unusual, and
