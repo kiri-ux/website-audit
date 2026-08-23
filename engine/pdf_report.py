@@ -712,8 +712,14 @@ def _evidence(meta, S):
     from reportlab.platypus import Image as RLImage
     out = [Paragraph("What This Looks Like", S["h2"]),
            _rule(),
-           Paragraph("Captured from your live site. Red outlines mark the "
-                     "elements the check flagged.", S["small"]),
+           # WAS: "Captured from your live site. Red outlines mark the
+           # elements the check flagged." Two problems: it described our
+           # process rather than their site, and it promised outlines that
+           # only some findings have — an HTTPS failure has nothing on the
+           # page to outline, so the reader hunts for a mark that was never
+           # drawn.
+           Paragraph("Your homepage as it loaded, with anything the check "
+                     "flagged marked in red.", S["small"]),
            Spacer(1, 8)]
     for sh in shots[:3]:
         try:
@@ -778,7 +784,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             story.append(Spacer(1, 10))
         except Exception:
             pass
-    story.append(Paragraph("Comprehensive SEO &amp; AI Search (GEO) Audit",
+    story.append(Paragraph("Comprehensive SEO &amp; AI Search Audit",
                            S["h1"]))
     # The cover's rule is the widest one in the document and the only one that
     # runs the full measure. Every later section gets a short version of the
@@ -863,13 +869,15 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     hero = Table([[
         ScoreGauge(o.get("score"), _p(o.get("rating", "Not Assessed"))),
         Paragraph(
+            # The score needs no caption. "The average of the areas we could
+            # score" explains a mechanism nobody asked about, in a voice that
+            # apologises for the number — and it sat directly above the two
+            # figures that actually matter.
             ("<b>No overall score.</b> We couldn't assess enough areas to give "
              "you a number worth quoting. The areas below still stand on their "
-             "own."
-             if o.get("score") is None else
-             "The average of the areas we could score. Areas we couldn't "
-             "measure are left out.")
-            + f"<br/><br/><font size=15 color='#0b0b0b'><b>{open_issues}</b></font>"
+             "own.<br/><br/>"
+             if o.get("score") is None else "")
+            + f"<font size=15 color='#0b0b0b'><b>{open_issues}</b></font>"
               f"<font size=8.5 color='#52514e'> open issues, of which </font>"
               f"<font size=15 color='#0b0b0b'><b>{urgent}</b></font>"
               f"<font size=8.5 color='#52514e'> are Critical or High and should "
@@ -899,10 +907,13 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     # the reader has to interpret a bar.
     from collections import Counter as _C
     _st = _C(f.get("status") for f in findings.values())
+    # "Need your access" came off this strip. It is an internal fact — a count
+    # of what WE could not read — and putting it beside Passing and Failing
+    # invited the client to read it as a fifth score. The rows it counts still
+    # say so individually, where the reader can see which check and why.
     tiles = [(_st.get("Pass", 0), "Passing"),
              (_st.get("Fail", 0) + _st.get("Not Implemented", 0), "Failing"),
              (_st.get("Warning", 0), "Worth a look"),
-             (cov[1], "Need your access"),
              (meta.get("pages_crawled") or 0, "Pages reviewed")]
     # A style of its own. Setting the size with an inline <font> tag leaves the
     # PARAGRAPH's leading at the 11pt the cell style carries, so 19pt digits
@@ -961,7 +972,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     # ---- severity distribution + coverage, side by side -----------------
     left = [Paragraph("Issues by Severity", S["h3"]),
             SegmentBar(severity_segments(sev_counts), width=3.05 * inch,
-                       note="Severity tells you what to fix first, not how much there is.")]
+                       note="Fix Critical and High first.")]
     right = [Paragraph("Audit Coverage", S["h3"]),
              SegmentBar(coverage_segments(*cov), width=3.05 * inch,
                         note="Unmeasured checks are left out of the score.")]

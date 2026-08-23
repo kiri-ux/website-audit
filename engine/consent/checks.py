@@ -364,8 +364,15 @@ def findings_from_scan(scan: dict | None) -> dict:
                          "by_source": {k: sorted(set(v))
                                        for k, v in by_src.items()},
                          "examples": [p.get("url") for p in bad][:8]},
-                f"{len(bad)} {_plural(len(bad), 'tracker')} fired before any "
-                f"consent interaction: {', '.join(vendors)}.", "Critical",
+                # NO DSP NAMES IN THE SENTENCE A CLIENT READS.
+                #
+                # "Beeswax, DoubleClick / Floodlight, The Trade Desk, Yahoo,
+                # xAd/GroundTruth" is our media stack, and printing it in a
+                # client PDF hands over the buying platforms we use. The count
+                # is the finding; the names stay in `value` for the internal
+                # panel and the consent dashboard, which are ours.
+                f"{len(bad)} marketing {_plural(len(bad), 'pixel')} fired "
+                f"before any consent interaction.", "Critical",
                 _cons04_rec(by_src))
 
     # ---- CONS-05 reject respected ------------------------------------------

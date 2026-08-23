@@ -314,7 +314,8 @@ class SectionBars(Flowable):
                 c.setStrokeColor(LINE)
                 c.setLineWidth(0.6)
                 c.setDash(2, 2)
-                c.rect(bar_x, y, bar_w, bar_h, stroke=1, fill=0)
+                c.roundRect(bar_x, y, bar_w, bar_h,
+                            min(bar_h / 2.0, 4.0), stroke=1, fill=0)
                 c.restoreState()
                 c.setFillColor(MUTED)
                 c.setFont(FI, 7)
@@ -324,7 +325,11 @@ class SectionBars(Flowable):
                 continue
 
             c.setFillColor(TRACK)
-            c.rect(bar_x, y, bar_w, bar_h, stroke=0, fill=1)
+            # Rounded, and the fill is clipped to the track's own rounded
+            # shape so a short bar keeps square inner ends rather than
+            # floating as a separate pill inside the track.
+            c.roundRect(bar_x, y, bar_w, bar_h,
+                        min(bar_h / 2.0, 4.0), stroke=0, fill=1)
             fill_w = bar_w * max(0.0, min(1.0, sc / 100.0))
             # EVERY bar gets the SAME ramp.
             #
@@ -381,6 +386,19 @@ class SegmentBar(Flowable):
         total = sum(max(0, n) for _, n, _ in self.segments) or 1
         y = self.height - self.bar_h
         x = 0.0
+        # ROUND THE BAR, NOT THE SEGMENTS.
+        #
+        # Rounding each segment would put a curve on every internal join and
+        # break the read: a stacked bar means "these add up to one whole", and
+        # four separately-rounded blocks read as four separate bars. Clipping
+        # the whole strip to one rounded rectangle rounds the two outer ends
+        # and leaves the joins square, which is the shape the number line
+        # actually has.
+        r = min(self.bar_h / 2.0, 5.0)
+        c.saveState()
+        clip = c.beginPath()
+        clip.roundRect(0, y, self.width, self.bar_h, r)
+        c.clipPath(clip, stroke=0, fill=0)
         for label, n, col in self.segments:
             if n <= 0:
                 continue
@@ -393,6 +411,7 @@ class SegmentBar(Flowable):
                 c.setFont(FB, 8)
                 c.drawCentredString(x + w / 2, y + self.bar_h * 0.32, str(n))
             x += w
+        c.restoreState()
 
         # legend — every segment gets its word, so color is never load-bearing
         lx, ly = 0.0, y - 15

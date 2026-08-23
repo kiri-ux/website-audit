@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-59"
-BUILD_NOTES = ("A run whose worker vanished counted as in flight forever; "
-               "it is reaped on startup and shown as stalled meanwhile")
+BUILD = "2026.08.20-61"
+BUILD_NOTES = ("Report copy pass, and the delta zip is incremental by "
+               "content hash so it fits GitHub's 100-file upload")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

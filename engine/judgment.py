@@ -47,6 +47,16 @@ RULES = (
     '"Not Implemented" with a low confidence and say what was missing.\n'
     "- Cite specific URLs in evidence.\n"
     "- Do not soften or dramatise. No marketing language.\n"
+    # A CLIENT READS THIS SENTENCE. "no useful depth on any topic" states the
+    # same fact as "the pages do not go into detail" and adds a verdict on
+    # their work that nobody asked us for — it reads as contempt, and it makes
+    # the whole report harder to hand over. State the gap, name what is
+    # missing, stop there.
+    "- Describe what is missing, not how bad it is. Write \"the page does not "
+    "explain the process\" rather than \"no useful depth on any topic\". No "
+    "dismissive summaries of the client's work, no piling up of synonyms for "
+    "empty, and never a judgment of effort or quality beyond the specific gap "
+    "you can point at.\n"
     # The evidence is printed verbatim in a document the client reads. Phrases
     # like "in the provided material" or "the excerpt supplied" describe how the
     # sausage was made and appear nowhere else in the report, so they stand out
@@ -54,6 +64,17 @@ RULES = (
     "- Write evidence as a finding about the SITE, addressed to its owner. "
     "Never refer to \"the provided material\", \"the excerpt\", \"the sample\" "
     "or what you were given — say what is or is not on the page.\n"
+    # The head/tail cut prints a marker between the two halves, and the model
+    # started describing it: "The middle sections are omitted from the
+    # material". That is our slicing, in a client's report.
+    "- Never mention that any part of a page was omitted, cut or summarised. "
+    "You are reading an extract; the reader is not, and does not care.\n"
+    # The distinction a client cannot be asked to make for themselves.
+    "- When a section says NONE, the site does not have those pages. Report "
+    "that as the finding — \"the site publishes no articles\" — with normal "
+    "confidence. Never write that pages \"were not retrieved\", \"were not "
+    "provided\" or that something was \"impossible to determine\": that "
+    "describes our retrieval and reads as though we did not look.\n"
     "- The FOOTER block appears on every page of the site. Anything in it — an "
     "address, a phone number, opening hours, a license number — is present "
     "site-wide and must be treated as visible to visitors.\n"
@@ -116,7 +137,20 @@ def _slice(pages, chars=1400, schema=False):
             raw = _j.dumps(p.schema_raw)[:1800]
             block += f"\nSTRUCTURED DATA (JSON-LD): {raw}"
         out.append(block + "\n---")
-    return "\n".join(out) or "(no matching pages were retrieved)"
+    # THE SENTINEL WAS AMBIGUOUS, AND THE AMBIGUITY REACHED A CLIENT.
+    #
+    # "(no matching pages were retrieved)" got echoed back as "No editorial
+    # content pages were retrieved for review, making it impossible to
+    # determine…" — which reads as US not looking, printed as a High-severity
+    # issue against THEM. Two opposite meanings in one sentence.
+    #
+    # The selector searched every page in the crawl. Nothing matching means
+    # the site has none, and that is a finding about the site — not missing
+    # input, and not something we failed to fetch.
+    return "\n".join(out) or (
+        "(NONE. Every crawled page was searched and no page of this kind "
+        "exists on this site. This is a fact about the site, not material "
+        "withheld from you.)")
 
 
 def _homepage(art):

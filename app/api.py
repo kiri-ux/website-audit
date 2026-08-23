@@ -12,6 +12,8 @@ import os
 import sys
 import time
 
+from urllib.parse import quote as _urlquote
+
 from fastapi import FastAPI, HTTPException, Header, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
@@ -753,9 +755,24 @@ def audit_pdf(audit_id: str, polish: bool = False,
         summary = polish_with_llm(summary, meta)
     pdf = build_pdf(meta, scores, findings, cat, summary,
                     logo_path=os.getenv("REPORT_LOGO_PATH") or None)
-    fname = (a["client_name"] or "audit").replace(" ", "-").lower()
+    # "The Ooten Law Firm_Website Audit_08232026.pdf" — the client's real name,
+    # spaces intact, and the date it was produced. The old slug
+    # ("the-ooten-law-firm-seo-geo-audit.pdf") looked like a URL in a folder of
+    # documents people file by client and date.
+    import re as _re
+    import time as _t
+    safe = _re.sub(r'[\\/:*?"<>|]+', "-", (a["client_name"] or "Audit")).strip()
+    when = _t.strftime("%m%d%Y", _t.localtime(a.get("completed_at")
+                                              or a.get("created_at")
+                                              or _t.time()))
+    fname = f"{safe}_Website Audit_{when}.pdf"
     return Response(pdf, media_type="application/pdf", headers={
-        "Content-Disposition": f'inline; filename="{fname}-seo-geo-audit.pdf"'})
+        # RFC 5987, because the name now contains spaces and may contain
+        # anything else a client is called. The plain `filename=` stays as the
+        # fallback for readers that ignore filename*.
+        "Content-Disposition":
+            f'inline; filename="{fname}"; '
+            f"filename*=UTF-8''{_urlquote(fname)}"})
 
 
 @app.get("/audits/{audit_id}/consent", response_class=HTMLResponse)

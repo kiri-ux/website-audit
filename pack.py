@@ -78,6 +78,37 @@ def tracked(since: float, docs: bool = False) -> list[str]:
     return sorted(out)
 
 
+def manifest(files) -> dict:
+    """path -> sha256 of the bytes we are about to ship."""
+    import hashlib
+    out = {}
+    for rel in files:
+        h = hashlib.sha256()
+        with open(os.path.join(ROOT, rel), "rb") as fh:
+            for chunk in iter(lambda: fh.read(65536), b""):
+                h.update(chunk)
+        out[rel] = h.hexdigest()
+    return out
+
+
+def _newest_manifest(out_dir: str):
+    """The most recent manifest we wrote beside a delivered zip."""
+    import glob
+    import json
+    best, best_t = None, -1.0
+    for f in glob.glob(os.path.join(out_dir, "vici-audit-*.manifest.json")):
+        t = os.path.getmtime(f)
+        if t > best_t:
+            best, best_t = f, t
+    if not best:
+        return None, None
+    try:
+        with open(best) as fh:
+            return json.load(fh), best
+    except Exception:  # noqa: BLE001
+        return None, None
+
+
 def build() -> str:
     ap = argparse.ArgumentParser()
     ap.add_argument("--since", default=DEFAULT_SINCE,
@@ -87,6 +118,16 @@ def build() -> str:
     ap.add_argument("--docs", action="store_true",
                     help="include docs/*.png screenshots")
     ap.add_argument("--out", default="", help="output zip path")
+    # GITHUB'S WEB UPLOADER TAKES 100 FILES AT A TIME.
+    #
+    # The cumulative-since-baseline zip crossed that, which makes it
+    # undeliverable to someone who uploads through github.com rather than a
+    # clone. So the default is now incremental: only files whose CONTENT
+    # differs from the last zip we shipped, proved by hash rather than by
+    # mtime, which over-includes every file a test run happened to touch.
+    ap.add_argument("--full", action="store_true",
+                    help="ignore the last manifest and ship everything since "
+                         "the baseline")
     a = ap.parse_args()
 
     since = _dt.datetime.fromisoformat(a.since).timestamp()
@@ -98,14 +139,38 @@ def build() -> str:
         return ""
 
     sys.path.insert(0, ROOT)
+    import json
     from app.version import BUILD
     out = a.out or os.path.join(os.path.dirname(ROOT),
                                 f"vici-audit-{BUILD}.zip")
+    out_dir = os.path.dirname(os.path.abspath(out))
+
+    now = manifest(files)
+    prev, prev_path = (None, None) if a.full else _newest_manifest(out_dir)
+    ship = files
+    dropped = 0
+    if prev:
+        ship = [f for f in files if prev.get(f) != now[f]]
+        dropped = len(files) - len(ship)
+
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-        for rel in files:
+        for rel in ship:
             z.write(os.path.join(ROOT, rel), rel)
+    # The manifest records EVERY tracked file, not only the ones shipped, so
+    # the next delta is measured against the full known state rather than
+    # against the last slice of it.
+    with open(out[:-4] + ".manifest.json", "w") as fh:
+        json.dump(now, fh, indent=0, sort_keys=True)
+
     size = os.path.getsize(out)
-    print(f"{out}\n{len(files)} files · {size/1024:.0f} KB · build {BUILD}")
+    kind = "full" if not prev else f"incremental vs {os.path.basename(prev_path)}"
+    print(f"{out}\n{len(ship)} files · {size/1024:.0f} KB · build {BUILD} "
+          f"· {kind}")
+    if dropped:
+        print(f"  {dropped} tracked file(s) unchanged and not included")
+    if len(ship) > 100:
+        print(f"  WARNING: {len(ship)} files exceeds GitHub's 100-file web "
+              f"upload limit — split it or use --full deliberately")
     return out
 
 

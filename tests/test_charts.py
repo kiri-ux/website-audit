@@ -38,6 +38,16 @@ def check(label, cond, detail=""):
     return cond
 
 
+class _Path:
+    """A no-op path object, for canvas clipping."""
+
+    def roundRect(self, *a, **k):
+        pass
+
+    def rect(self, *a, **k):
+        pass
+
+
 class _Rec:
     """
     A canvas stand-in that records what was drawn and where.
@@ -64,6 +74,20 @@ class _Rec:
         self.rects.append({"x": x, "y": y, "w": w, "h": h,
                            "stroke": stroke, "fill": fill,
                            "color": self._fill})
+
+    def roundRect(self, x, y, w, h, r, stroke=1, fill=0):
+        # Bars are rounded now. To this recorder a rounded rect is a rect —
+        # the corner radius changes no assertion here, and every test that
+        # measures how far the ink reaches must keep counting it.
+        self.rect(x, y, w, h, stroke=stroke, fill=fill)
+
+    def beginPath(self):
+        return _Path()
+
+    def clipPath(self, p, stroke=0, fill=0):
+        # The segment bar clips itself to a rounded outline. Nothing is
+        # painted by the clip, so there is nothing to record.
+        pass
 
     def arc(self, x1, y1, x2, y2, startAng=0, extent=90):
         self.arcs.append({"box": (x1, y1, x2, y2), "start": startAng,

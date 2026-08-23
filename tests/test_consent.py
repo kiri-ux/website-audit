@@ -109,8 +109,19 @@ def main():
     check("and it counts only the real ones",
           r["CONS-04"]["value"]["pre_consent"] == 1,
           str(r["CONS-04"]["value"]))
-    check("naming the vendor, which is what gets fixed",
-          "Meta Pixel" in r["CONS-04"]["evidence"])
+    # THE NAME IS OURS, NOT THE CLIENT'S. Printing "Beeswax, DoubleClick /
+    # Floodlight, The Trade Desk, Yahoo, xAd/GroundTruth" in a client PDF
+    # hands over the buying platforms we use. The count is the finding; the
+    # names stay in `value` for the internal panel and the consent dashboard.
+    check("the vendor names are kept as structured evidence",
+          "Meta Pixel" in (r["CONS-04"]["value"].get("vendors") or []),
+          str(r["CONS-04"]["value"].get("vendors")))
+    check("but the client-facing sentence does not list them",
+          "Meta Pixel" not in r["CONS-04"]["evidence"],
+          r["CONS-04"]["evidence"])
+    check("it says how many marketing pixels fired instead",
+          "marketing pixel" in r["CONS-04"]["evidence"],
+          r["CONS-04"]["evidence"])
 
     print("\nTHE SEVERITIES MATCH THE STAKES")
     # These are legal exposures, not ranking ones. An installed banner that

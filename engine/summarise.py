@@ -33,6 +33,11 @@ SECTION_NAMES = {
     "INTL": "International SEO", "HTML": "HTML and code quality",
     "EEAT": "E-E-A-T and trust signals", "GEO": "AI Search (GEO)",
     "OFF": "Off-page authority",
+    # CONS WAS MISSING, so a client read "CONS has the most ground to make up."
+    # Every prefix in the catalog needs an entry here; the `.get(code, code)`
+    # fallback is a safety net, not a design, and it fails by printing an
+    # internal code in the first paragraph of a paid report.
+    "CONS": "Consent and privacy",
 }
 
 VERTICAL_NOTE = {
@@ -762,9 +767,17 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
                 if (catalog.get(cid, {}) or {}).get("prefix") == code
                 and f["status"] in FAILING]
         names = [catalog.get(c, {}).get("checkpoint", c) for c in gaps[:5]]
-        opp = (f"{SECTION_NAMES.get(code, code)} has the most ground to make up. "
-               f"It scores {v['score']} out of 100, and {v['failing']} of the "
-               f"{v['checked']} checks we could run need work"
+        # "6 of the 6 checks we could run need work" — "we could run" is our
+        # plumbing showing through, and "6 of the 6" reads like a typo rather
+        # than the point, which is that EVERY check in the area failed.
+        n_fail, n_done = v["failing"], v["checked"]
+        if n_fail and n_fail == n_done:
+            count = (f"every one of the {n_done} checks here needs work"
+                     if n_done > 1 else "the one check here needs work")
+        else:
+            count = f"{n_fail} of {n_done} checks need work"
+        opp = (f"{SECTION_NAMES.get(code, code)} has the most ground to make "
+               f"up. It scores {v['score']} out of 100, and {count}"
                + (f" — {_listy(names[:3])} among them." if names else "."))
         why = _why(code, meta.get("vertical"))
         if why:
@@ -788,7 +801,27 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
     # Sentence 1 is about the BUSINESS, not the audit. It is the only part of
     # this document that could not have been written about any other client,
     # and it comes first for exactly that reason.
-    lead = (ctx.get("describe") or "").strip()
+    # RECOMPUTE, DO NOT REPLAY.
+    #
+    # `describe` was written into extras at scan time, so every wording fix to
+    # that sentence used to require a re-crawl to see — on a report that is
+    # rendered fresh from stored findings on every request. The raw context
+    # fields are stored beside it, so the sentence can be rebuilt here and an
+    # old audit picks up the current wording the moment the page is reloaded.
+    #
+    # The stored string stays as the fallback: a context dict from an older
+    # schema may not carry the fields describe() reads.
+    lead = ""
+    try:
+        from engine.context import BusinessContext as _BC
+        import dataclasses as _dc
+        fields = {f.name for f in _dc.fields(_BC)}
+        if fields & set(ctx):
+            lead = _BC(**{k: v for k, v in ctx.items()
+                          if k in fields}).describe().strip()
+    except Exception:  # noqa: BLE001
+        lead = ""
+    lead = lead or (ctx.get("describe") or "").strip()
     parts = []
     if lead:
         # The quoted form ends with a closing quote, so the sentence-ending

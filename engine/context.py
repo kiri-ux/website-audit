@@ -98,13 +98,27 @@ class BusinessContext:
         name = self.brand or "This site"
         if self.self_description:
             desc = self.self_description.strip()
+            # ONE SENTENCE, NOT THE WHOLE META DESCRIPTION.
+            #
+            # These are written for a search result, so the second half is
+            # usually a second pitch that repeats the brand name — "…Strong
+            # advocacy, clear guidance, and proven results at Ooten Law Firm."
+            # Quoting all of it puts the name three times in two lines.
+            first = desc.split(". ")[0].rstrip(".").strip()
+            if len(first) >= 30:
+                desc = first
             # If their own sentence already opens with the brand name, quoting
-            # it after "X describes itself as" prints the name twice in nine
-            # words. Use their sentence on its own — it is still their words,
-            # and it reads like a person wrote the paragraph.
+            # it after a frame prints the name twice in nine words. Use their
+            # sentence on its own — it is still their words, and it reads like
+            # a person wrote the paragraph.
             if name and desc.lower().startswith(name.lower()):
                 return desc.rstrip(".") + "."
-            return f'{name} describes itself as "{desc}"'
+            # WAS: "X describes itself as …". A stock construction, and one
+            # that shows up in every generated report anyone has ever read —
+            # which is exactly why it reads as automated rather than written.
+            # Attribution still matters (this is their claim, not ours), so it
+            # is kept and made short.
+            return f'{name}\u2019s own copy: "{desc.rstrip(".")}."'
         if self.locations:
             n = len(self.locations)
             where = ""

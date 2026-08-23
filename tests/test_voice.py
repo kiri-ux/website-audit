@@ -141,9 +141,12 @@ def main():
     check("overview names the client or their brand",
           "Grand Home" in ov or (bc.brand and bc.brand in ov), ov[:70])
     check("overview names the actual domain", "grandhf.com" in ov)
+    # The opener quotes their FIRST sentence now, not the whole meta
+    # description — those are written for a search result and the second half
+    # is usually a second pitch that repeats the brand name.
+    _first = (bc.self_description or "").split(". ")[0].rstrip(".").strip()
     check("the opening quotes the site's own words rather than URL slugs",
-          not bc.self_description or bc.self_description in ov,
-          bc.self_description[:60])
+          not bc.self_description or _first in ov, _first[:60])
     # The exact regression: URL path segments presented as business categories.
     check("no URL slug is passed off as a description of the business",
           "publishes pages covering" not in ov.lower(), ov[:80])
