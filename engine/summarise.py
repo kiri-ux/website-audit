@@ -839,9 +839,17 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
     # ran and printed this, which undercuts the one sentence where we say what
     # we looked at. "Reviewed" is the same claim in their language — and it is
     # accurate, because a person reads this before it goes out.
+    # NAME THE CLIENT IN THE FIRST SENTENCE.
+    #
+    # The opener used to quote their meta description, which carried the brand
+    # name by accident. Dropping that quote — twice rejected — left a first
+    # line that could have been about anybody, on a document with their name
+    # on the cover but not in the copy.
+    _brand = (ctx.get("brand") or meta.get("client") or "").strip()
+    _who = f" for {_brand}" if _brand else ""
     parts.append(
         f"We reviewed {meta.get('pages_crawled') or 0} pages of "
-        f"{_host(meta.get('url'))}"
+        f"{_host(meta.get('url'))}{_who}"
         + (f" and looked at {checked}." if checked else "."))
     if o.get("score") is not None:
         urgent = sum(1 for f in findings.values()

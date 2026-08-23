@@ -281,8 +281,24 @@ def _us_date(stamp) -> str:
         return _h.escape(raw)
 
 
+
+# NO EM DASHES ANYWHERE IN THE OUTPUT.
+#
+# House style, and it has to be enforced HERE rather than by editing strings.
+# Plenty of this copy is not ours to edit: the judgment layer writes evidence
+# at scan time, and a rule in a prompt is a request, not a guarantee. One
+# substitution at the escape boundary catches every path into the document,
+# including text that has not been written yet.
+#
+# En dashes go too. They are the same typographic gesture and read as an
+# inconsistency when only half of them are converted.
+def _dashes(t: str) -> str:
+    return (t.replace("\u2014", "-").replace("\u2013", "-")
+             .replace("&mdash;", "-").replace("&ndash;", "-"))
+
+
 def _p(text):
-    return _h.escape(str(text if text is not None else ""))
+    return _dashes(_h.escape(str(text if text is not None else "")))
 
 
 def _rule(width=1.75 * inch):
@@ -745,6 +761,114 @@ def _ai_visibility(meta, S):
     return out
 
 
+# What each area IS, in one line, for the strengths cards. Deliberately not the
+# glossary: those definitions explain a TERM the reader just met in a finding,
+# and these explain an AREA that came back clean, which is a different job and
+# a different length.
+SECTION_MEANS = {
+    "ANA": "whether the tracking on the site actually records what it should",
+    "GSC": "what Google's own Search Console reports about the site",
+    "GA4": "whether Google Analytics is set up to answer real questions",
+    "TECH": "the plumbing search engines use to find and read pages",
+    "URL": "whether addresses are readable and organized by topic",
+    "SEC": "whether the site is served securely end to end",
+    "CANON": "whether Google can tell which version of a page is the real one",
+    "PERF": "how fast the site feels to a real visitor on a real phone",
+    "ONP": "titles, headings and copy — what a page says it is about",
+    "MOB": "how the site behaves on a phone, which is most of the traffic",
+    "SCHEMA": "the machine-readable labels that produce rich search results",
+    "INTL": "whether the right language and region version is served",
+    "HTML": "whether the code is clean enough not to get in its own way",
+    "EEAT": "the signals that show a real, qualified business is behind the site",
+    "GEO": "whether AI assistants can read the site and cite it",
+    "OFF": "who links to the site, and what that says about its authority",
+    "CONS": "whether tracking waits for consent, which is a legal question",
+}
+
+
+def _strength(text, S):
+    """One strength as a card, with a plain-English line about the area."""
+    from .report import SECTION_NAMES as _SN
+    low = (text or "").lower()
+    means = []
+    for code, name in _SN.items():
+        if name.lower() in low and SECTION_MEANS.get(code):
+            means.append(SECTION_MEANS[code])
+        if len(means) == 2:
+            break
+    gloss = ""
+    if means:
+        gloss = means[0] if len(means) == 1 else f"{means[0]}; {means[1]}"
+        gloss = gloss[0].upper() + gloss[1:] + "."
+
+    inner = [Paragraph(_p(text), S["cell"])]
+    if gloss:
+        inner.append(Spacer(1, 3))
+        inner.append(Paragraph(
+            f"<font color='#4A5461'>{_p(gloss)}</font>", S["cellsm"]))
+    t = Table([[inner]], colWidths=[6.55 * inch])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F2F7F4")),
+        ("ROUNDEDCORNERS", [10, 10, 10, 10]),
+        ("LINEBEFORE", (0, 0), (0, -1), 2.5, colors.HexColor("#1E7A45")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 13),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 14),
+        ("TOPPADDING", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 11),
+    ]))
+    return KeepTogether([t, Spacer(1, 7)])
+
+
+def _market_pills(raw, S):
+    """
+    One rounded chip per market, wrapped across the cell.
+
+    Returns a flowable, so `_kv_table` has to accept something other than a
+    Paragraph in the value column — which it now does.
+    """
+    try:
+        from .geo import split_markets
+        items = split_markets(raw)
+    except Exception:  # noqa: BLE001
+        items = [x.strip() for x in str(raw or "").split(",") if x.strip()]
+    if not items:
+        return Paragraph(_p(raw), S["cellsm"])
+
+    st = ParagraphStyle("mk", parent=S["cellsm"], fontSize=7.5, leading=9.5,
+                        textColor=colors.HexColor("#002D58"), alignment=1)
+    chips = []
+    for m in items[:40]:
+        t = Table([[Paragraph(_p(m), st)]])
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#E6EAEE")),
+            ("ROUNDEDCORNERS", [5, 5, 5, 5]),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        chips.append(t)
+
+    # Four to a row: thirteen Tennessee counties at 4.9in is about the widest
+    # a name gets before it has to wrap inside its own chip.
+    per = 4
+    rows = [chips[i:i + per] for i in range(0, len(chips), per)]
+    for r in rows:
+        while len(r) < per:
+            r.append("")
+    grid = Table(rows, colWidths=[4.9 * inch / per] * per)
+    grid.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 1),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]))
+    return grid
+
+
 def _evidence(meta, S):
     """Annotated screenshots — the problem, in a picture, on their own site."""
     shots = (meta.get("extras") or {}).get("screenshot_blobs") or []
@@ -863,7 +987,14 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         facts.append(("Business model",
                       meta.get("business_model") or meta.get("vertical")))
     if meta.get("primary_markets"):
-        facts.append(("Primary markets", meta["primary_markets"]))
+        # PILLS, NOT THE PASTED STRING.
+        #
+        # Thirteen counties arrive exactly as they were typed into the form —
+        # separated by the multiplication sign someone's spreadsheet used —
+        # and print as a wall of text with "TN" thirteen times. The form shows
+        # them as pills; the cover should too.
+        facts.append(("Primary markets",
+                      _market_pills(meta["primary_markets"], S)))
     if meta.get("primary_conversion"):
         facts.append(("Primary conversion", meta["primary_conversion"]))
     if meta.get("channels"):
@@ -897,7 +1028,8 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         story.append(Spacer(1, 3))
         story.append(_kv_table(
             [[Paragraph(f"<b>{_p(k)}</b>", S["cellsm"]),
-              Paragraph(_p(v), S["cellsm"])] for k, v in facts],
+              v if hasattr(v, "wrap") else Paragraph(_p(v), S["cellsm"])]
+             for k, v in facts],
             w1=1.7, w2=4.9))
         story.append(Spacer(1, 14))
 
@@ -923,8 +1055,14 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
               f"<font size=15 color='#0b0b0b'><b>{urgent}</b></font>"
               f"<font size=8.5 color='#52514e'> are Critical or High and should "
               f"be resolved within 30 days.</font>"
-              f"<br/><font size=8.5 color='#52514e'>We measured <b>{cov[0]}</b> "
-              f"of <b>{sum(cov)}</b> checks directly.</font>",
+              # WAS: "We measured 269 of 322 checks directly." A client reads
+              # that as a report that did not finish. The 53 it does not
+              # mention are checks Google exposes through no API, plus the
+              # ones that do not apply to this site — neither is a gap in the
+              # work, and neither is explainable in half a sentence beside a
+              # score. The Audit Coverage bar below says it properly, with a
+              # legend that separates the two.
+              ,
             S["small"])]],
         colWidths=[2.0 * inch, 4.6 * inch])
     hero.setStyle(TableStyle([
@@ -1071,6 +1209,17 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             if isinstance(items, str):
                 story.append(Paragraph(_p(items), S["body"]))
                 block.append(items)
+            elif key == "working":
+                # STRENGTHS AS CARDS, EACH SAYING WHAT THE AREA IS.
+                #
+                # "Canonicalization, International SEO and Mobile SEO came back
+                # clean" is true and lands on a client who does not know what
+                # canonicalization is — so the good news reads as jargon and
+                # gets skipped, which is a waste of the one section that is
+                # not asking them for anything.
+                for it in items:
+                    story.append(_strength(it, S))
+                    block.append(it)
             else:
                 # Short lists read better as prose than as bullets; a bulleted
                 # list of two items looks like a form that was filled in.
@@ -1538,17 +1687,19 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         # belong in a client document, and it left the reader unsure whether
         # any of it was theirs to do. Nothing on this line is.
         ("What we complete during the engagement",
-         f"{ours} checks we finish ourselves, with nothing needed from you: "
-         f"off-page authority and keyword rankings come from our data "
-         f"providers, and the rest are judgment calls an analyst makes by hand. "
-         f"They are left out of the scoring until they are answered, so they "
-         f"never count against your result."),
-        ("Not applicable", f"{na} checks don't apply to a site built like "
-                           f"yours, so they're left out."),
+         f"{ours} checks we finish ourselves. Nothing needed from you."),
+        # AN EXAMPLE, NOT A CATEGORY. "Checks that don't apply to a site built
+        # like yours" is true of any number and tells the reader nothing about
+        # which checks or why, so it reads as padding on a count they cannot
+        # verify.
+        ("Not applicable",
+         f"{na} checks are for things this site does not do - product and "
+         f"review markup on a site that sells nothing online, language "
+         f"targeting on a site published only in English. They are left out "
+         f"rather than failed."),
         ("Scoring", "Each area scores out of 100 from the checks we could run, "
                     "weighted by severity. If there wasn't enough to go on, the "
-                    "area is marked Not Assessed instead of scored low. An area "
-                    "we couldn't measure is not a failing one."),
+                    "area is marked Not Assessed instead of scored low."),
     ]
     if meta.get("truncated"):
         method.append(("Coverage limit",

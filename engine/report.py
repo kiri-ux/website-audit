@@ -34,8 +34,24 @@ ORDER = ["ANA", "GSC", "GA4", "TECH", "URL", "SEC", "CANON", "PERF", "ONP",
          "MOB", "SCHEMA", "INTL", "HTML", "EEAT", "GEO", "OFF", "CONS"]
 
 
+
+# NO EM DASHES ANYWHERE IN THE OUTPUT.
+#
+# House style, and it has to be enforced HERE rather than by editing strings.
+# Plenty of this copy is not ours to edit: the judgment layer writes evidence
+# at scan time, and a rule in a prompt is a request, not a guarantee. One
+# substitution at the escape boundary catches every path into the document,
+# including text that has not been written yet.
+#
+# En dashes go too. They are the same typographic gesture and read as an
+# inconsistency when only half of them are converted.
+def _dashes(t: str) -> str:
+    return (t.replace("\u2014", "-").replace("\u2013", "-")
+             .replace("&mdash;", "-").replace("&ndash;", "-"))
+
+
 def e(x):
-    return _h.escape(str(x if x is not None else ""))
+    return _dashes(_h.escape(str(x if x is not None else "")))
 
 
 # ---------------------------------------------------------------- console

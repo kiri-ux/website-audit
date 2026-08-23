@@ -92,11 +92,59 @@ _HEAD_FAMILY = "Helvetica"
 _REGISTERED = False
 
 
+# Style words that must NOT appear in a candidate unless the target asks for
+# them. Without this, looking for "…-Bold" happily matches "Bold Italic".
+_STYLES = ("italic", "oblique", "thin", "light", "medium", "black", "heavy",
+           "semibold", "extrabold", "condensed", "narrow")
+
+
+def _norm(s: str) -> str:
+    return "".join(ch for ch in s.lower() if ch.isalnum())
+
+
 def _find(name: str) -> str | None:
+    """
+    Locate a face by filename, tolerantly.
+
+    EXACT MATCHING LOST A FONT THAT WAS SITTING RIGHT THERE. The file arrived
+    as "GT Walsheim Pro Regular Regular.ttf" — spaces, and the weight twice,
+    which is what a font vendor's zip and an export dialog produce between
+    them. `os.path.exists("GTWalsheimPro-Regular.ttf")` said no, the family
+    silently fell back to Roboto, and the only clue was one log line nobody
+    was watching for.
+    """
     for d in _DIRS:
         p = os.path.join(d, name)
         if os.path.exists(p):
             return p
+
+    want = _norm(os.path.splitext(name)[0])
+    want_styles = [st for st in _STYLES if st in want]
+    for d in _DIRS:
+        if not os.path.isdir(d):
+            continue
+        try:
+            entries = sorted(os.listdir(d))
+        except OSError:
+            continue
+        for fn in entries:
+            if not fn.lower().endswith((".ttf", ".otf")):
+                continue
+            got = _norm(os.path.splitext(fn)[0])
+            if want not in got:
+                continue
+            # "…-Bold" must not swallow "Bold Italic".
+            extra = [st for st in _STYLES
+                     if st in got and st not in want_styles]
+            if extra:
+                continue
+            if fn.lower().endswith(".otf"):
+                # reportlab embeds TrueType only. Say so rather than failing
+                # later with a stack trace about a bad table.
+                print(f"[fonts] {fn} found but is OpenType; reportlab needs "
+                      f"a .ttf — convert it and re-upload", flush=True)
+                continue
+            return os.path.join(d, fn)
     return None
 
 
@@ -139,6 +187,16 @@ def register() -> str:
             print(f"[fonts] GT Walsheim found but would not register ({exc})",
                   flush=True)
 
+    else:
+        miss = [f for n, f, _b, _i in _BODY_FACES if not bpaths[n]]
+        if any(bpaths.values()):
+            # SOME of them found. That is the interesting case: it means the
+            # folder is right and one file is missing, which is a two-minute
+            # fix nobody will make if the log only says "not installed".
+            print(f"[fonts] GT Walsheim Pro is incomplete — missing "
+                  f"{', '.join(miss)}. Both weights are needed; the body face "
+                  f"stays on Roboto until then.", flush=True)
+
     # ---- brand headline face ---------------------------------------------
     hpaths = {n: _find(f) for n, f, _b, _i in _HEAD_FACES}
     if all(hpaths.values()):
@@ -152,6 +210,10 @@ def register() -> str:
         except Exception as exc:  # noqa: BLE001
             print(f"[fonts] Agdasima found but would not register ({exc})",
                   flush=True)
+    elif any(hpaths.values()):
+        hmiss = [f for n, f, _b, _i in _HEAD_FACES if not hpaths[n]]
+        print(f"[fonts] Agdasima is incomplete — missing {', '.join(hmiss)}. "
+              f"Headlines stay on the body face until then.", flush=True)
 
     if _FAMILY != "Helvetica":
         _REGISTERED = True

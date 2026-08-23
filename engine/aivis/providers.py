@@ -148,34 +148,107 @@ class Provider:
 
 # ---------------------------------------------------------------- Perplexity
 class PerplexityProvider(Provider):
-    """Sonar models are search-grounded and return sources natively."""
+    """
+    Perplexity's web-grounded answer, through whichever of its APIs is live.
+
+    THEY RESTRUCTURED THE PLATFORM. `chat/completions` with a `sonar` model was
+    the whole API; the console now presents a Search API, an Agent API and an
+    Embeddings API, and the web-grounded answer moved to
+    `POST /v1/agent` with a different request AND response shape.
+
+    Which of the two a given account can call is not knowable from here — the
+    old endpoint may still answer for existing keys and may not for new ones.
+    So both are tried in order and the one that works is remembered for the
+    run, the same way the Gemini adapter handles model names. Hardcoding
+    either would have produced a checkpoint that reads "not measured" on a key
+    that was working perfectly, which is the failure this codebase keeps
+    finding.
+
+    THE API KEY IS ACCOUNT-WIDE. There is no separate key per product, so
+    nothing about this changes what the operator has to set up.
+    """
     name = "perplexity"
+    _endpoint = None      # remembered once one of them answers
 
     @property
     def available(self):
         return bool(os.getenv("PERPLEXITY_API_KEY"))
 
+    # ---- the two shapes ----------------------------------------------------
+    def _agent(self, prompt):
+        """POST /v1/agent — the current web-grounded endpoint."""
+        body = {"input": prompt,
+                "model": os.getenv("PERPLEXITY_MODEL", "openai/gpt-5"),
+                "stream": False, "max_output_tokens": 2000}
+        d = self._post("https://api.perplexity.ai/v1/agent", body,
+                       {"Authorization": f"Bearer {os.getenv('PERPLEXITY_API_KEY')}"})
+        text, urls, titles = "", [], {}
+        for block in (d.get("output") or []):
+            if block.get("type") != "message":
+                continue
+            for part in (block.get("content") or []):
+                text += part.get("text") or ""
+                for ann in (part.get("annotations") or []):
+                    u = ann.get("url")
+                    if ann.get("type") == "url_citation" and u:
+                        urls.append(u)
+                        titles[u] = ann.get("title", "")
+        if urls:
+            c, sh = _mk(urls, titles, "agent.annotations")
+        else:
+            c, sh = _from_text(text)
+        return text, c, sh, d
+
+    def _sonar(self, prompt):
+        """POST /chat/completions — the original Sonar shape."""
+        d = self._post(
+            "https://api.perplexity.ai/chat/completions",
+            {"model": os.getenv("PERPLEXITY_SONAR_MODEL", "sonar"),
+             "messages": [{"role": "user", "content": prompt}]},
+            {"Authorization": f"Bearer {os.getenv('PERPLEXITY_API_KEY')}"})
+        text = d["choices"][0]["message"]["content"]
+        # Perplexity has used several field names over time; try each.
+        for key, shape in (("search_results", "search_results"),
+                           ("citations", "citations"),
+                           ("sources", "sources")):
+            v = d.get(key)
+            if v:
+                urls = [x["url"] if isinstance(x, dict) else x for x in v]
+                titles = {x["url"]: x.get("title", "")
+                          for x in v if isinstance(x, dict) and x.get("url")}
+                c, sh = _mk(urls, titles, shape)
+                return text, c, sh, d
+        c, sh = _from_text(text)
+        return text, c, sh, d
+
     def ask(self, query_id, prompt):
         def go():
-            d = self._post(
-                "https://api.perplexity.ai/chat/completions",
-                {"model": os.getenv("PERPLEXITY_MODEL", "sonar"),
-                 "messages": [{"role": "user", "content": prompt}]},
-                {"Authorization": f"Bearer {os.getenv('PERPLEXITY_API_KEY')}"})
-            text = d["choices"][0]["message"]["content"]
-            # Perplexity has used several field names over time; try each.
-            for key, shape in (("search_results", "search_results"),
-                               ("citations", "citations"),
-                               ("sources", "sources")):
-                v = d.get(key)
-                if v:
-                    urls = [x["url"] if isinstance(x, dict) else x for x in v]
-                    titles = {x["url"]: x.get("title", "")
-                              for x in v if isinstance(x, dict) and x.get("url")}
-                    c, s = _mk(urls, titles, shape)
-                    return text, c, s, d
-            c, s = _from_text(text)
-            return text, c, s, d
+            shapes = [("agent", self._agent), ("sonar", self._sonar)]
+            if PerplexityProvider._endpoint:
+                shapes = [x for x in shapes
+                          if x[0] == PerplexityProvider._endpoint]
+            last = None
+            for name, fn in shapes:
+                try:
+                    out = fn(prompt)
+                except RuntimeError as ex:
+                    # A 404 or a 400 naming the model/endpoint means THIS shape
+                    # is not available to this key. Anything else — a 401, a
+                    # 429, a balance problem — is about the account and must
+                    # not send us hunting through endpoints that will fail the
+                    # same way.
+                    msg = str(ex)
+                    if "HTTP 404" in msg or _tool_mismatch(msg) or (
+                            "HTTP 400" in msg and "model" in msg.lower()):
+                        last = ex
+                        continue
+                    raise
+                PerplexityProvider._endpoint = name
+                return out
+            raise RuntimeError(
+                "Neither Perplexity endpoint answered for this key "
+                f"(/v1/agent and /chat/completions both refused)"
+                + (f" — last said: {last}" if last else ""))
         return self._timed(query_id, go)
 
 

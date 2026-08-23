@@ -552,6 +552,73 @@ def main():
           bool(_over) and _shown + int(_over.group(1)) == _head,
           f"{_shown} + {_over.group(1) if _over else '?'} vs {_head}")
 
+    print("\nPERPLEXITY RESTRUCTURED, SO BOTH SHAPES ARE TRIED")
+    # `chat/completions` with a `sonar` model WAS the whole API. The console
+    # now presents Search, Agent and Embeddings, and the web-grounded answer
+    # moved to POST /v1/agent with a different request and response shape.
+    # Which one a given key can call is not knowable from here, so hardcoding
+    # either would produce "not measured" on a key that works fine.
+    from engine.aivis.providers import PerplexityProvider as _Px
+    os.environ["PERPLEXITY_API_KEY"] = "test-key"
+    _AGENT = {"output": [{"type": "message", "role": "assistant", "content": [
+        {"type": "output_text", "text": "Ooten Law Firm is a Knoxville firm.",
+         "annotations": [{"type": "url_citation",
+                          "url": "https://ootenlawfirm.com/",
+                          "title": "Ooten"}]}]}]}
+    _SONAR = {"choices": [{"message": {"content": "Answer via sonar"}}],
+              "search_results": [{"url": "https://x.test/", "title": "X"}]}
+    _real_px = _Px._post
+    _hits = []
+    try:
+        _Px._endpoint = None
+        _Px._post = lambda self, url, p, h, timeout=90: (
+            _hits.append(url) or (_AGENT if url.endswith("/v1/agent") else _SONAR))
+        _a = _Px().ask("q1", "who")
+        check("the current Agent endpoint is used when it answers",
+              _a.ok and _a.citation_shape == "agent.annotations",
+              _a.citation_shape)
+        check("and its url_citation annotations become citations",
+              [c["domain"] for c in _a.citations] == ["ootenlawfirm.com"])
+        _n = len(_hits)
+        _Px().ask("q2", "who")
+        check("the working endpoint is remembered, not re-probed per query",
+              len(_hits) == _n + 1 and _hits[-1].endswith("/v1/agent"))
+
+        _Px._endpoint = None
+        _hits.clear()
+
+        def _p404(self, url, p, h, timeout=90):
+            _hits.append(url)
+            if url.endswith("/v1/agent"):
+                raise RuntimeError("HTTP 404 from api.perplexity.ai: Not Found")
+            return _SONAR
+
+        _Px._post = _p404
+        _b = _Px().ask("q3", "who")
+        check("a 404 on the new endpoint falls back to the Sonar shape",
+              _b.ok and _b.citation_shape == "search_results", _b.citation_shape)
+        check("and it tried them in order", len(_hits) == 2)
+
+        # THE IMPORTANT NEGATIVE. A bad key fails the same way on every
+        # endpoint, so hunting through them turns one clear "invalid API key"
+        # into a vague "neither endpoint answered".
+        _Px._endpoint = None
+        _hits.clear()
+
+        def _p401(self, url, p, h, timeout=90):
+            _hits.append(url)
+            raise RuntimeError("HTTP 401 from api.perplexity.ai: Invalid API key")
+
+        _Px._post = _p401
+        _c = _Px().ask("q4", "who")
+        check("an auth failure is reported, not treated as a wrong endpoint",
+              "401" in (_c.error or "") and len(_hits) == 1,
+              f"{len(_hits)} endpoint(s) tried")
+    finally:
+        _Px._post = _real_px
+        _Px._endpoint = None
+        os.environ.pop("PERPLEXITY_API_KEY", None)
+
     print("\n" + "=" * 68)
     if FAILURES:
         print(f"  {len(FAILURES)} FAILED: {', '.join(FAILURES)}")

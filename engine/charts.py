@@ -32,16 +32,21 @@ from reportlab.platypus import Flowable
 from .fonts import register as _register_fonts, BODY as F, BOLD as FB, ITALIC as FI
 _register_fonts()
 
-INK     = colors.HexColor("#0b0b0b")
-INK2    = colors.HexColor("#52514e")
-MUTED   = colors.HexColor("#898781")
-LINE    = colors.HexColor("#e6e5e1")
-TRACK   = colors.HexColor("#eceae6")
-SEQ     = colors.HexColor("#2a78d6")
-SEQ_DIM = colors.HexColor("#9cc3f0")
+# Vici brand palette — Atlas Blue #002D58, Velocity Blue #0066B3, Ink #212121,
+# Parchment #FDFBF7, with the brand's own 50% and 10% fades. Kept in step with
+# the same constants in pdf_report.py: these charts are drawn straight onto the
+# canvas and inherit nothing, so a value that drifts here shows up as one chart
+# in the wrong blue.
+INK     = colors.HexColor("#212121")
+INK2    = colors.HexColor("#4A5461")
+MUTED   = colors.HexColor("#8096AC")   # Atlas 50%
+LINE    = colors.HexColor("#E6EAEE")   # Atlas 10%
+TRACK   = colors.HexColor("#E9E9E9")   # Ink 10%
+SEQ     = colors.HexColor("#0066B3")   # Velocity
+SEQ_DIM = colors.HexColor("#80B2D9")   # Velocity 50%
 
-ORD = {"Critical": colors.HexColor("#104281"), "High": colors.HexColor("#256abf"),
-       "Medium": colors.HexColor("#3987e5"), "Low": colors.HexColor("#86b6ef")}
+ORD = {"Critical": colors.HexColor("#002D58"), "High": colors.HexColor("#0066B3"),
+       "Medium": colors.HexColor("#4D94CB"), "Low": colors.HexColor("#80B2D9")}
 
 # Rating bands, used only to place the marker on the gauge track. The number
 # and the word are both printed, so color is never the sole carrier.
@@ -86,8 +91,8 @@ def _gap_w(r, thick, dy):
 # So every gradient here runs light-to-dark inside the same blue. It reads as
 # depth and finish; it never becomes a second channel of meaning. Length is
 # still the whole message.
-GRAD_LO = colors.HexColor("#7fb3ef")
-GRAD_HI = colors.HexColor("#14498f")
+GRAD_LO = colors.HexColor("#80B2D9")   # Velocity 50%
+GRAD_HI = colors.HexColor("#002D58")   # Atlas
 
 
 def _lerp(a, b, t):
@@ -521,10 +526,20 @@ def coverage_segments(measured: int, client: int, ours: int, na: int) -> list:
     "we haven't set the backlink API key" and labelled the whole pile as the
     client's to fix. Only the middle segment is an ask; the third is our work.
     """
-    return [("Measured", measured, SEQ),
-            ("Need your access", client, MUTED),
-            ("We complete these", ours, SEQ_DIM),
+    # A ZERO SEGMENT KEEPS ITS LEGEND ENTRY — except this one.
+    #
+    # The rule elsewhere in this file is that a zero stays visible, because
+    # "none of these" and "we didn't look" are different facts. "Need your
+    # access 0" is the exception: it is an ASK, and an ask with nothing in it
+    # is not a fact the client needs — it is a line inviting them to wonder
+    # what we wanted. When the number is zero there is nothing to ask for, so
+    # the row goes.
+    out = [("Measured", measured, SEQ)]
+    if client:
+        out.append(("Need your access", client, MUTED))
+    out += [("We complete these", ours, SEQ_DIM),
             ("Not applicable", na, TRACK)]
+    return out
 
 
 class DefBadge(Flowable):
