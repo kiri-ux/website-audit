@@ -284,6 +284,20 @@ def main():
         check(f"'{phrase}' appears nowhere in the client copy",
               phrase not in body.lower(), body[:80])
 
+    print("\n9b. HOW WE GOT THE NUMBER IS NOT PART OF THE FINDING")
+    # "727 external links point at this site. Measured from our backlink index
+    # rather than Search Console, which publishes this report but offers no
+    # API for it; Search Console shows a sample, so its own figure will be
+    # lower." One finding, then a tour of our data sources and an apology for
+    # a discrepancy nobody had noticed.
+    off = _scrub("727 external links point at this site. Measured from our "
+                 "backlink index rather than Search Console, which publishes "
+                 "this report but offers no API for it; Search Console shows "
+                 "a sample, so its own figure will be lower.")
+    check("the number survives", off.startswith("727 external links"), off)
+    check("the tour of our data sources does not",
+          "backlink index" not in off and "no API" not in off, off)
+
     print("\n10. URLS ARE LINKS, NOT FORTY CHARACTERS OF ADDRESS")
     from engine.pdf_report import _pl
     marked = _pl("Check the Family Law page "

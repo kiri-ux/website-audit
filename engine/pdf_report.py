@@ -531,6 +531,8 @@ STATUS_PILL = {
     "Manual":          (colors.HexColor("#E6EAEE"), colors.HexColor("#002D58")),
     "Info":            (colors.HexColor("#E6F0F7"), colors.HexColor("#004E88")),
     "N/A":             (colors.HexColor("#F1F1F1"), colors.HexColor("#8096AC")),
+    # Nothing was withheld and nothing is owed - see _status_word.
+    "Not applicable":  (colors.HexColor("#F1F1F1"), colors.HexColor("#8096AC")),
 }
 
 # WHAT THE STATUS COLUMN IS FOR.
@@ -553,7 +555,13 @@ STATUS_PILL = {
 # pages earlier already labels a segment "Measured", meaning every check we
 # managed to answer. The same word for two different counts is worse than the
 # jargon it replaced.
-STATUS_LABEL = {"Info": "Reference", "Manual": "In review"}
+# "NOT IMPLEMENTED" IS OUR WORD FOR AN EMPTY RESULT, NOT THEIRS.
+#
+# It reads as a note about software - "we have not built this yet" - on a row
+# that means the opposite: we looked, and the thing the check is about is not
+# on the site. "Missing" says that in a word a client already owns.
+STATUS_LABEL = {"Info": "Reference", "Manual": "In review",
+                "Not Implemented": "Missing"}
 for _raw, _shown in STATUS_LABEL.items():
     STATUS_PILL[_shown] = STATUS_PILL[_raw]
 
@@ -570,7 +578,24 @@ for _raw, _shown in STATUS_LABEL.items():
 CONSENT_LABEL = {"Pass": "No issue seen"}
 
 
-def _status_word(status: str, cid: str = "") -> str:
+# NEED ACCESS MEANS THERE IS SOMETHING TO GRANT.
+#
+# Two consent rows came back "Need Access" and the client's question was the
+# only sensible one: what access am I missing? None. The scan found no consent
+# platform, so there was no banner to test and no Reject button to press -
+# that is CONS-01's finding, restated, and nothing anybody can hand over
+# changes it. Same for a check that does not apply to the states in scope.
+#
+# The status stays as it is (scoring already leaves these out); the WORD the
+# client reads becomes the true one. Keyed on the source the collector
+# recorded, so a report produced before this is relabelled on reload.
+_NOTHING_TO_GRANT = {"consent_no_cmp", "consent_not_applicable",
+                     "ai_platform_absent"}
+
+
+def _status_word(status: str, cid: str = "", source: str = "") -> str:
+    if status == "Need Access" and source in _NOTHING_TO_GRANT:
+        return "Not applicable"
     if str(cid).upper().startswith("CONS-"):
         return CONSENT_LABEL.get(status, STATUS_LABEL.get(status, status))
     return STATUS_LABEL.get(status, status)
@@ -786,6 +811,69 @@ SEVERITY_LEGEND = [
     ("Opportunity", "Not a defect. Somewhere new visibility can be won.",
      "90–100", "Excellent"),
 ]
+
+
+# ---------------------------------------------------------------------------
+# CHECK NAMES THAT MEAN NOTHING TO THE PERSON PAYING FOR THE REPORT.
+#
+# "Semantic keywords" is a fine name for a checkpoint in our template and a
+# closed door in an appendix a client reads. They asked, in exactly these
+# words: what is the semantic keyword check?
+#
+# One line under the name, in the client's vocabulary. Only for the rows that
+# actually need it - a gloss under "Pages have no viewport tag" would be
+# noise, and glossing everything is how a table stops being scannable.
+CHECK_MEANS = {
+    "ONP-12": "Whether the page uses real headings and lists rather than "
+              "styled text, which is how a machine reads its structure.",
+    "ONP-34": "Whether the page answers what someone searching that term "
+              "actually came for.",
+    "ONP-36": "Whether the page covers the related words and subtopics people "
+              "expect on that subject, not just the one phrase.",
+    "ONP-37": "Whether the page shows who is behind it and why they would "
+              "know - author, credentials, real detail.",
+    "ONP-40": "Whether the page has been updated recently enough to be "
+              "trusted on a subject that changes.",
+    "ONP-47": "Whether links say where they go in their own words instead of "
+              "\u201cclick here\u201d.",
+    "ONP-50": "Whether the page cites anything outside itself - a statute, a "
+              "standards body, a source worth checking.",
+    "ONP-49": "Whether the page links out to anything at all, or only back "
+              "into the site.",
+    "EEAT-01": "Whether the writing shows the work was actually done, rather "
+               "than described in general terms.",
+    "EEAT-03": "Whether the page says something the competitors' pages do "
+               "not.",
+    "EEAT-04": "Whether the page reads as written by someone who does this "
+               "for a living.",
+    "EEAT-09": "Whether the site makes the case for the organization itself - "
+               "history, memberships, recognition.",
+    "EEAT-11": "How clearly and consistently the brand is presented across "
+               "the site.",
+    "GEO-11": "Whether the pages answer questions the way people ask them "
+              "out loud.",
+    "GEO-12": "Whether each page makes clear WHO and WHAT it is about, in "
+              "terms a machine can match to a known thing.",
+    "GEO-13": "Whether the business is connected to the entries Google "
+              "already holds about it.",
+    "GEO-14": "Whether related topics on the site are linked so the coverage "
+              "reads as one body of work.",
+    "GEO-15": "Whether there is anything on the site worth quoting.",
+    "GEO-16": "Whether the site publishes figures of its own that exist "
+              "nowhere else.",
+    "GEO-20": "Whether the authors are identifiable as real, named people.",
+    "GEO-21": "Whether the organization is identifiable as a real, named "
+              "entity.",
+    "GEO-22": "Whether the brand is legible to search engines and assistants "
+              "as a single thing.",
+    "OFF-05": "A third-party score for how much authority a domain carries. "
+              "Useful as a trend, not as a target.",
+    "OFF-06": "Another vendor's version of the same idea.",
+    "OFF-15": "Links that use the brand name as their wording.",
+    "OFF-16": "Links whose wording is exactly the term being targeted - "
+              "natural in small numbers, a flag in large ones.",
+    "OFF-17": "Links that show a bare web address instead of words.",
+}
 
 
 def _access_received(findings: dict) -> str:
@@ -2059,14 +2147,25 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
     story.append(Paragraph("Appendix — Full Checkpoint Detail", S["h2"]))
     story.append(_rule())
     n_na = sum(1 for f in findings.values() if f.get("status") == "N/A")
+    # THE LEGEND WAS EXPLAINING ITSELF, NOT THE WORDS.
+    #
+    # "Reference is a number with no pass or fail attached to it - a backlink
+    # count is neither good nor bad on its own" is a definition of a category
+    # of finding, followed by an example of the category. Two abstractions
+    # before the reader learns what to DO with a row marked Reference.
+    #
+    # Each word now gets the shortest sentence that says what the row is.
     story.append(Paragraph(
-        "By area. <b>Reference</b> is a number with no pass or fail attached to "
-        "it — a backlink count is neither good nor bad on its own. "
-        "<b>In review</b> means an analyst reaches that check during the "
-        "engagement, so it has no verdict yet. <b>Need Access</b> means the "
-        "check is waiting on access to your Search Console or Analytics."
-        + (f" {n_na} checks that don't apply to a site like yours are left out."
-           if n_na else ""), S["small"]))
+        "By area, with what each status means. "
+        "<b>Reference</b> - a figure we recorded for you, like your backlink "
+        "count. Nothing to fix. "
+        "<b>Missing</b> - the check looked for something and it is not there. "
+        "<b>In review</b> - a check only a person can judge; we do it as part "
+        "of the work and it has no verdict yet. "
+        "<b>Need Access</b> - we could not read this without your Search "
+        "Console or Analytics."
+        + (f" {n_na} checks that do not apply to a site like yours are left "
+           f"out." if n_na else ""), S["small"]))
 
     for k in ORDER:
         # N/A rows are dropped. A page of "Meta Pixel · N/A · Not detected."
@@ -2120,8 +2219,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             _pre = [_banner("", "Privacy law varies by state and changes; "
                                 "this is not a legal opinion and does not "
                                 "certify compliance. Use it to decide what to "
-                                "fix and, where it matters, what to take to "
-                                "counsel.", ATLAS, S),
+                                "fix and where it matters.", ATLAS, S),
                     Spacer(1, 8)]
         data = [[Paragraph("<b>ID</b>", S["cellsm"]),
                  Paragraph("<b>Check</b>", S["cellsm"]),
@@ -2153,16 +2251,25 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                     # beside it - visible the moment two rows in a column have
                     # one and the row between them does not.
                     #
-                    # The cell text is 8pt on 10.5pt leading and the lamp is
-                    # 7pt tall, so about 2.5pt of lead-in drops it onto the
-                    # same optical line as the ID.
-                    ("TOPPADDING", (1, 0), (1, 0), 2.5),
+                    # 2.5pt was measured against the lamp's BOX. The ink
+                    # inside it is top-heavy - a circle of glass over two thin
+                    # legs - so a box that lines up leaves the bulb reading
+                    # high. 4pt sits the glass inside the cap-height band of
+                    # "ONP-13", which is where the eye expects it.
+                    ("TOPPADDING", (1, 0), (1, 0), 4.0),
                     ("LEFTPADDING", (0, 0), (-1, -1), 0),
                     ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
-            data.append([ident,
-                         Paragraph(_p(m.get("checkpoint")), S["cell"]),
-                         _pill(_status_word(f["status"], cid), STATUS_PILL, S,
+            # The name, and where the name is jargon, one line saying what
+            # the check looks at.
+            _gloss = CHECK_MEANS.get(cid)
+            _name = [Paragraph(_p(m.get("checkpoint")), S["cell"])]
+            if _gloss:
+                _name.append(Paragraph(
+                    f"<font color='#8096AC'>{_p(_gloss)}</font>", S["cellsm"]))
+            data.append([ident, _name,
+                         _pill(_status_word(f["status"], cid, f.get("source") or ""),
+                               STATUS_PILL, S,
                                0.86 * inch),
                          Paragraph(_linkify(_agree(_p(_redact.client(f.get("evidence"))))),
                                    S["cell"])])

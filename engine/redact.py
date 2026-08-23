@@ -42,6 +42,21 @@ _META_PHRASES = (
     "truncated", "not retrieved", "were retrieved", "was retrieved",
     "not provided", "no content was provided", "the text supplied",
     "in the supplied", "our crawl", "the crawl", "this excerpt",
+    # WHERE OUR NUMBER CAME FROM IS OUR PROBLEM.
+    #
+    # "727 external links point at this site. Measured from our backlink index
+    # rather than Search Console, which publishes this report but offers no
+    # API for it; Search Console shows a sample, so its own figure will be
+    # lower." The first sentence is the finding. The rest is a tour of our
+    # data sources and an apology for a discrepancy the client had not
+    # noticed, in a document they are paying us to make simpler than this.
+    #
+    # It stays on the internal report, where whoever is checking the number
+    # needs to know which index it came from.
+    "measured from our", "from our backlink index", "our backlink index",
+    "offers no api", "no api for it", "shows a sample", "its own figure",
+    "our index", "our own index", "rather than search console",
+    "third-party estimate", "we could not read", "our tooling",
 )
 
 

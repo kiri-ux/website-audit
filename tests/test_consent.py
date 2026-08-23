@@ -671,6 +671,24 @@ def main():
     check("the PDF's prose helper applies the same redaction",
           "Beeswax" not in _pl(stored), _pl(stored)[:70])
 
+    print("\nA ROW NOBODY CAN UNBLOCK IS NOT 'NEED ACCESS'")
+    # THE CLIENT'S QUESTION, VERBATIM: "what access am I missing?" None. The
+    # scan found no consent platform, so there was no banner to test and no
+    # Reject button to press. That is CONS-01 restated, and no login anybody
+    # could hand over changes it - but the pill asked them for one.
+    from engine.pdf_report import _status_word
+    check("no consent platform reads as not applicable",
+          _status_word("Need Access", "CONS-02", "consent_no_cmp")
+          == "Not applicable")
+    check("so does a check that does not apply to their states",
+          _status_word("Need Access", "CONS-08", "consent_not_applicable")
+          == "Not applicable")
+    check("but a real Search Console gap still asks for access",
+          _status_word("Need Access", "GSC-04", "gsc_ui_only")
+          == "Need Access")
+    check("and 'Not Implemented' is written the way a client would say it",
+          _status_word("Not Implemented", "ONP-34") == "Missing")
+
     print("\n" + "=" * 68)
     if FAILED:
         print(f"  {len(FAILED)} FAILED: {FAILED}")

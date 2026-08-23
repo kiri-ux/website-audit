@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-72"
-BUILD_NOTES = ("The AI panel asks questions people actually type; five "
-               "assistants counted as five; no definitions in the exec "
-               "summary; an evidence shot always carries a red mark")
+BUILD = "2026.08.20-73"
+BUILD_NOTES = ("Plain words for Missing and Not applicable, a line of "
+               "English under every jargon check, and our data sources "
+               "stripped out of the findings")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.
