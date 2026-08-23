@@ -199,6 +199,30 @@ def main():
           not [t for t in holes
                if " a ?" in t or " a usually" in t or "  " in t
                or " the ?" in t], str(holes[:3]))
+    # A PLACE NAME IS STILL A PLACE WHEN IT HAS TWO WORDS.
+    #
+    # /hardin-valley is a Knoxville neighbourhood and it passed every filter:
+    # not in the schema locations, not a typed market, two words long. It
+    # produced "Who should I hire for hardin valley in your area?"
+    _hv = profile_from_audit(
+        "Junk Bee Gone", "https://junkbeegone.biz/",
+        {"brand": "Junk Bee Gone", "locations": [],
+         "sections": ["/junk-removal", "/hardin-valley", "/powell-station",
+                      "/dumpster-rentals"]}, "")
+    _hvq = [q.text for q in _bp(_hv)]
+    check("a neighbourhood is not asked about as a service",
+          not [t for t in _hvq if "hardin valley" in t.lower()], str(_hvq[-2:]))
+    check("and neither is a station or a ridge",
+          not [t for t in _hvq if "powell station" in t.lower()])
+    check("with no location, no question invents one",
+          not [t for t in _hvq if "your area" in t.lower()
+               or "my area" in t.lower()], str(_hvq[-2:]))
+    check("a four-letter word is not shouted as an initialism",
+          not [t for t in _hvq if "JUNK" in t], str(_hvq[-2:]))
+    check("and the verb agrees with a plural service",
+          not [t for t in _hvq if "does dumpster rentals" in t.lower()],
+          str([t for t in _hvq if "dumpster" in t.lower()][:2]))
+
     check("and the services still carry the panel on their own",
           any("criminal defense" in t for t in holes), str(holes[-2:]))
     # A TOWN IS NOT A SERVICE.

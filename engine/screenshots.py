@@ -196,6 +196,25 @@ def capture(url: str, selector: str = "", width: int = 1280, height: int = 820,
                     page.wait_for_load_state("networkidle", timeout=3000)
                 except Exception:
                     pass          # a chatty page should not cost us the shot
+                # A SITE WIDER THAN THE WINDOW GETS A WIDER WINDOW.
+                #
+                # 1280 is a laptop, and plenty of sites lay out to 1400 or
+                # more - so the capture came back with the right-hand end of
+                # the header sliced off mid-button, which reads as a broken
+                # screenshot rather than as a site that needs a wide screen.
+                # Ask the page how wide it actually is and give it that,
+                # capped so a runaway element cannot produce a mural.
+                try:
+                    real = int(page.evaluate(
+                        "() => Math.max(document.documentElement.scrollWidth,"
+                        " document.body ? document.body.scrollWidth : 0)"))
+                    if real > width + 8:
+                        width = min(real, 1800)
+                        page.set_viewport_size({"width": width,
+                                                "height": height})
+                        page.wait_for_timeout(300)
+                except Exception:  # noqa: BLE001
+                    pass
                 if selector:
                     # NO MATCH MEANS NO SHOT.
                     #
@@ -240,6 +259,10 @@ def capture(url: str, selector: str = "", width: int = 1280, height: int = 820,
                     # ancestor with `overflow:hidden` clips it away and the
                     # element looks untouched. The inset shadow is painted
                     # inside the box and cannot be clipped by an ancestor; the
+                    # Five pixels, not three: at report scale a 6.4in-wide
+                    # capture of a 1440px page is a third of size, and a 3px
+                    # outline came out under a point wide.
+                    #
                     # Between them something red lands on the pixels almost
                     # however the page is built, which is what has_mark() then
                     # checks for.
@@ -250,9 +273,9 @@ def capture(url: str, selector: str = "", width: int = 1280, height: int = 820,
                     # says "pages as they loaded", and a mark that recolors the
                     # page makes that untrue.
                     page.add_style_tag(content=(
-                        f"{selector} {{ outline: 3px solid #d03b3b !important; "
+                        f"{selector} {{ outline: 5px solid #d03b3b !important; "
                         f"outline-offset: 2px !important; "
-                        f"box-shadow: inset 0 0 0 3px #d03b3b !important; }}"))
+                        f"box-shadow: inset 0 0 0 5px #d03b3b !important; }}"))
                     try:
                         target.scroll_into_view_if_needed(timeout=2500)
                         page.wait_for_timeout(200)

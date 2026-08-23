@@ -235,10 +235,16 @@ def _service_phrase(service: str, category: str) -> str:
         return category
     # "dui attorney" is not what anyone types. Short all-letter words in a
     # URL path are nearly always initialisms - dui, cpa, hvac, llc, seo.
-    svc = " ".join(w.upper() if len(w) <= 4 and w.isalpha() and w not in
-                   ("law", "auto", "home", "care", "pain", "tax", "will",
-                    "and", "for", "the") else w
-                   for w in svc.split())
+    # THREE LETTERS, NOT FOUR. At four this shouted "JUNK removal" at five
+    # platforms - "junk" is a word, not an initialism. The four-letter
+    # initialisms that matter are few enough to name.
+    _CAPS = {"hvac", "hipaa", "osha"}
+    _WORDS = {"law", "tax", "car", "van", "pet", "spa", "gym", "eye", "ear",
+              "dog", "cat", "air", "gas", "oil", "web", "app", "seo"}
+    svc = " ".join(
+        w.upper() if (w in _CAPS or (len(w) <= 3 and w.isalpha()
+                                     and w not in _WORDS)) else w
+        for w in svc.split())
     noun = (category or "").split()[-1] if category else ""
     if noun and noun.rstrip("s") in svc:
         return svc
@@ -274,7 +280,13 @@ def build_panel(p: ClientProfile, target_size: int = 40) -> list[Query]:
         seen.add(k)
         qs.append(Query(_qid(text), intent, text, prompted))
 
-    locations = p.locations or ["your area"]
+    # NO LOCATION MEANS NO LOCATION QUESTIONS.
+    #
+    # "your area" was a placeholder that reached five platforms as a literal
+    # question: "Who should I hire for hardin valley in your area?" Nobody
+    # types that, and an assistant answering it is answering something else.
+    # An empty list here means the location templates below do not run at all.
+    locations = list(p.locations or [])
     # NO PRODUCT QUESTIONS WITHOUT PRODUCTS.
     #
     # This defaulted to [p.category], which asked an assistant "Where can I
@@ -320,8 +332,19 @@ def build_panel(p: ClientProfile, target_size: int = 40) -> list[Query]:
     # searches rather than as "the best company for family law". The crawl
     # reads them off the URL paths, which is the closest thing to a list of
     # what this business actually does.
-    where = locations[0] if locations else "my area"
+    where = locations[0] if locations else ""
     for svc in p.services[:4]:
+        if not where:
+            # Without a place, ask the service question without one rather
+            # than inventing a place.
+            phrase = _service_phrase(svc, p.category)
+            # "How much does dumpster rentals cost" - the verb has to agree
+            # with the noun, and half of these services are plural.
+            verb = "do" if phrase.rstrip().endswith("s") else "does"
+            add("question", f"What should I look for when choosing someone "
+                            f"for {phrase}?", False)
+            add("question", f"How much {verb} {phrase} usually cost?", False)
+            continue
         phrase = _service_phrase(svc, p.category)
         for t in (SERVICE_TEMPLATES if p.category
                   else NOUNLESS_SERVICE_TEMPLATES):
@@ -456,13 +479,32 @@ def profile_from_audit(client_name: str, url: str, context: dict | None = None,
         "storage", "cleaning", "restoration", "inspections", "appraisals",
         "surveying", "welding", "machining", "electrical", "wills", "trusts",
     }
+    # A TWO-WORD PLACE NAME IS STILL A PLACE.
+    #
+    # /hardin-valley is a Knoxville neighbourhood, and it passed every filter
+    # above: not in the schema locations, not a market the client typed, and
+    # two words long, so the shape test waved it through. It produced "Who
+    # should I hire for hardin valley in your area?"
+    #
+    # American place names end in a small, stable set of words. Matching the
+    # LAST word is a narrow test - "valley" as the head noun of a service is
+    # not a thing - and it catches the whole family: Oak Ridge, Powell Station,
+    # Farragut Heights.
+    _PLACE_TAIL = {
+        "valley", "heights", "hills", "hill", "park", "ridge", "city", "town",
+        "township", "springs", "spring", "beach", "lake", "lakes", "grove",
+        "creek", "falls", "harbor", "island", "junction", "mills", "plains",
+        "point", "shores", "station", "view", "village", "woods", "county",
+        "borough", "landing", "crossing", "meadows", "estates", "acres",
+    }
     services = [s for s in services
                 if s and s.lower() not in _NOT_A_SERVICE
                 and s.lower() not in places
                 and not any(p and p in s.lower() for p in places
                             if len(p) > 4)
                 and (" " in s.strip() or s.strip().lower()
-                     in _ONE_WORD_SERVICES)]
+                     in _ONE_WORD_SERVICES)
+                and s.strip().lower().split()[-1] not in _PLACE_TAIL]
 
     return ClientProfile(
         brand=brand, domain=domain, category=category,

@@ -12,10 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-83"
-BUILD_NOTES = ("ZIP codes resolve to their state, evidence shots are "
-               "checked for red in their own pixels, AI examples spread "
-               "across services")
+BUILD = "2026.08.20-84"
+BUILD_NOTES = ("Captures widen to the site, all three fit one page, a "
+               "neighbourhood is not a service, every strength gets its line")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

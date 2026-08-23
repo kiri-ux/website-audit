@@ -972,9 +972,20 @@ def _ai_intro(v) -> str:
     # WAS "assistant", which is what the industry calls these and not what a
     # client calls them. They are the things that now answer a search before
     # a list of links appears; "AI tools" needs no explaining and no glossary.
+    # WHY THE NUMBER MOVES BETWEEN RUNS.
+    #
+    # "8 questions" one month and "21" the next, with nothing saying why, and
+    # the obvious reading is that the tool is inconsistent. It is not: the
+    # panel is built from what the site publishes - five about the business by
+    # name, then a set for each service and each place it serves. A site with
+    # three services and two towns gets more questions than one with one
+    # service and no location pages, and that IS the right behavior. It just
+    # has to be said, in the sentence that reports the count.
     return (f"We posed {n} questions to {who} and recorded, for each "
             f"answer, whether it named you and whether it linked to your "
-            f"site.")
+            f"site. The set is built from your own site - a few about the "
+            f"business by name, then one group per service and location it "
+            f"publishes - so the count moves as the site does.")
 
 
 def _asked_by_name(question, brand) -> bool:
@@ -1334,11 +1345,26 @@ SECTION_MEANS = {
 
 def _strength(text, S, width=6.55 * inch):
     """One strength as a card, with a plain-English line about the area."""
+    # TWO NAME MAPS, AND THE CARDS WERE WRITTEN WITH THE OTHER ONE.
+    #
+    # engine/report calls it "HTTPS & Security"; engine/summarise, which
+    # writes these cards, calls it "HTTPS and security". Matching against one
+    # map meant any area whose two names differ got no plain-English line at
+    # all - the whole reason the card exists. Both maps, longest name first so
+    # "Search Console" cannot win inside "Google Search Console".
     from .report import SECTION_NAMES as _SN
+    from .summarise import SECTION_NAMES as _SN2
+    names = []
+    for src in (_SN, _SN2):
+        for code, name in src.items():
+            if SECTION_MEANS.get(code):
+                names.append((name.lower(), code))
+    names.sort(key=lambda x: -len(x[0]))
     low = (text or "").lower()
-    means = []
-    for code, name in _SN.items():
-        if name.lower() in low and SECTION_MEANS.get(code):
+    means, seen_codes = [], set()
+    for name, code in names:
+        if name in low and code not in seen_codes:
+            seen_codes.add(code)
             means.append(SECTION_MEANS[code])
         if len(means) == 2:
             break
@@ -1582,7 +1608,7 @@ def _evidence(meta, S, catalog=None):
     if not shots:
         return []
     from reportlab.platypus import Image as RLImage
-    head = [Paragraph("What This Looks Like", S["h2"]),
+    head = [Paragraph("The Problems, On Your Pages", S["h2"]),
             _rule(),
            # WAS: "Captured from your live site. Red outlines mark the
            # elements the check flagged." Two problems: it described our
@@ -1590,15 +1616,33 @@ def _evidence(meta, S, catalog=None):
            # only some findings have — an HTTPS failure has nothing on the
            # page to outline, so the reader hunts for a mark that was never
            # drawn.
-            Paragraph("Pages as they loaded, with the thing each check "
-                      "flagged outlined in red.", S["small"]),
+            # WAS "What This Looks Like" over "pages as they loaded, with the
+            # thing each check flagged outlined in red" - a title that names
+            # nothing and a line that describes our method. The question it
+            # left was the right one: what is the red box around? Each caption
+            # answers that for its own picture; the heading just has to say
+            # what the section is.
+            Paragraph("Your own pages, with the exact thing a check flagged "
+                      "outlined in red. The caption under each says what the "
+                      "outline is around.", S["small"]),
             Spacer(1, 8)]
     out = []
+    # ALL OF THEM ON ONE PAGE.
+    #
+    # Three shots at full measure is twelve inches of picture, so the section
+    # ran to two pages and the third shot sat alone under nothing. The page
+    # has about nine inches once the heading and the captions are paid for -
+    # so the shots are sized to fit the page they are on rather than to fill
+    # the measure.
+    n_shots = len(shots[:3])
+    room = (9.1 * inch - 0.75 * inch) / max(1, n_shots)      # heading + rules
     for sh in shots[:3]:
         try:
             iw, ih = _png_size(sh["png"])
-            sw = 6.4 * inch
-            full = sw * ((ih / iw) if (iw and ih) else 820 / 1280)
+            ratio = (ih / iw) if (iw and ih) else 820 / 1280
+            # Width first, then shrink to the height this page can give it.
+            sw = min(6.4 * inch, (room - 0.32 * inch) / ratio)
+            full = sw * ratio
             # A CAPTURE TALLER THAN A PAGE CANNOT BE LAID OUT AS ONE FLOWABLE.
             #
             # Our own captures are a 1280x820 viewport and fit comfortably.
@@ -1607,7 +1651,7 @@ def _evidence(meta, S, catalog=None):
             # thirty inches tall, and what comes out is a strip at the top of
             # an otherwise blank page. Cap the box and crop to the top, the
             # way the cover shot does.
-            img = Shot(sh["png"], sw, min(full, 4.6 * inch), draw_h=full)
+            img = Shot(sh["png"], sw, full, draw_h=full)
         except Exception:
             continue
         # WHAT IS ACTUALLY MARKED, NOT THE CHECKPOINT'S NAME.
@@ -1628,8 +1672,8 @@ def _evidence(meta, S, catalog=None):
         out.append(KeepTogether([img, Spacer(1, 3), cap, Spacer(1, 14)]))
     if not out:
         return []
-    # The heading travels with the first shot; the rest follow.
-    return [KeepTogether(head + [out[0]])] + out[1:]
+    # One block: the heading and every shot, together or not at all.
+    return [KeepTogether(head + out)]
 
 
 def _severity_counts(findings: dict) -> dict:

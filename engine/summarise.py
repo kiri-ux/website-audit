@@ -236,7 +236,13 @@ SECTION_PROBLEM_TITLE = {
     "GEO": "The site is not set up to be cited by AI assistants",
     "OFF": "Off-site authority is behind",
     "GSC": "Search Console data is not available to us",
-    "GA4": "Analytics data is not available to us",
+    # WAS "Analytics data is not available to us", printed above evidence
+    # reading "No conversions recorded for organic search". Those are two
+    # different statements and the pair reads as neither: the finding is that
+    # nothing is being counted, and the reason is that the events are not set
+    # up. "Not available to us" is our access problem, and it belongs on the
+    # rows that are actually about access.
+    "GA4": "Conversions are not being counted",
 }
 
 
@@ -381,6 +387,15 @@ SERVICE_BY_SECTION = {
            "measurable before campaign work begins.",
     "GSC": "We get access set up and reporting configured during onboarding.",
     "GA4": "We get access set up and reporting configured during onboarding.",
+    # CONSENT IS A TAG CHANGE, AND SAYING SO IS THE POINT.
+    #
+    # It fell through to the generic "We handle this as part of the build. It
+    # is scoped into the engagement, not billed separately." - which answers a
+    # billing question nobody asked, under a heading that promises to say what
+    # we DO. The work is in the tag container, and naming it is what makes the
+    # line worth reading.
+    "CONS": "We make the container tag changes that hold the marketing "
+            "pixels until consent is given.",
 }
 
 
