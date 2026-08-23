@@ -1891,11 +1891,44 @@ def audit_html(a):
                    f"<span class='sm' style='color:var(--muted);"
                    f"margin-left:9px'>keeps whatever has been answered"
                    f"</span></form>")
+            # HOW LONG IT HAS BEEN SAYING THAT.
+            #
+            # "been stuck on this page a while - does something seem broken?"
+            # The message was true, the run was alive, and the page still could
+            # not answer the question - because a status with no age on it
+            # reads the same at ten seconds and at nine minutes. Until the
+            # stall detector fires at STALE_AFTER_S there was NOTHING on screen
+            # that changed, so the only way to tell a working run from a dead
+            # one was to wait out the ten minutes and see.
+            #
+            # The age is always shown, so the reader can watch it reset instead
+            # of inferring progress from a spinner that spins either way. Past
+            # a couple of minutes it also says what long looks like for this
+            # phase, because "4 minutes" only means something next to a normal.
+            _age = int(_time.time() - float(hb)) if hb else None
+            if _age is None:
+                since = ""
+            elif _age < 90:
+                since = (f"<span class='sm' style='color:var(--muted)'>"
+                         f"updated {_age}s ago</span>")
+            else:
+                _m = _age // 60
+                since = (f"<span class='sm' style='color:var(--warning)'>"
+                         f"updated {_m} minute{'s' if _m != 1 else ''} ago"
+                         f"</span>")
+            _slow = ("<p class='sub'>Steps that take a few minutes on their "
+                     "own: the AI assistants, the reputation scan, and the "
+                     "evidence screenshots. This page marks the run as "
+                     "stopped if nothing moves for "
+                     f"{STALE_AFTER_S // 60} minutes.</p>"
+                     if _age is not None and _age >= 120 else "")
             inner = (rail + f"<div class='marks'>{marks}</div>"
                      f"<div class='card' style='margin-top:16px'>"
                      f"<span class='spin'></span> <b>{e(a.get('progress') or cur)}</b>"
+                     f"&nbsp; {since}"
                      f"<p class='sub'>This page refreshes automatically. A full crawl "
-                     f"of 150 pages typically takes 2–5 minutes.</p>{act}</div>")
+                     f"of 150 pages typically takes 2–5 minutes.</p>"
+                     f"{_slow}{act}</div>")
             # Six seconds, not four. Every refresh is a full page render and a
             # fresh database connection, and the phase this page is most often
             # watching is now the longest one in the run.

@@ -781,7 +781,14 @@ def _reputation(a, audit_id, extras, step):
                   flush=True)
             return
         step("checking", f"reading the public record for {brand}")
-        rep = reputation.profile(brand, a.get("target_url") or "")
+        _SAYS = {"locations": "finding the Google listings",
+                 "serp": f"reading page one for “{brand} reviews”",
+                 "terms": "measuring brand searches",
+                 "autocomplete": "reading Google's own suggestions"}
+        rep = reputation.profile(
+            brand, a.get("target_url") or "",
+            progress=lambda name: step("checking",
+                                       _SAYS.get(name, f"reputation: {name}")))
         rep["summary"] = reputation.summarize(rep)
         extras["reputation"] = rep
         s = rep["summary"]
@@ -965,7 +972,42 @@ def _score_and_save(a, opts, audit_id, art, findings, extras, step):
     # challenge page and captioning it as the client's site.
     if (not art.quality.degenerate and not opts.get("skip_screenshots")
             and screenshots.available()):
-        step("scoring", "capturing evidence screenshots")
+        # ONE step() FOR FOUR BROWSER LAUNCHES WAS A TEN-MINUTE BLIND SPOT.
+        #
+        # "been stuck on this page a while - does something seem broken?" The
+        # page was not broken and neither was the run; the page simply had
+        # nothing to say. This block stamped ONE heartbeat and then launched
+        # Chromium four times against a live site with no further word, and
+        # three separate things hang off that silence:
+        #
+        #   * THE MESSAGE NEVER MOVES. "capturing evidence screenshots" is
+        #     identical at second 2 and second 400, so there is no way to tell
+        #     progress from a hang by looking - which is the whole job of the
+        #     page.
+        #   * STOP DOES NOTHING. Cancel is read inside step(), so with no step
+        #     calls there is no checkpoint to read it, and the button sits on
+        #     "stopping" until the phase ends on its own.
+        #   * STALE FIRES ON A HEALTHY RUN. The heartbeat is what the stall
+        #     detector reads. A block that can outlast STALE_AFTER_S while
+        #     working perfectly gets reported as a dead container.
+        #
+        # A heartbeat per capture fixes all three, because in this codebase
+        # they are one thing. And the budget below makes good on the promise
+        # the comment above has been making all along - a browser that hangs
+        # costs a picture, not the report - which until now nothing enforced.
+        SHOT_BUDGET_S = float(os.getenv("SHOT_BUDGET_S", "240"))
+        _shots_start = time.time()
+
+        def _shot_room(label):
+            left = SHOT_BUDGET_S - (time.time() - _shots_start)
+            if left <= 0:
+                print(f"[worker] {audit_id} screenshot budget spent "
+                      f"({SHOT_BUDGET_S:.0f}s); skipping {label} and moving "
+                      f"on with what was captured", flush=True)
+                return False
+            return True
+
+        step("scoring", "capturing the homepage")
         shots = []
         # THE HOMEPAGE, UNMARKED, FOR THE FRONT OF THE REPORT.
         #
@@ -984,9 +1026,22 @@ def _score_and_save(a, opts, audit_id, art, findings, extras, step):
             print(f"[worker] {audit_id} homepage shot failed: "
                   f"{type(exc).__name__}: {exc}", flush=True)
         cat_now = db.catalog()
-        for cid, url, sel, caption in screenshots.pick_targets(
-                findings, cat_now, art.start_url, limit=3):
-            png = screenshots.capture(url, sel)
+        targets = list(screenshots.pick_targets(
+            findings, cat_now, art.start_url, limit=3))
+        for i, (cid, url, sel, caption) in enumerate(targets, start=1):
+            if not _shot_room(f"evidence shot {i} of {len(targets)}"):
+                break
+            # Every capture is now a heartbeat AND a cancel checkpoint, which
+            # is the same call because step() is both.
+            step("scoring", f"capturing evidence {i} of {len(targets)}")
+            try:
+                png = screenshots.capture(url, sel)
+            except Cancelled:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                print(f"[worker] {audit_id} evidence shot {cid} failed: "
+                      f"{type(exc).__name__}: {exc}", flush=True)
+                continue
             if not png:
                 continue
             name = f"evidence_{cid.replace('/', '_')}.png"

@@ -214,6 +214,122 @@ def main():
     check("the decoder reads what Chromium emits",
           (_rows(_png(8, 4, MARK_RGB)) or [None])[0] == 8)
 
+    # ---------- a long phase has to keep talking ----------
+    #
+    # The screenshot block launched a browser four times behind ONE heartbeat.
+    # That single omission is three separate faults, because in this worker
+    # the heartbeat, the progress message and the cancel checkpoint are all
+    # the same call:
+    #
+    #   * the operator sees a message that cannot change for the length of the
+    #     phase, and reasonably asks whether the thing is broken;
+    #   * Stop has no checkpoint to land on;
+    #   * and the stall detector reads a working run as a dead container.
+    #
+    # So: a step per capture, a cancel that lands mid-phase, and a wall-clock
+    # budget that makes good on "a browser that hangs costs us a picture
+    # rather than the report" - which was a comment, not a mechanism.
+    print("\nA LONG PHASE KEEPS TALKING")
+    import types
+    from app import worker as _w
+
+    _beats, _captured = [], []
+
+    class _Art:
+        start_url = f"http://localhost:{FIXTURE_PORT}/"
+        quality = types.SimpleNamespace(degenerate=False, likely_cause="",
+                                        signals=[])
+        truncated = False
+        pages = {}
+
+        def to_json(self):
+            return "{}"
+
+    def _fake_capture(url, sel=None):
+        _captured.append(url)
+        return _png(20, 20, MARK_RGB)
+
+    _real = {"cap": _w.screenshots.capture, "ok": _w.screenshots.available,
+             "pick": _w.screenshots.pick_targets, "put": _w.put_artifact,
+             "save": _w.db.save_findings, "cat": _w.db.catalog,
+             "upd": _w.db.update_audit}
+    try:
+        _w.screenshots.capture = _fake_capture
+        _w.screenshots.available = lambda: True
+        _w.screenshots.pick_targets = lambda *a, **k: [
+            (f"TECH-0{i}", f"http://localhost:{FIXTURE_PORT}/", ".x", "c")
+            for i in (1, 2, 3)]
+        _w.put_artifact = lambda *a, **k: None
+        _w.db.save_findings = lambda *a, **k: None
+        _w.db.catalog = lambda *a, **k: {}
+        _w.db.update_audit = lambda *a, **k: None
+
+        def _step(status, progress):
+            _beats.append(progress)
+
+        _ex = {}
+        _w._score_and_save({"id": "T1", "target_url": _Art.start_url,
+                            "client_name": "T"},
+                           {"skip_collectors": True, "skip_judgment": True},
+                           "T1", _Art(), {}, _ex, _step)
+        check("every capture stamps its own heartbeat", len(_beats) >= 4,
+              f"{len(_beats)} beat(s): {_beats[:5]}")
+        check("and the message actually changes",
+              len(set(_beats)) >= 4, str(set(_beats)))
+        check("all four shots still taken", len(_captured) == 4,
+              str(len(_captured)))
+
+        # Stop, landing mid-phase rather than at the end of it.
+        _beats.clear(); _captured.clear()
+        _n = {"i": 0}
+
+        def _stepc(status, progress):
+            _beats.append(progress)
+            _n["i"] += 1
+            if _n["i"] == 3:
+                raise _w.Cancelled()
+
+        try:
+            _w._score_and_save({"id": "T2", "target_url": _Art.start_url,
+                                "client_name": "T"},
+                               {"skip_collectors": True, "skip_judgment": True},
+                               "T2", _Art(), {}, {}, _stepc)
+            check("Stop lands inside the screenshot phase", False, "not raised")
+        except _w.Cancelled:
+            check("Stop lands inside the screenshot phase", True)
+            check("and it stops early, not after every shot",
+                  len(_captured) < 4, f"{len(_captured)} captured")
+
+        # The budget: a capture that hangs must cost pictures, not the report.
+        _captured.clear()
+        os.environ["SHOT_BUDGET_S"] = "0.4"
+
+        def _slow(url, sel=None):
+            _captured.append(url)
+            time.sleep(0.5)
+            return _png(20, 20, MARK_RGB)
+
+        _w.screenshots.capture = _slow
+        _ex2 = {}
+        _w._score_and_save({"id": "T3", "target_url": _Art.start_url,
+                            "client_name": "T"},
+                           {"skip_collectors": True, "skip_judgment": True},
+                           "T3", _Art(), {}, _ex2, lambda s, p: None)
+        check("a slow browser costs pictures, not the run",
+              len(_captured) < 4, f"{len(_captured)} captured before the budget")
+        check("and whatever was captured is kept",
+              len(_ex2.get("screenshots") or []) >= 1,
+              str(len(_ex2.get("screenshots") or [])))
+    finally:
+        os.environ.pop("SHOT_BUDGET_S", None)
+        _w.screenshots.capture = _real["cap"]
+        _w.screenshots.available = _real["ok"]
+        _w.screenshots.pick_targets = _real["pick"]
+        _w.put_artifact = _real["put"]
+        _w.db.save_findings = _real["save"]
+        _w.db.catalog = _real["cat"]
+        _w.db.update_audit = _real["upd"]
+
     print("\n" + "=" * 68)
     print(f"  {len(FAILURES)} FAILED: {FAILURES}" if FAILURES
           else "  ALL CHECKS PASSED — browser capture is equivalent to a server crawl")

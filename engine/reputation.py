@@ -467,7 +467,8 @@ def reviews_collect(task_ids):
 # One entry point, so the worker does not have to know which of the four calls
 # answers what - and so a failure in any one of them costs that panel rather
 # than the section.
-def profile(brand: str, domain: str = "", locations_limit: int = 50) -> dict:
+def profile(brand: str, domain: str = "", locations_limit: int = 50,
+            progress=None) -> dict:
     """
     Everything the reputation section renders, or an honest empty.
 
@@ -477,6 +478,13 @@ def profile(brand: str, domain: str = "", locations_limit: int = 50) -> dict:
     error than losing the section, and a panel that failed says so rather than
     rendering as "nothing found", which is the difference between "no
     complaints exist" and "we did not look".
+
+    `progress(name)` is called before each scan. It is not decoration: four
+    scans, each able to spend a 90-second timeout and a rate-limit wait on top
+    of it, sit behind a single status message otherwise - and a phase that can
+    run longer than the stall detector's patience without saying a word gets
+    reported to the operator as a dead worker. Same lesson as the screenshot
+    block; see the note there.
     """
     out = {"brand": brand, "domain": domain, "ok": False, "errors": {}}
     if not configured():
@@ -490,6 +498,8 @@ def profile(brand: str, domain: str = "", locations_limit: int = 50) -> dict:
                      ("terms", lambda: scan_terms(brand)),
                      ("autocomplete", lambda: scan_autocomplete(brand))):
         try:
+            if progress:
+                progress(name)
             out[name] = fn()
         except Exception as exc:  # noqa: BLE001
             out["errors"][name] = f"{type(exc).__name__}: {exc}"
