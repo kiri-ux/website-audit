@@ -759,9 +759,14 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
             f"{SECTION_NAMES.get(code, code)} is in good shape at {v['score']} out "
             f"of 100 — {v['failing']} open item"
             f"{'s' if v['failing'] != 1 else ''} against {passes} passing.")
-    if not working:
-        working.append("No area came back Strong. That's unusual, and it means "
-                       "the fixes below are foundations rather than tuning.")
+    # NO STRENGTHS MEANS NO STRENGTHS SECTION.
+    #
+    # This filled the gap with "No area came back Strong. That's unusual, and
+    # it means the fixes below are foundations rather than tuning." Under a
+    # heading that says Current Strengths, on a document going to a paying
+    # client, that is a section whose only content is that they have none -
+    # and the reader has to get past it to reach the work. An empty list is
+    # left empty; the renderer skips the heading.
 
     # ---------- Priority Issues ----------
     issues = []

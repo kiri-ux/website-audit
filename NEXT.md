@@ -1,25 +1,23 @@
-# 2026.08.20-66
+# 2026.08.20-67
 
 **Do**
 
-- Upload the zip.
-- Reload a report and re-open its PDF. Most of this is render-time.
+- Upload the zip. It re-includes `app/ui.py`, `engine/preflight.py` and
+  `tests/test_preflight.py` - your form still shows the pre-60 labels, which
+  means those three never landed.
+- Re-run: Full audit + Consent check, all four phases ticked, Ask the AI
+  assistants ON, Reuse the last crawl ON.
 
 **Check**
 
-- `/api/capabilities` now reports fonts and AI platforms. Confirm
-  `"fonts": {"body": "GT Walsheim Pro", "headings": "Agdasima", "missing": []}`
-  and that chatgpt and perplexity have left `ai_missing`.
-- Homepage screenshot near the top, rounded with a shadow.
-- AI Search section names the platforms and lists example questions.
-- Headings never sit alone at the foot of a page.
-- URLs in findings are short blue links, not printed in full.
-
-**Needs a rerun** (written at scan time)
-
-- Judgment wording, the example questions, the homepage shot, and the
-  unmeasured-not-High severity rule.
+- The form's Browser user-agent and Render JavaScript pills read
+  "auto - tick to force". If they still say "if the site blocks bots", ui.py
+  did not upload.
+- Consent rows say "No issue seen", never "Pass", and the section opens with
+  a disclaimer.
+- No Current Strengths heading when there are no strengths.
+- AI Search names the platforms and lists example questions.
 
 **Pending**
 
-- Pick a word to replace "Pass".
+- Nothing outstanding.

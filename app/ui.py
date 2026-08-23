@@ -981,10 +981,10 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
             <span class='note'>no new requests to their site</span></label>
           <label class='ph'><input type='checkbox' name='browser_ua' value='1'
             form='auditform'><span class='tick'>{TICK}</span>
-            Browser user-agent <span class='note'>if the site blocks bots</span></label>
+            Browser user-agent <span class='note'>auto \u2014 tick to force</span></label>
           <label class='ph'><input type='checkbox' name='render_js' value='1'
             form='auditform'><span class='tick'>{TICK}</span>
-            Render JavaScript <span class='note'>slower; for SPA sites</span></label>
+            Render JavaScript <span class='note'>auto \u2014 tick to force</span></label>
         </div>
         <div style='margin-top:10px;max-width:200px'>
           <label>Max pages</label>

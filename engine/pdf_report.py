@@ -513,7 +513,21 @@ for _raw, _shown in STATUS_LABEL.items():
     STATUS_PILL[_shown] = STATUS_PILL[_raw]
 
 
-def _status_word(status: str) -> str:
+# CONSENT IS A LEGAL QUESTION, AND "PASS" IS A LEGAL OPINION.
+#
+# Everywhere else in this report "Pass" means a measurement came back clean,
+# and that is fine. On a consent row it reads as "you are compliant", which is
+# a conclusion about liability that a scan of one browser, in one location, at
+# one moment cannot support - and that we are not qualified to give.
+#
+# The measurement is unchanged and the scoring is unchanged; only the word a
+# client reads is different. "No issue seen" says exactly what happened.
+CONSENT_LABEL = {"Pass": "No issue seen"}
+
+
+def _status_word(status: str, cid: str = "") -> str:
+    if str(cid).upper().startswith("CONS-"):
+        return CONSENT_LABEL.get(status, STATUS_LABEL.get(status, status))
     return STATUS_LABEL.get(status, status)
 
 
@@ -1822,6 +1836,25 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             ("RIGHTPADDING", (0, 0), (-1, -1), 0),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
         ]))
+        # A SCAN IS NOT A COMPLIANCE OPINION, AND THIS SECTION IS THE ONE
+        # WHERE THAT MATTERS.
+        #
+        # Every other area here is a technical judgment we can stand behind.
+        # Consent is law, it varies by state, it changes, and this is one
+        # browser in one location at one moment. Saying so once, at the top of
+        # the section, is the difference between reporting what fired and
+        # appearing to certify that a client is in the clear.
+        _pre = []
+        if k == "CONS":
+            _pre = [_banner("", "What this section is. A record of what the "
+                                "site did during one automated visit - which "
+                                "tags fired, when, and what the banner did. "
+                                "Privacy law varies by state and changes; "
+                                "this is not a legal opinion and does not "
+                                "certify compliance. Use it to decide what to "
+                                "fix and, where it matters, what to take to "
+                                "counsel.", ATLAS, S),
+                    Spacer(1, 8)]
         data = [[Paragraph("<b>ID</b>", S["cellsm"]),
                  Paragraph("<b>Check</b>", S["cellsm"]),
                  Paragraph("<b>Status</b>", S["cellsm"]),
@@ -1861,7 +1894,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
             data.append([ident,
                          Paragraph(_p(m.get("checkpoint")), S["cell"]),
-                         _pill(_status_word(f["status"]), STATUS_PILL, S,
+                         _pill(_status_word(f["status"], cid), STATUS_PILL, S,
                                0.86 * inch),
                          Paragraph(_linkify(_agree(_p(f.get("evidence")))),
                                    S["cell"])])
@@ -1876,6 +1909,8 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
         t.setStyle(TableStyle(st))
         story.append(Spacer(1, 8))
         story.append(head)
+        for _fl in _pre:
+            story.append(_fl)
         # Any jargon this section introduces that the reader has not met yet.
         from .glossary import terms_used as _tu
         section_terms = set(_tu(SECTION_NAMES[k], limit=99))
