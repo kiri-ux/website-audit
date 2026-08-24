@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-90"
-BUILD_NOTES = ("Strength cards show the score alone, thin-content checks can "
-               "finally be photographed, and the tab pulse runs after the "
-               "page it decorates instead of before it")
+BUILD = "2026.08.20-91"
+BUILD_NOTES = ("The biggest opportunity is now what earns money rather than "
+               "what scores lowest, every missed AI answer carries the move "
+               "that would win it, and the AI copy stops repeating itself")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

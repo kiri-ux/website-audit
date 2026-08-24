@@ -232,6 +232,44 @@ def main():
     # single most-read paragraph in the document was all diagnosis and no
     # offer - "this isn't the full picture" was exactly right. Every finding
     # further down already carries its scope line; this one did not.
+    # THE HEADLINE GOES TO WHAT EARNS MONEY, NOT TO THE LOWEST SCORE.
+    #
+    # Consent scored 30 on a real audit, won the slot on score alone, and the
+    # most prominent paragraph in a document sold to a law firm was about
+    # cookie banners. "Fixing the consent of the site doesn't drive business"
+    # - correct, and the ranking now multiplies the gap by what the area is
+    # worth. A genuine consent emergency still wins over a healthy area,
+    # which is the property worth testing in both directions.
+    from engine.summarise import build_summary as _bs
+
+    def _summary_for(rows):
+        _c, _f, _sec = {}, {}, {}
+        for code, n, fail, score in rows:
+            for i in range(1, n + 1):
+                cid = f"{code}-{i:02d}"
+                _c[cid] = {"prefix": code, "checkpoint": f"{code} check {i}",
+                           "section": code, "tool": "Crawl"}
+                _f[cid] = {"status": "Fail" if i <= fail else "Pass",
+                           "severity": "High", "evidence": "x",
+                           "recommendation": "y", "confidence": 1.0,
+                           "source": "crawl", "value": {}, "affected_pages": []}
+            _sec[code] = {"score": score, "rating": "Weak", "checked": n,
+                          "total": n, "failing": fail}
+        return _bs(_f, {"overall": {"score": 62, "rating": "Needs Improvement"},
+                        "sections": _sec}, _c, {"client": "T",
+                                                "vertical": "local_service"})
+
+    _o1 = _summary_for([("CONS", 6, 6, 30), ("GEO", 8, 5, 45),
+                        ("ONP", 10, 4, 60), ("HTML", 9, 1, 94)])["opportunity"]
+    check("a demand-generating area beats a lower-scoring compliance one",
+          "AI Search" in _o1, _o1[:70])
+    # And the escape hatch: consent at 10 against a healthy AI area must still
+    # take the slot, or the weighting has simply buried a real problem.
+    _o2 = _summary_for([("CONS", 6, 6, 5), ("GEO", 8, 1, 92),
+                        ("ONP", 10, 1, 90), ("HTML", 9, 1, 94)])["opportunity"]
+    check("a genuine compliance emergency still wins the slot",
+          "Consent" in _o2, _o2[:70])
+
     _opp = str(s.get("opportunity") or "")
     if _opp:
         check("the biggest opportunity says what we would do about it",

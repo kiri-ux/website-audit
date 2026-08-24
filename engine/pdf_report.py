@@ -1030,11 +1030,15 @@ def _ai_intro(v) -> str:
     # three services and two towns gets more questions than one with one
     # service and no location pages, and that IS the right behavior. It just
     # has to be said, in the sentence that reports the count.
+    # "- so the count moves as the site does" was written to answer "how do
+    # you decide how many questions?", which is a question about our tooling
+    # asked by us. The client did not ask it and does not need the answer in
+    # the first sentence of their section.
     return (f"We posed {n} questions to {who} and recorded, for each "
             f"answer, whether it named you and whether it linked to your "
             f"site. The set is built from your own site - a few about the "
             f"business by name, then one group per service and location it "
-            f"publishes - so the count moves as the site does.")
+            f"publishes.")
 
 
 def _asked_by_name(question, brand) -> bool:
@@ -1305,6 +1309,35 @@ def _ai_examples(v, S, brand=""):
             inner += [Spacer(1, 5),
                       Paragraph(f"<font color='#52514e'>\u201c{_p(ans)}"
                                 f"\u201d</font>", S["cellsm"])]
+
+        # AND WHAT WE WOULD DO ABOUT IT.
+        #
+        # "These two examples are the big money makers - when they aren't
+        # referenced they're not being recommended." Exactly right, and the
+        # card stopped one line short of saying so: it named the question, the
+        # tool and who got linked instead, and left the reader to work out
+        # both the consequence and the move.
+        #
+        # The move is not generic. When the answer was built out of Avvo and
+        # Justia, the route in is a profile on Avvo and Justia - a form, this
+        # month. When it cited nobody we can name, there is no shortcut and
+        # the work is the page itself. Saying which of those applies, per
+        # question, is the difference between a finding and a plan.
+        if not cited:
+            _dirs = [d for d in others if _listable(str(d))]
+            if _dirs:
+                todo = ("<b>What we would do.</b> Get you listed and complete "
+                        "on " + _listy_pdf(_dirs) + ", because that is where "
+                        "this answer was built from.")
+            elif others:
+                todo = ("<b>What we would do.</b> Build the page that answers "
+                        "this question better than "
+                        + _listy_pdf(others) + " does, and get it cited.")
+            else:
+                todo = ("<b>What we would do.</b> Write the page that answers "
+                        "this question directly - nothing it found was worth "
+                        "linking to, which is an opening.")
+            inner += [Spacer(1, 5), Paragraph(todo, S["cellsm"])]
 
         pill = _pill("Linked to you" if cited else "Did not link",
                      {"Linked to you": GOOD, "Did not link": BAD}, S,
@@ -1865,6 +1898,24 @@ _LISTABLE = {
     "homeadvisor.com", "porch.com", "buildzoom.com", "nextdoor.com",
 }
 
+def _listable(domain: str) -> bool:
+    """
+    Is this a site that would list the client if they asked?
+
+    SUBDOMAINS COUNT. `attorneys.superlawyers.com` is Super Lawyers, and an
+    exact-match test filed it under "someone else's website, which you cannot
+    join" - the one label that tells the reader to stop reading that row. The
+    directories publish under whatever host they like; the registrable name is
+    the fact.
+    """
+    d = (domain or "").lower().strip().rstrip(".")
+    if d.startswith("www."):
+        d = d[4:]
+    if d in _LISTABLE:
+        return True
+    return any(d.endswith("." + known) for known in _LISTABLE)
+
+
 # Somebody else's plumbing, not a source. See the share-of-voice note.
 _NOT_A_SOURCE = {"vertexaisearch.cloud.google.com", "google.com",
                  "webcache.googleusercontent.com", "bing.com",
@@ -1914,8 +1965,11 @@ def _ai_sources(v, S, rep=None):
         dom = str(d["domain"]).lower().replace("www.", "")
         if d.get("is_client"):
             kind, pal = "YOURS", _OWN
-            on = "—"
-        elif dom in _LISTABLE:
+            # It is their website. Printing a dash in a column headed "You on
+            # it?" against their own domain reads as "we could not tell",
+            # which is the one row where we certainly can.
+            on = "Yes"
+        elif _listable(dom):
             kind, pal = "DIRECTORY", _DIR
             listable += 1
             on = ("Yes" if dom in known else "No sign of you") if checked \
@@ -1946,20 +2000,30 @@ def _ai_sources(v, S, rep=None):
         ("TOPPADDING", (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
 
-    lead = ("These are the pages the assistants read before answering. The "
-            "ones marked DIRECTORY are the ones you can do something about "
-            "this month: a profile there is a form, not a campaign.")
+    # WAS "Where those answers came from" - accurate, and it describes our
+    # method rather than their opportunity. The reader does not want a source
+    # list, they want to know how to get into the answers.
+    #
+    # And DIRECTORY was used as a column value before anything said what one
+    # is. It is the load-bearing word in the section: the whole point is that
+    # some of these sites will list you if you ask, and the rest will not.
+    lead = ("When an assistant answers a question about lawyers in your area, "
+            "it builds that answer out of these websites. Some of them are "
+            "<b>directories</b> - sites like Avvo or Justia that list any "
+            "firm that signs up. Those are the ones you can act on this "
+            "month, because getting listed is a form rather than a campaign. "
+            "The rest are other firms' own websites, which you cannot join.")
     if checked and listable:
         _missing = [str(d["domain"]).lower().replace("www.", "")
                     for d in sov[:8]
                     if not d.get("is_client")
-                    and str(d["domain"]).lower().replace("www.", "") in _LISTABLE
+                    and _listable(str(d["domain"]))
                     and str(d["domain"]).lower().replace("www.", "") not in known]
         if _missing:
             lead += (" We found no sign of you on " + _listy_pdf(_missing)
                      + ", and the assistants are citing them.")
     out = [Spacer(1, 14),
-           KeepTogether([Paragraph("Where those answers came from", S["h3"]),
+           KeepTogether([Paragraph("How to get into the answers", S["h3"]),
                          Paragraph(lead, S["small"]), Spacer(1, 6), t])]
     # The gap sentence came off the old grid. It is the one comparison in the
     # section a client repeats out loud.
@@ -1997,17 +2061,21 @@ def _ai_gate(findings, S):
         return []
     blocked = list((f.get("value") or {}).get("blocked") or [])
     if blocked:
-        body = ("Your robots.txt tells " + _listy_pdf(blocked) + " not to "
-                "read the site. Until that changes, the numbers above are a "
-                "consequence of a setting rather than a measure of your "
-                "content - an assistant cannot cite a page it is not allowed "
-                "to fetch. This is usually a security plugin or a CDN bot "
-                "rule rather than a decision anybody made.")
+        body = ("Your site is telling " + _listy_pdf(blocked) + " not to "
+                "read it. An assistant cannot quote a page it is not allowed "
+                "to open, so the numbers above are measuring that block, not "
+                "your content. Usually a security plugin or a firewall "
+                "setting rather than a decision anybody made - and a one-line "
+                "change to fix.")
         tone = colors.HexColor("#A6192E")
     else:
-        body = ("Your robots.txt lets the AI crawlers read the site, so "
-                "nothing above is explained by access. That matters because "
-                "it is the cheapest possible cause and it has been ruled out.")
+        # WAS: "nothing above is explained by access. That matters because it
+        # is the cheapest possible cause and it has been ruled out." A double
+        # negative wrapped around a piece of our own reasoning. The client
+        # needs one fact: they are allowed in.
+        body = ("Your site allows the AI crawlers in, so whatever the numbers "
+                "above say, they are about your content rather than about a "
+                "setting blocking access.")
         tone = colors.HexColor("#1E7A45")
     return [Spacer(1, 12),
             KeepTogether([Paragraph("Can the assistants read your site?",
@@ -2109,15 +2177,15 @@ def _ai_visibility(meta, S, findings=None):
         _rep = v.get("repeats") or 1
         _asked = ("each question asked "
                   f"{_rep} time{'s' if _rep != 1 else ''}")
+        # WAS four clauses, a parenthesis and a justification of our own
+        # method. The reader needs two things: the range, and the rule for
+        # reading next month's number against it.
         out += [Spacer(1, 10), Paragraph(
-            f"<b>How firm are these numbers?</b> They come from "
-            f"{_ci['n']:,} answers, {_asked}. These systems do not answer "
-            f"identically twice, so the linked-to figure is "
-            f"<b>{cite}%, give or take {_pm} points</b> "
-            f"({_ci['low']}–{_ci['high']}%). A change smaller than that "
-            f"between one month and the next is the tools varying, not your "
-            f"visibility moving - which is why we quote a range rather than "
-            f"a single number.", S["small"])]
+            f"<b>How firm is that?</b> We asked every question {_rep} times "
+            f"({_ci['n']:,} answers in total), because these tools do not "
+            f"answer the same way twice. The real figure is "
+            f"<b>{cite}%, give or take {_pm} points</b>. Treat a move smaller "
+            f"than that next month as noise.", S["small"])]
 
     # ---- MARKET BY MARKET ------------------------------------------------
     #
@@ -2165,14 +2233,14 @@ def _ai_visibility(meta, S, findings=None):
     out += _ai_sources(v, S, rep=(meta.get("extras") or {}).get("reputation"))
     out += _ai_examples(v, S, brand=_brand)
 
-    if ment > cite:
-        out.append(Spacer(1, 8))
-        out.append(_banner("", f"Being named is not the same as being linked "
-                               f"to. These tools said your name in {ment}% of "
-                               f"answers and linked to your site in only "
-                               f"{cite}% - so they already know who you are, "
-                               f"and are sending the reader somewhere else "
-                               f"for the detail.", SEQ, S))
+    # THE BANNER SAYING NAMED-IS-NOT-LINKED HAS BEEN REMOVED.
+    #
+    # By the time a reader reached it they had been told the same thing three
+    # times: the two tiles print both rates side by side with labels that
+    # distinguish them, the example cards are built around the distinction and
+    # explain it in their own subhead, and the intro paragraph says it in the
+    # first sentence. A fourth restatement in a tinted box did not stress
+    # the point, it made the section look like it was padding.
 
     # A GOOGLE REDIRECT IS NOT A COMPETITOR.
     #

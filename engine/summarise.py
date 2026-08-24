@@ -363,8 +363,18 @@ SERVICE_ACTION = {
              "Vitals — runs through the technical phase.",
     "mobile": "We resolve the mobile rendering issues alongside the performance "
               "work.",
-    "ai_access": "We open up assistant access and build the files AI engines "
-                 "look for, then track whether you start getting cited.",
+    # THE DIRECTORY PLAY BELONGS IN THE SCOPE LINE.
+    #
+    # This described a config change and a wait. For a local service business
+    # that is the smaller half: the assistants build their answers out of the
+    # directories that list every firm in the county, so the fastest route
+    # into an answer is a complete profile on the ones they actually read -
+    # which the report now names, per question. Opening up crawler access is
+    # the precondition, not the plan.
+    "ai_access": "We open up assistant access, get you listed and complete on "
+                 "the directories these tools actually read, build the pages "
+                 "that answer the questions your buyers are asking, and track "
+                 "which answers start citing you.",
     "authority": "Link acquisition and digital PR run continuously through the "
                  "campaign.",
     "eeat": "We build out authorship, credentials and trust signals as part of "
@@ -765,7 +775,51 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
     assessed = {k: v for k, v in secs.items() if v.get("score") is not None}
 
     strong = sorted(assessed.items(), key=lambda kv: -kv[1]["score"])[:4]
-    weak = sorted(assessed.items(), key=lambda kv: kv[1]["score"])[:4]
+
+    # ---- THE BIGGEST OPPORTUNITY IS NOT THE LOWEST SCORE ----------------
+    #
+    # It was, and it produced the wrong answer on a real audit: consent and
+    # privacy scored 30, won the slot, and the single most prominent
+    # paragraph in a document sold to a law firm was about cookie banners.
+    # The operator's reaction was the correct one - "fixing the consent of
+    # the site doesn't drive business."
+    #
+    # Both facts matter. A 30 is worse than a 55, and being invisible when
+    # somebody searches for a DUI attorney is worth more than either. So the
+    # ranking multiplies HOW BAD by HOW MUCH IT IS WORTH, rather than
+    # pretending the second half does not exist.
+    #
+    # The weights are a claim about revenue, not about severity, and they are
+    # deliberately blunt:
+    #
+    #   * 1.0 - areas where the money is. Whether people can find them, what
+    #     the pages say, whether they are trusted, whether they get cited.
+    #   * 0.75 - the plumbing those depend on. Real work, one step removed
+    #     from a lead.
+    #   * 0.4 - correctness and compliance. Genuinely important, occasionally
+    #     urgent, and never the reason a client's phone rings. Consent lives
+    #     here, and a 30 in consent still beats a 75 in on-page, which is the
+    #     escape hatch that keeps a real emergency visible.
+    #
+    # Nothing is hidden by this: every area keeps its score, its own section
+    # and its place on the roadmap. What changes is only which one gets the
+    # headline.
+    IMPACT = {
+        "GEO": 1.0, "ONP": 1.0, "EEAT": 1.0, "OFF": 1.0, "SCHEMA": 0.95,
+        "TECH": 0.75, "PERF": 0.75, "MOB": 0.75, "URL": 0.6, "CANON": 0.6,
+        "SEC": 0.6, "GSC": 0.5, "GA4": 0.5, "ANA": 0.5,
+        "CONS": 0.4, "HTML": 0.4, "INTL": 0.35,
+    }
+
+    def _opportunity_rank(kv):
+        code, v = kv
+        gap = 100 - (v.get("score") or 0)
+        return -(gap * IMPACT.get(code, 0.7))
+
+    weak = sorted(assessed.items(), key=_opportunity_rank)[:4]
+    # NOTE: nothing else consumed the old worst-score list, so there is no
+    # second ordering to keep in sync. The roadmap builds its own ordering
+    # from the findings and the appendix prints every area regardless.
 
     # ---------- What's Working ----------
     # Deliberately NOT one bullet per section in identical grammar. Four
