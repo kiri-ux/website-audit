@@ -964,6 +964,19 @@ def _extras(a: dict) -> dict:
     # AFTER the audit still shows up in the PDF.
     try:
         run = db.latest_ai_run_for_audit(a["id"])
+        # CARRIED FROM AN EARLIER RUN OF THE SAME SITE.
+        #
+        # Looking this up by audit id alone means every re-run loses the AI
+        # section: the monitor run stays attached to the audit that started
+        # it, the new audit has none, and a whole section disappears from a
+        # report for a client who had already paid for those questions. Same
+        # rule as the reputation profile - same URL, newest first, and dated
+        # on the page so nobody reads last week's answers as this morning's.
+        carried_ai = False
+        if not run:
+            run = db.latest_ai_run_for_site(a.get("target_url"),
+                                            exclude_audit=a["id"])
+            carried_ai = bool(run)
         if run:
             extras["ai_visibility"] = {
                 "citation_rate": run.get("citation_rate"),
@@ -976,6 +989,9 @@ def _extras(a: dict) -> dict:
                 "skipped": json.loads(run.get("skipped") or "[]"),
                 "headline": run.get("headline"),
                 "share_of_voice": db.get_ai_sov(run["id"])[:6],
+                "carried_from_run": run["id"] if carried_ai else None,
+                "carried_at": (run.get("completed_at") or run.get("created_at"))
+                              if carried_ai else None,
             }
     except Exception as e:
         print(f"[api] ai visibility skipped for {a.get('id')}: "

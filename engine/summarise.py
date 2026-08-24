@@ -371,9 +371,14 @@ SERVICE_ACTION = {
     # into an answer is a complete profile on the ones they actually read -
     # which the report now names, per question. Opening up crawler access is
     # the precondition, not the plan.
-    "ai_access": "We open up assistant access, get you listed and complete on "
-                 "the directories these tools actually read, build the pages "
-                 "that answer the questions your buyers are asking, and track "
+    # "get you listed on the directories these tools read" was true of the
+    # claimable half and a promise nobody can keep about the rest - Super
+    # Lawyers refuses self-nominations outright, Best Lawyers is peer review
+    # only. The scope line now separates the two the same way the report does.
+    "ai_access": "We open up assistant access, claim and complete your "
+                 "profiles on the directories these tools read, put you "
+                 "forward for the peer-selected ones, build the pages that "
+                 "answer the questions your buyers are asking, and track "
                  "which answers start citing you.",
     "authority": "Link acquisition and digital PR run continuously through the "
                  "campaign.",

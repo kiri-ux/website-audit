@@ -560,43 +560,88 @@ RAIL = (
 # first one it finds.
 _TAB_JS = """
 <script>(function(){
- var mode=%s, base='', on=true, link=null;
- function icon(color, alpha){
+ var mode=%s, base='', on=true, link=null, src=null, img=null, ready=false;
+ // THE DOT SITS ON THE FAVICON, IT DOES NOT REPLACE IT.
+ //
+ // The first version drew its own navy square, so a running scan swapped the
+ // Vici mark for a generic blob - the tab stopped being identifiable at
+ // exactly the moment somebody was hunting for it among twenty others. Claude
+ // does the better thing: keep the icon, put a small badge in the corner.
+ // Same trick here - render the real favicon into a canvas, then overlay.
+ function draw(alpha){
   var c=document.createElement('canvas'); c.width=c.height=32;
   var x=c.getContext('2d');
-  x.fillStyle='#002D58'; x.beginPath();
-  if(x.roundRect){x.roundRect(0,0,32,32,8);}else{x.rect(0,0,32,32);}
-  x.fill();
-  x.globalAlpha=alpha; x.fillStyle=color;
-  x.beginPath(); x.arc(16,16,8,0,6.2832); x.fill();
+  if(ready){ try{ x.drawImage(img,0,0,32,32); }catch(e){ ready=false; } }
+  if(!ready){ x.fillStyle='#002D58';
+   x.beginPath();
+   if(x.roundRect){x.roundRect(0,0,32,32,8);}else{x.rect(0,0,32,32);}
+   x.fill(); }
+  // Small, bottom-right, with a ring of page-background so it reads as a
+  // badge on the icon rather than as part of the artwork.
+  var cx=24, cy=24, r=7;
+  x.globalAlpha=1; x.fillStyle='#ffffff';
+  x.beginPath(); x.arc(cx,cy,r,0,6.2832); x.fill();
+  x.globalAlpha=alpha;
+  x.fillStyle=(mode==='running')?'#F1B434':'#1E7A45';
+  x.beginPath(); x.arc(cx,cy,r-1.8,0,6.2832); x.fill();
   return c.toDataURL('image/png');
  }
- function paint(){
+ function apply(href){
   if(!link){
-   // Take the icon over outright. Leaving the brand's SVG link in place
-   // means two icon links and a browser free to prefer either one.
-   var old=document.querySelectorAll("link[rel~='icon']");
-   for(var i=0;i<old.length;i++){old[i].parentNode.removeChild(old[i]);}
-   link=document.createElement('link');link.rel='icon';
-   document.head.appendChild(link);}
+   link=document.createElement('link'); link.rel='icon';
+   document.head.appendChild(link);
+  }
+  link.type='image/png'; link.href=href;
+ }
+ function paint(){
   if(mode==='running'){
    on=!on;
-   link.type='image/png';
-   link.href=icon('#F1B434', on?1:0.28);
+   apply(draw(on?1:0.3));
    document.title=(on?'\u25cf ':'\u25cb ')+base;
   }else{
-   link.type='image/png';
-   link.href=icon('#1E7A45',1);
+   apply(draw(1));
    document.title=base;
   }
  }
+ // ONCE YOU ARE LOOKING AT THE PAGE, THE DOT HAS DONE ITS JOB.
+ //
+ // The indicator exists to catch your eye in a background tab. Leaving it
+ // pulsing while you are reading the page it points at is just movement in
+ // your peripheral vision, so focusing the tab clears it back to the plain
+ // favicon and the plain title - and blurring away starts it again.
+ var timer=null;
+ function stop(){
+  if(timer){clearInterval(timer); timer=null;}
+  document.title=base;
+  var mine=document.querySelectorAll("link[rel~='icon']");
+  for(var i=0;i<mine.length;i++){mine[i].parentNode.removeChild(mine[i]);}
+  link=null;
+  if(src){ var l=document.createElement('link'); l.rel='icon';
+   if(src.type){l.type=src.type;} l.href=src.href;
+   document.head.appendChild(l); }
+ }
+ function go(){
+  if(document.hasFocus && document.hasFocus()) { stop(); return; }
+  if(timer) return;
+  paint();
+  if(mode==='running') timer=setInterval(paint, 900);
+ }
  function start(){
   base=document.title||'';
-  paint();
-  if(mode==='running') setInterval(paint, 900);
+  var found=document.querySelector("link[rel~='icon']");
+  if(found){ src={href:found.href, type:found.type}; }
+  window.addEventListener('focus', stop);
+  window.addEventListener('blur', go);
+  document.addEventListener('visibilitychange', function(){
+   if(document.hidden){ go(); } else { stop(); }
+  });
+  if(src){
+   img=new Image();
+   img.onload=function(){ready=true; go();};
+   img.onerror=function(){ready=false; go();};
+   img.src=src.href;
+  } else { go(); }
  }
- // After the document is parsed, so <title> and the brand favicon both exist
- // and can be read and replaced rather than raced.
  if(document.readyState==='loading'){
   document.addEventListener('DOMContentLoaded', start);
  }else{ start(); }

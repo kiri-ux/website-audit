@@ -907,8 +907,15 @@ def main():
         return " ".join(acc)
 
     _joined = _flat(_P._ai_sources(_v, _S2, rep=_rep))
+    # THE LABEL SPLIT IS THE POINT, NOT THE WORD.
+    #
+    # One flat "DIRECTORY" chip generated the sentence "we will get you
+    # listed on <site>" for Super Lawyers, whose own FAQ refuses
+    # self-nominations at any price. Avvo and Justia hold a free claimable
+    # profile for every licensed attorney; Super Lawyers, Best Lawyers and
+    # Expertise choose who appears. Two labels, two promises.
     check("a directory the client can join is labelled as one",
-          "DIRECTORY" in _joined, _joined[:120])
+          "CAN JOIN" in _joined, _joined[:140])
     check("a directory they ARE on says so", "Yes" in _joined)
     check("one they are NOT on is called out by name",
           "justia.com" in _joined and "No sign of you" in _joined)
@@ -916,6 +923,13 @@ def main():
     # get listed on - it outranked the client on their own chart once already.
     check("Google's own citation wrapper is not printed as a source",
           "vertexaisearch" not in _joined)
+    from engine.pdf_report import _dir_kind as _dk
+    check("a peer-selected directory is not sold as one we can join",
+          _dk("attorneys.superlawyers.com") == "nominate"
+          and _dk("bestlawyers.com") == "nominate"
+          and _dk("expertise.com") == "nominate")
+    check("and the ones we really can claim still say so",
+          _dk("avvo.com") == "claim" and _dk("www.justia.com") == "claim")
     # Without the reputation scan we have not looked, and saying "not listed"
     # would send someone to claim a profile they already own.
     _unchecked = _flat(_P._ai_sources(_v, _S2, rep=None))

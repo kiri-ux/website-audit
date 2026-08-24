@@ -678,6 +678,42 @@ def latest_ai_run_for_audit(audit_id) -> dict | None:
         return dict(zip([d[0] for d in cur.description], r))
 
 
+def latest_ai_run_for_site(target_url, exclude_audit=None) -> dict | None:
+    """
+    The newest monitor run for ANY audit of this URL.
+
+    A REPORT SHOULD NOT LOSE A SECTION BECAUSE THE RUN IS FILED ELSEWHERE.
+
+    AI visibility is read at render time from the run linked to THIS audit,
+    which is right when there is one and silently catastrophic when there is
+    not: re-running a site produces a new audit id, the old monitor run stays
+    attached to the old one, and the whole AI section vanishes from a report
+    for a client who had paid to have those questions asked last week. The
+    operator's reading was the correct one - "it didn't save even though it
+    had previously run." It had. We were looking it up by the wrong key.
+
+    Same rule as every other carry-forward here: same URL, newest first, and
+    the report stamps the date so nobody mistakes last week's answers for
+    this morning's.
+    """
+    url = (target_url or "").rstrip("/").lower()
+    if not url:
+        return None
+    with conn() as c:
+        cur = c.cursor()
+        cur.execute(_q(
+            "SELECT r.* FROM ai_runs r JOIN audits a ON r.audit_id = a.id "
+            "WHERE r.status='ready' AND r.audit_id IS NOT NULL "
+            "AND LOWER(RTRIM(a.target_url, '/')) = ? "
+            + ("AND r.audit_id <> ? " if exclude_audit else "")
+            + "ORDER BY r.created_at DESC LIMIT 1"),
+            ((url, exclude_audit) if exclude_audit else (url,)))
+        r = cur.fetchone()
+        if not r:
+            return None
+        return dict(zip([d[0] for d in cur.description], r))
+
+
 # ---------------------------------------------------------------- artifacts
 def put_blob(audit_id: str, name: str, data: bytes) -> None:
     """

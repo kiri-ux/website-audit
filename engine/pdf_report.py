@@ -1324,11 +1324,21 @@ def _ai_examples(v, S, brand=""):
         # the work is the page itself. Saying which of those applies, per
         # question, is the difference between a finding and a plan.
         if not cited:
-            _dirs = [d for d in others if _listable(str(d))]
+            _dirs = [d for d in others if _dir_kind(str(d)) == "claim"]
+            _inv = [d for d in others if _dir_kind(str(d)) == "nominate"]
             if _dirs:
-                todo = ("<b>What we would do.</b> Get you listed and complete "
-                        "on " + _listy_pdf(_dirs) + ", because that is where "
-                        "this answer was built from.")
+                todo = ("<b>What we would do.</b> Claim and complete your "
+                        "profile on " + _listy_pdf(_dirs) + ", because that "
+                        "is where this answer was built from.")
+                if _inv:
+                    todo += (" We would also put you forward for "
+                             + _listy_pdf(_inv) + ", though those are "
+                             "peer-selected and not ours to promise.")
+            elif _inv:
+                todo = ("<b>What we would do.</b> This answer came from "
+                        + _listy_pdf(_inv) + ", which choose who they list. "
+                        "We can nominate you; the faster route is the page "
+                        "that answers this question on your own site.")
             elif others:
                 todo = ("<b>What we would do.</b> Build the page that answers "
                         "this question better than "
@@ -1576,8 +1586,15 @@ def _reputation(meta, S):
         # are the thing being counted, so they are what the header shows, and
         # the eye finds the one-star column without reading anything. Color
         # is never the only signal: each column still carries its count.
+        # NO PROFILE COLUMN.
+        #
+        # The rating and the review count are already the first tile at the
+        # top of the section, and the two numbers disagreed by three reviews -
+        # the tile sums the listings database, the column came from the review
+        # pull, which is fetched a few days later and is the fresher of the
+        # two. A reader who spots that has no way to tell which is right and
+        # stops trusting both. One number, one place.
         srows = [[Paragraph("<b>Listing</b>", S["cellsm"]),
-                  Paragraph("<b>Profile</b>", S["cellsm"]),
                   _star_row(1, _STAR_BAD), _star_row(2, _STAR_BAD),
                   _star_row(3, _STAR_MEH)]]
         def _band(n, floor):
@@ -1607,22 +1624,12 @@ def _reputation(meta, S):
                           + (f"<br/><font color='#8096AC'>"
                              f"{_p(L.get('address'))}</font>"
                              if L.get("address") else ""), S["cellsm"]),
-                # NO STAR IN THIS CELL.
-                #
-                # A drawn star, then a number, then a slash, then another
-                # number, inside a one-inch column - four marks doing the work
-                # of one phrase, and it read as clutter rather than as a
-                # rating. The band headers are where the star glyph earns its
-                # place, because there the shape IS the label. Here the words
-                # are shorter than the decoration.
-                Paragraph(f"{L.get('rating') or '—'} from "
-                          f"{L.get('reviews') or 0:,}", S["cellsm"]),
                 Paragraph(_band(L.get("one"), _fl), S["cellsm"]),
                 Paragraph(_band(L.get("two"), _fl), S["cellsm"]),
                 Paragraph(_band(L.get("three"), _fl), S["cellsm"]),
             ])
-        st_ = Table(srows, colWidths=[2.9 * inch, 1.1 * inch, 0.87 * inch,
-                                      0.87 * inch, 0.86 * inch])
+        st_ = Table(srows, colWidths=[3.6 * inch, 1.0 * inch, 1.0 * inch,
+                                      1.0 * inch])
         st_.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LINEBELOW", (0, 0), (-1, 0), 0.6, LINE),
@@ -1870,50 +1877,76 @@ def _reputation(meta, S):
     return out
 
 
-# DOMAINS ANYONE CAN GET A PROFILE ON, BY CATEGORY.
+# WHAT WE CAN ACTUALLY PROMISE, PER SITE.
 #
-# The distinction that makes the sources block actionable rather than
-# informational. When an assistant answers "who is the best DUI attorney in
-# Knoxville" by citing Avvo and Justia, the recommendation is not "write more
-# content" - it is "you are not on Avvo, and Avvo is what it reads". That is a
-# week of work with a known finish line, and it is invisible unless the report
-# separates the sources you can join from the ones you cannot.
+# THE ONE DISTINCTION THAT KEEPS THIS SECTION HONEST.
 #
-# Deliberately a list rather than a heuristic: "is this a directory" has no
-# reliable signal in the domain string, and a wrong guess here recommends
-# buying a profile on a competitor's website.
-_LISTABLE = {
-    # legal
-    "avvo.com", "justia.com", "lawyers.com", "martindale.com", "nolo.com",
-    "findlaw.com", "superlawyers.com", "bestlawyers.com", "lawinfo.com",
-    "attorneyatlaw.com", "chambers.com", "legalmatch.com",
-    # local / general
+# The report told a client "we will get you listed and complete on <site>",
+# generated from a single flat list of directories. For Avvo and Justia that
+# is true and cheap: both auto-create an unclaimed profile for every licensed
+# US attorney from state bar data, claiming is free, and completing one is an
+# hour or two of our time plus ten minutes of theirs for verification.
+#
+# For Super Lawyers the same sentence is a promise we cannot keep. Their own
+# FAQ says self-nominations are not accepted and that selection carries no
+# fee; it is peer nomination, independent research and a peer panel, ending
+# at roughly 5% of a state's attorneys. Best Lawyers is peer review only -
+# a lawyer they have not recognized cannot have a profile at all. Chambers is decided by
+# analysts. Expertise.com is editorial, and the thing they WILL sell you is a
+# paid category placement, which is not the badge - selling the second as if
+# it were the first is the misrepresentation risk in this whole section.
+#
+# So the list is split by what we can deliver, and the wording follows:
+# "we get you listed" for one, "we can put you forward" for the other. Both
+# still count as sources the assistants read, because they are.
+_CLAIMABLE = {
+    # Auto-created from bar records; free to claim; we do the completing.
+    "avvo.com", "justia.com", "lawyers.com", "martindale.com", "findlaw.com",
+    "nolo.com", "lawinfo.com", "legalmatch.com", "attorneyatlaw.com",
+    # Local and general, all free to claim.
     "yelp.com", "bbb.org", "angi.com", "thumbtack.com", "houzz.com",
-    "expertise.com", "threebestrated.com", "manta.com", "yellowpages.com",
-    "birdeye.com", "trustpilot.com", "clutch.co", "g2.com", "capterra.com",
-    # health
-    "healthgrades.com", "zocdoc.com", "vitals.com", "webmd.com",
-    "ratemds.com", "sharecare.com",
-    # home services / trades
-    "homeadvisor.com", "porch.com", "buildzoom.com", "nextdoor.com",
+    "manta.com", "yellowpages.com", "birdeye.com", "trustpilot.com",
+    "clutch.co", "g2.com", "capterra.com", "nextdoor.com",
+    # Health.
+    "healthgrades.com", "zocdoc.com", "vitals.com", "ratemds.com",
+    "sharecare.com", "webmd.com",
+    # Home services and trades.
+    "homeadvisor.com", "porch.com", "buildzoom.com",
 }
+
+# Editorial, peer-selected or capped. We can submit or nominate. We cannot
+# promise a listing, and neither can anyone else who is being straight.
+_NOMINATE_ONLY = {
+    "superlawyers.com", "bestlawyers.com", "chambers.com",
+    "expertise.com", "threebestrated.com",
+}
+
 
 def _listable(domain: str) -> bool:
     """
-    Is this a site that would list the client if they asked?
+    Is this a site that lists firms at all - either route?
 
     SUBDOMAINS COUNT. `attorneys.superlawyers.com` is Super Lawyers, and an
     exact-match test filed it under "someone else's website, which you cannot
     join" - the one label that tells the reader to stop reading that row. The
-    directories publish under whatever host they like; the registrable name is
-    the fact.
+    directories publish under whatever host they like; the registrable name
+    is the fact.
     """
+    return _dir_kind(domain) is not None
+
+
+def _dir_kind(domain: str):
+    """'claim' | 'nominate' | None."""
     d = (domain or "").lower().strip().rstrip(".")
     if d.startswith("www."):
         d = d[4:]
-    if d in _LISTABLE:
-        return True
-    return any(d.endswith("." + known) for known in _LISTABLE)
+    for known in _CLAIMABLE:
+        if d == known or d.endswith("." + known):
+            return "claim"
+    for known in _NOMINATE_ONLY:
+        if d == known or d.endswith("." + known):
+            return "nominate"
+    return None
 
 
 # Somebody else's plumbing, not a source. See the share-of-voice note.
@@ -1960,6 +1993,7 @@ def _ai_sources(v, S, rep=None):
     _OWN = (colors.HexColor("#E4F1E8"), colors.HexColor("#1E7A45"))
     _DIR = (colors.HexColor("#FDF3E2"), colors.HexColor("#8A5A00"))
     _OTH = (colors.HexColor("#EEF2F6"), colors.HexColor("#4A5461"))
+    _NOM = (colors.HexColor("#EEF0FA"), colors.HexColor("#3B4A8A"))
     listable = 0
     for d in sov[:8]:
         dom = str(d["domain"]).lower().replace("www.", "")
@@ -1969,10 +2003,18 @@ def _ai_sources(v, S, rep=None):
             # it?" against their own domain reads as "we could not tell",
             # which is the one row where we certainly can.
             on = "Yes"
-        elif _listable(dom):
-            kind, pal = "DIRECTORY", _DIR
+        elif _dir_kind(dom) == "claim":
+            kind, pal = "CAN JOIN", _DIR
             listable += 1
             on = ("Yes" if dom in known else "No sign of you") if checked \
+                else "Not checked"
+        elif _dir_kind(dom) == "nominate":
+            # Named separately because the ACTION is different, not because it
+            # matters less. Telling a client we will get them onto Super
+            # Lawyers is a promise nobody can keep.
+            kind, pal = "BY INVITE", _NOM
+            listable += 1
+            on = ("Yes" if dom in known else "Not listed") if checked \
                 else "Not checked"
         else:
             kind, pal = "SOMEONE ELSE", _OTH
@@ -2007,12 +2049,16 @@ def _ai_sources(v, S, rep=None):
     # And DIRECTORY was used as a column value before anything said what one
     # is. It is the load-bearing word in the section: the whole point is that
     # some of these sites will list you if you ask, and the rest will not.
-    lead = ("When an assistant answers a question about lawyers in your area, "
-            "it builds that answer out of these websites. Some of them are "
-            "<b>directories</b> - sites like Avvo or Justia that list any "
-            "firm that signs up. Those are the ones you can act on this "
-            "month, because getting listed is a form rather than a campaign. "
-            "The rest are other firms' own websites, which you cannot join.")
+    lead = ("When an assistant answers a question about your industry in "
+            "your area, it builds that answer out of these websites. "
+            "<b>Can join</b> means a directory that will list you on request "
+            "- sites like Avvo and Justia already hold a profile for every "
+            "licensed attorney, and completing one is a form rather than a "
+            "campaign. <b>By invite</b> means a directory that chooses who "
+            "appears - Super Lawyers and Best Lawyers are peer-nominated and "
+            "will not accept a self-nomination at any price, so we can put "
+            "you forward and no more than that. The rest are other firms' "
+            "own websites.")
     if checked and listable:
         _missing = [str(d["domain"]).lower().replace("www.", "")
                     for d in sov[:8]
@@ -2020,8 +2066,15 @@ def _ai_sources(v, S, rep=None):
                     and _listable(str(d["domain"]))
                     and str(d["domain"]).lower().replace("www.", "") not in known]
         if _missing:
-            lead += (" We found no sign of you on " + _listy_pdf(_missing)
-                     + ", and the assistants are citing them.")
+            _join = [d for d in _missing if _dir_kind(d) == "claim"]
+            _inv = [d for d in _missing if _dir_kind(d) == "nominate"]
+            if _join:
+                lead += (" We found no sign of you on " + _listy_pdf(_join)
+                         + " - those we can fix directly.")
+            if _inv:
+                lead += (" You are also absent from " + _listy_pdf(_inv)
+                         + ", where we can nominate you but the decision is "
+                           "theirs.")
     out = [Spacer(1, 14),
            KeepTogether([Paragraph("How to get into the answers", S["h3"]),
                          Paragraph(lead, S["small"]), Spacer(1, 6), t])]
@@ -2035,6 +2088,15 @@ def _ai_sources(v, S, rep=None):
             f"{gap} more times than you across the same questions.</font>",
             S["small"]))
     return out
+
+
+def _when(ts):
+    """A stored epoch or ISO string as a plain date."""
+    try:
+        import datetime as _dt
+        return _dt.date.fromtimestamp(float(ts)).isoformat()
+    except (TypeError, ValueError, OSError):
+        return str(ts)[:10]
 
 
 def _ai_gate(findings, S):
@@ -2100,8 +2162,18 @@ def _ai_visibility(meta, S, findings=None):
     out = [Paragraph("AI Search Visibility", S["h2"]),
            _rule(),
            Paragraph(_p(_ai_intro(v)).replace("\n", "<br/><br/>"),
-                     S["small"]),
-           Spacer(1, 8)]
+                     S["small"])]
+    # A CARRIED PANEL SAYS SO, exactly like the reputation profile. These
+    # answers cost money to collect and are worth reusing across a re-run;
+    # they are also the fastest-moving numbers in the document, so reprinting
+    # last week's silently would be the same fault this codebase keeps
+    # chasing in a new section.
+    if v.get("carried_at"):
+        out.append(Paragraph(
+            f"Asked on an earlier run of this site "
+            f"({_p(str(_when(v['carried_at'])))}) and carried forward, so "
+            f"these are the answers as of that date.", S["small"]))
+    out.append(Spacer(1, 8))
     _gate = _ai_gate(findings, S)
 
     cite = v.get("citation_rate") or 0
@@ -2365,14 +2437,28 @@ def _strength(text, S, width=6.55 * inch):
     # there is not, and the sentence is dropped either way. Four cards, four
     # lines back - which is what finally gives Biggest Opportunity room on
     # page 2 rather than leaving it one line short.
+    # ONE KIND OF BADGE, NOT TWO.
+    #
+    # First version printed "94" on the card that carried a score and "4/4"
+    # on the ones that did not, so four cards in a row showed two different
+    # units and the reader had to work out which was which. A ratio and a
+    # score are not comparable at a glance, which is the only thing a badge
+    # is for.
+    #
+    # Everything becomes a score out of 100. Where the summary states one, it
+    # wins. Where it states a ratio, the ratio IS the score - a section with
+    # four of four checks passing scores 100, which is exactly what the
+    # scoring engine says about it, so this is a restatement rather than an
+    # invention.
     _sc = re.search(r"scoring\s+(\d+)\s+out\s+of\s+100", rest or "", re.I)
     _m = re.match(r"^\s*(\d+)\s+of\s+(\d+)\s+checks?\s+passed\b", rest or "",
                   re.I)
     badge, body_rest = "", rest
     if _sc:
         badge, body_rest = _sc.group(1), ""
-    elif _m:
-        badge, body_rest = f"{_m.group(1)}/{_m.group(2)}", ""
+    elif _m and int(_m.group(2)):
+        badge = str(round(100 * int(_m.group(1)) / int(_m.group(2))))
+        body_rest = ""
     body = f"<b>{_p(head)}</b>" + (f"<br/>{_p(body_rest)}" if body_rest
                                    else "")
     inner = [Paragraph(body, S["cell"])]
@@ -2616,9 +2702,26 @@ def _hero_shot(meta, S):
     # strip of thumbnail. Cap the BOX and crop to the top of the image; the
     # image itself is still drawn at its own proportions.
     full = w * ratio
-    return [Spacer(1, 4),
-            Shot(home["png"], w, min(full, 3.9 * inch), draw_h=full),
-            Spacer(1, 9)]
+    # CENTERED, NOT LEFT-HUNG.
+    #
+    # Inset to 5.9in to buy page-2 space, the shot sat hard against the left
+    # margin with three-quarters of an inch of white down its right - which
+    # reads as a layout fault rather than as a deliberate inset.
+    #
+    # Done by composition. The first attempt translated the canvas inside
+    # Shot.draw, which interleaved with the clip path it uses for the rounded
+    # corners and leaked the transform into the rest of the page - the hero
+    # printed over the whole of page 2. A one-cell table centers its content
+    # and leaves the flowable's own canvas state completely alone.
+    _hero = Table([[Shot(home["png"], w, min(full, 3.9 * inch), draw_h=full)]],
+                  colWidths=[w])
+    _hero.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+    _hero.hAlign = "CENTER"
+    return [Spacer(1, 4), _hero, Spacer(1, 9)]
 
 
 def _evidence(meta, S, catalog=None):

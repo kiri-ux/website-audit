@@ -406,15 +406,45 @@ def pick_targets(findings: dict, catalog: dict, start_url: str, limit: int = 3):
             pages = [p for p in (f.get("affected_pages") or [])
                      if str(p).startswith("http")]
             url = pages[0] if pages else start_url
-            if (cid, url) in seen or url in {u for _c, u in seen}:
+            # ONE SHOT PER URL WAS A CAP OF ONE, FULL STOP.
+            #
+            # The rule was meant to stop three photographs of the same page
+            # in a row, and on a real audit it produced a candidate list of
+            # length ONE - the internal panel said so: "Tried 1 of 1 candidate
+            # page(s): ONP-09." Most findings carry no affected_pages, so they
+            # all fall back to start_url, so every candidate after the first
+            # was discarded before it was ever tried. Capture never failed;
+            # there was nothing left to capture.
+            #
+            # Variety is still worth having, so it is now a PREFERENCE rather
+            # than a gate: a second pass admits repeats of a URL once the
+            # distinct ones are exhausted. Deduping on the checkpoint alone is
+            # what stops an actual duplicate.
+            if cid in seen_cids:
                 continue
-            seen.add((cid, url))
+            if first_pass and url in seen_urls:
+                repeats.append((cid, url, sel))
+                continue
+            seen_cids.add(cid)
+            seen_urls.add(url)
             name = (catalog.get(cid, {}) or {}).get("checkpoint", cid)
             out.append((cid, url, sel or "", f"{name} — {url}"))
 
-    out, seen = [], set()
+    out, seen_cids, seen_urls, repeats = [], set(), set(), []
+    first_pass = True
     scan(True)
     scan(False)
+    # Second pass: the ones held back only because their page was already
+    # spoken for. Better a second outline on the homepage than no evidence.
+    first_pass = False
+    for cid, url, sel in repeats:
+        if len(out) >= limit:
+            break
+        if cid in seen_cids:
+            continue
+        seen_cids.add(cid)
+        name = (catalog.get(cid, {}) or {}).get("checkpoint", cid)
+        out.append((cid, url, sel or "", f"{name} — {url}"))
     return out
 
 
