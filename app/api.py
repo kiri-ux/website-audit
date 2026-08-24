@@ -977,6 +977,23 @@ def _extras(a: dict) -> dict:
             run = db.latest_ai_run_for_site(a.get("target_url"),
                                             exclude_audit=a["id"])
             carried_ai = bool(run)
+        # DO NOT CLOBBER A NEWER CARRIED PANEL.
+        #
+        # Two roads lead here now: a standalone monitor run in `ai_runs`, and
+        # a panel the worker carried into `extras` from the previous audit of
+        # this site (the audit's own AI phase writes no ai_runs row, so that
+        # is the ONLY copy of an audit-phase panel). Whichever is newer wins;
+        # overwriting a fresh carried panel with an older monitor run would
+        # re-introduce the bug this whole path exists to fix.
+        _have = (extras.get("ai_visibility") or {})
+        _have_at = _have.get("carried_at") or 0
+        _run_at = (run or {}).get("completed_at") or (run or {}).get("created_at") or 0
+        if run and _have.get("citation_rate") is not None and carried_ai:
+            try:
+                if float(_have_at or 0) >= float(_run_at or 0):
+                    run = None
+            except (TypeError, ValueError):
+                pass
         if run:
             extras["ai_visibility"] = {
                 "citation_rate": run.get("citation_rate"),

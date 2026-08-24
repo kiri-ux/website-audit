@@ -232,6 +232,100 @@ def main():
     # single most-read paragraph in the document was all diagnosis and no
     # offer - "this isn't the full picture" was exactly right. Every finding
     # further down already carries its scope line; this one did not.
+    print("\n8. WE DO NOT PROMISE WHAT WE CANNOT DELIVER")
+    # THE RULE THIS SECTION ENFORCES.
+    #
+    # The report generates sentences about third-party websites from a list of
+    # domains. That is fine for Avvo and Justia, which hold a free claimable
+    # profile for every licensed US attorney. It is a promise nobody can keep
+    # for Super Lawyers, whose own FAQ says self-nominations are not accepted
+    # and whose selection is a peer panel at roughly 5% of a state - and for
+    # Best Lawyers, Chambers, Expertise and Three Best Rated, which choose who
+    # appears.
+    #
+    # One flat list generated one flat promise, and the difference between the
+    # two is a misrepresentation a client could act on. So there are three
+    # rules, all checked here rather than trusted to whoever edits the copy
+    # next:
+    #
+    #   1. Every domain we name is classified - claim, nominate, or neither.
+    #      The two sets never overlap.
+    #   2. A nominate-only domain NEVER appears in a sentence that promises a
+    #      listing. It gets nomination language and nothing stronger.
+    #   3. An UNKNOWN domain gets no promise at all. Adding a directory to the
+    #      wrong set is a mistake; defaulting an unrecognized one to "we'll
+    #      get you listed" would be the same mistake automated.
+    from engine.pdf_report import (_dir_kind, _CLAIMABLE, _NOMINATE_ONLY,
+                                   _ai_examples, _ai_sources, _styles)
+
+    check("no domain is both claimable and invite-only",
+          not (_CLAIMABLE & _NOMINATE_ONLY),
+          str(sorted(_CLAIMABLE & _NOMINATE_ONLY)))
+    for _d in ("superlawyers.com", "bestlawyers.com", "chambers.com",
+               "expertise.com", "threebestrated.com"):
+        check(f"{_d} is invite-only", _dir_kind(_d) == "nominate")
+    for _d in ("avvo.com", "justia.com", "yelp.com", "bbb.org"):
+        check(f"{_d} is claimable", _dir_kind(_d) == "claim")
+    check("an unknown site is classified as neither",
+          _dir_kind("some-random-firm.com") is None)
+
+    # The promise verbs, checked against generated copy rather than against
+    # the source, because the source is what changes.
+    _PROMISE = ("get you listed", "we will list", "getting you listed",
+                "get you on", "claim and complete your profile on")
+    _S8 = _styles()
+
+    def _flat8(flowables):
+        acc = []
+
+        def _w(f):
+            t = getattr(f, "text", None)
+            if isinstance(t, str):
+                acc.append(t)
+            for k in (getattr(f, "_content", None) or []):
+                _w(k)
+            for row in (getattr(f, "_cellvalues", None) or []):
+                for c in row:
+                    for x in (c if isinstance(c, list) else [c]):
+                        _w(x)
+        for f in flowables:
+            _w(f)
+        return " ".join(acc)
+
+    # A missed answer whose sources are ALL invite-only must not produce a
+    # promise sentence naming them.
+    _v8 = {"citation_rate": 5.0, "mention_rate": 20.0, "questions": 12,
+           "platforms": "chatgpt", "share_of_voice": [],
+           "cited_examples": [],
+           "missed_examples": [{"question": "Who is the best DUI attorney in "
+                                            "Knoxville, Tennessee?",
+                                "platform": "chatgpt",
+                                "cited_instead": ["attorneys.superlawyers.com",
+                                                  "expertise.com"]}]}
+    _txt8 = _flat8(_ai_examples(_v8, _S8, brand="Ooten Law Firm")).lower()
+    check("an invite-only source never gets a listing promise",
+          not any(v in _txt8 for v in _PROMISE), _txt8[-160:])
+    check("and it does get nomination language instead",
+          "nominate" in _txt8 or "put you forward" in _txt8, _txt8[-160:])
+
+    # An unknown competitor domain must not be promised either.
+    _v9 = dict(_v8, missed_examples=[{"question": "Who is the best DUI "
+                                                  "attorney in Knoxville?",
+                                      "platform": "chatgpt",
+                                      "cited_instead": ["garzalaw.com"]}])
+    _txt9 = _flat8(_ai_examples(_v9, _S8, brand="Ooten Law Firm")).lower()
+    check("an unknown site is never promised as a listing",
+          not any(v in _txt9 for v in _PROMISE), _txt9[-160:])
+
+    # And the sources table must label the two differently.
+    _v10 = {"questions": 12, "share_of_voice": [
+        {"domain": "avvo.com", "citations": 9, "share": 20.0, "is_client": False},
+        {"domain": "attorneys.superlawyers.com", "citations": 8, "share": 18.0,
+         "is_client": False}]}
+    _txt10 = _flat8(_ai_sources(_v10, _S8, rep=None))
+    check("the table separates joinable from invite-only",
+          "CAN JOIN" in _txt10 and "BY INVITE" in _txt10, _txt10[:160])
+
     # THE HEADLINE GOES TO WHAT EARNS MONEY, NOT TO THE LOWEST SCORE.
     #
     # Consent scored 30 on a real audit, won the slot on score alone, and the

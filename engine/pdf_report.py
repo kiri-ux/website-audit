@@ -1638,12 +1638,20 @@ def _reputation(meta, S):
             ("RIGHTPADDING", (0, 0), (-1, -1), 6),
             ("TOPPADDING", (0, 0), (-1, -1), 5),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
-        _low = sum((L.get("one") or 0) + (L.get("two") or 0) for L in _stars)
+        # ONE TO THREE, NOT ONE TO TWO.
+        #
+        # The table shows three bands and the sentence counted two of them,
+        # so the headline number never matched the row underneath it. Three
+        # stars is not a happy customer either - it is the review a person
+        # reads as "adequate", and on a page about what a stranger finds it
+        # belongs on the same side of the line as the other two.
+        _low = sum((L.get("one") or 0) + (L.get("two") or 0)
+                   + (L.get("three") or 0) for L in _stars)
         _sub = ("These are the reviews a person reads first when they sort "
                 "by lowest.")
         if _low:
-            _sub = (f"<b>{_low} review{'s' if _low != 1 else ''} at one or two "
-                    f"stars.</b> " + _sub)
+            _sub = (f"<b>{_low} review{'s' if _low != 1 else ''} at three "
+                    f"stars or below.</b> " + _sub)
         out += [Spacer(1, 14),
                 Paragraph("The reviews behind the rating", S["h3"]),
                 Paragraph(_sub, S["small"]), Spacer(1, 6), st_]

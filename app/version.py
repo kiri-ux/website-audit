@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-92"
-BUILD_NOTES = ("Evidence had a candidate cap of one, AI visibility now "
-               "carries forward, and the directory advice separates what we "
-               "can deliver from what we can only nominate for")
+BUILD = "2026.08.20-93"
+BUILD_NOTES = ("The AI panel carries forward from the audit that ran it, "
+               "the review count covers three stars and below, and a "
+               "promise we cannot keep now fails the tests")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

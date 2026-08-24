@@ -978,7 +978,32 @@ def _carry_extras(a, opts, audit_id, extras):
     where it came from so the page can say how old it is rather than passing
     last month's star rating off as today's.
     """
-    if _phase_on(opts, "run_reputation") or extras.get("reputation"):
+    # EVERY SECTION THAT LIVES IN `extras` RATHER THAN IN CHECKPOINTS.
+    #
+    # There are two of them and they were not handled the same way, which is
+    # how the AI section kept vanishing after this was supposedly fixed:
+    #
+    #   * REPUTATION was carried here from the previous audit's extras.
+    #   * AI VISIBILITY was not carried at all. The renderer looks it up from
+    #     the `ai_runs` table by audit id, and the audit's OWN AI phase never
+    #     writes an ai_runs row - it puts its results straight into `extras`.
+    #     So the only copy of an audit-phase panel is on that audit, and a
+    #     re-run with the box unticked lost the entire section. Adding a
+    #     same-URL fallback to the ai_runs lookup did not help either, for the
+    #     same reason: there is no row to find.
+    #
+    # Both are now carried by the same rules as an answered checkpoint - only
+    # for a phase this run did not do, only from the same URL, newest first,
+    # and stamped so the page can say how old it is rather than passing last
+    # month's numbers off as this morning's.
+    _CARRIED_SECTIONS = (
+        # extras key,   phase option,      what it is called in the log
+        ("reputation", "run_reputation", "reputation profile"),
+        ("ai_visibility", "run_aivis", "AI visibility panel"),
+    )
+    want = [(key, label) for key, phase, label in _CARRIED_SECTIONS
+            if not _phase_on(opts, phase) and not extras.get(key)]
+    if not want:
         return
     url = (a.get("target_url") or "").rstrip("/").lower()
     try:
@@ -990,20 +1015,37 @@ def _carry_extras(a, opts, audit_id, extras):
         return
     prior.sort(key=lambda r: r.get("completed_at") or r.get("created_at") or 0,
                reverse=True)
+
+    def _usable(key, blob):
+        """Worth carrying? A failed scan is not an answer to reuse."""
+        if not isinstance(blob, dict):
+            return False
+        if key == "reputation":
+            return bool(blob.get("ok"))
+        # An AI panel is worth carrying once it has a rate to show. A run
+        # that errored stored no citation_rate, and carrying that forward
+        # would print an empty section dated last week.
+        return blob.get("citation_rate") is not None
+
+    still = dict(want)
     for row in prior[:5]:
+        if not still:
+            break
         try:
             old = json.loads(db.get_audit(row["id"]).get("extras") or "{}")
         except Exception:  # noqa: BLE001
             continue
-        rep = (old or {}).get("reputation")
-        if rep and rep.get("ok"):
-            rep = dict(rep)
-            rep["carried_from"] = row["id"]
-            rep["carried_at"] = row.get("completed_at") or row.get("created_at")
-            extras["reputation"] = rep
-            print(f"[worker] {audit_id} carried the reputation profile "
-                  f"forward from {row['id']}", flush=True)
-            return
+        for key in list(still):
+            blob = (old or {}).get(key)
+            if not _usable(key, blob):
+                continue
+            blob = dict(blob)
+            blob["carried_from"] = row["id"]
+            blob["carried_at"] = row.get("completed_at") or row.get("created_at")
+            extras[key] = blob
+            print(f"[worker] {audit_id} carried the {still[key]} forward "
+                  f"from {row['id']}", flush=True)
+            still.pop(key, None)
 
 
 def _phase_on(opts, key) -> bool:

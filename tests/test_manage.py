@@ -330,6 +330,57 @@ def main():
           or "['run_aivis', st.run_aivis]" in _h)
     check("Settings used lists which phases ran", ">Phases<" in _h)
 
+    print("\nA SECTION THAT IS NOT A CHECKPOINT STILL HAS TO SURVIVE A RE-RUN")
+    # There are exactly two report sections that live in `extras` rather than
+    # in checkpoints, and only one of them was carried - which is why the AI
+    # panel kept vanishing after this was "fixed" twice. The renderer looks AI
+    # visibility up in `ai_runs` by audit id, and the audit's own AI phase
+    # never writes an ai_runs row: its only copy is the extras blob on that
+    # audit. So a re-run with the box unticked lost the whole section.
+    from app import worker as _wk
+
+    _site = "https://carry.test/"
+    _old = db.create_audit(partner_id="vici", client_name="Carry Co",
+                           target_url=_site, options={})
+    db.update_audit(_old, status="ready", completed_at=time.time() - 600,
+                    extras=json.dumps({
+                        "reputation": {"ok": True, "brand": "Carry Co"},
+                        "ai_visibility": {"citation_rate": 11.0,
+                                          "mention_rate": 22.0,
+                                          "questions": 40}}))
+    _new = db.create_audit(partner_id="vici", client_name="Carry Co",
+                           target_url=_site, options={})
+    _ex = {}
+    _wk._carry_extras({"id": _new, "target_url": _site}, {}, _new, _ex)
+    check("the reputation profile carries forward",
+          (_ex.get("reputation") or {}).get("ok") is True, str(list(_ex)))
+    check("and so does the AI panel",
+          (_ex.get("ai_visibility") or {}).get("citation_rate") == 11.0,
+          str(list(_ex)))
+    check("both are stamped with where they came from",
+          _ex["reputation"].get("carried_from") == _old
+          and _ex["ai_visibility"].get("carried_from") == _old)
+    check("and with when, so the page can date them",
+          bool(_ex["ai_visibility"].get("carried_at")))
+    # A phase this run actually DID must not be overwritten by an older copy.
+    _ex2 = {}
+    _wk._carry_extras({"id": _new, "target_url": _site},
+                      {"run_aivis": True, "run_reputation": True}, _new, _ex2)
+    check("a phase that ran this time is never overwritten", _ex2 == {},
+          str(_ex2))
+    # A failed panel is not an answer worth reusing.
+    _bad = db.create_audit(partner_id="vici", client_name="Bad Co",
+                           target_url="https://bad.test/", options={})
+    db.update_audit(_bad, status="ready", completed_at=time.time() - 60,
+                    extras=json.dumps({"ai_visibility": {"error": "no keys"}}))
+    _new2 = db.create_audit(partner_id="vici", client_name="Bad Co",
+                            target_url="https://bad.test/", options={})
+    _ex3 = {}
+    _wk._carry_extras({"id": _new2, "target_url": "https://bad.test/"}, {},
+                      _new2, _ex3)
+    check("an errored panel is not carried forward as an answer",
+          "ai_visibility" not in _ex3, str(_ex3))
+
     print("\nA COUNT WITHOUT IDS IS NOT CHECKABLE")
     # "2 - Search Console produced no result for this run" is a count and a
     # subsystem, and the reader's next question is always "WHICH two?" Without
