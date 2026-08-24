@@ -419,12 +419,23 @@ def main():
         with _pp8.open(_io8.BytesIO(body_s)) as _d8:
             _n8 = len(_d8.pages)
             _t8 = "\n".join((_pg.extract_text() or "") for _pg in _d8.pages)
+            _blank_pages = [i + 1 for i, _pg in enumerate(_d8.pages)
+                            if len(_pg.extract_words()) <= 12]
         check("the snapshot is a handful of pages", _n8 <= 6, f"{_n8} pages")
         check("it is the snapshot, and it names the client",
               "Snapshot" in _t8 and "Junk Bee Gone" in _t8, _t8[:90])
         check("it points the reader at the full audit",
               "full audit" in _t8.lower(), _t8[-140:])
         check("and drops the appendix", "Appendix" not in _t8)
+        # NO BLANK PAGES.
+        #
+        # A Spacer is a flowable with height, so a trailing one at the foot of
+        # a full page wraps onto the NEXT page and a PageBreak right after it
+        # ends that page with nothing on it. That is how the snapshot grew a
+        # blank page 2. Every section here ends with a spacer, so this is one
+        # layout change away from happening again in a different place.
+        check("no page is blank but for its footer", not _blank_pages,
+              f"blank page(s): {_blank_pages}")
     except ImportError:
         print("  SKIP  pdfplumber not installed")
 

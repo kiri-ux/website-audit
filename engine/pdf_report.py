@@ -2842,6 +2842,29 @@ def _coverage_counts(findings: dict, catalog: dict) -> tuple:
     return (c["measured"], c["client"], c["vendor"] + c["manual"], c["na"])
 
 
+def _page_break(story):
+    """
+    Start a new page, without leaving an empty one behind.
+
+    A Spacer is a flowable with height, so a trailing one at the foot of a
+    full page does not evaporate - it wraps onto the NEXT page, and a
+    PageBreak immediately after it then ends that page with nothing on it but
+    the spacer. That is exactly how the snapshot grew a blank page 2: the
+    opportunity card finished near the bottom of page 1, its trailing
+    Spacer(1, 10) flowed over, and the break fired on an otherwise empty
+    sheet.
+    #
+    # Popping trailing spacers before the break is the fix, and it is worth
+    # having as a helper rather than as a rule to remember: every section in
+    # this document ends with a spacer and every one of them is one layout
+    # change away from the same bug.
+    """
+    from reportlab.platypus import Spacer as _S
+    while story and isinstance(story[-1], _S):
+        story.pop()
+    story.append(PageBreak())
+
+
 def _opportunity_box(text, S):
     """
     The biggest opportunity, in a box of its own.
@@ -3092,7 +3115,7 @@ def build_snapshot(meta: dict, scores: dict, findings: dict, catalog: dict,
                                             if kv[1].get("score") is not None
                                             else 0))
     if _ranked:
-        story.append(PageBreak())
+        _page_break(story)
         story.append(KeepTogether([
             Paragraph("Scores by Area", S["h2"]), _rule(),
             Paragraph("Worst first. The full audit carries the "
@@ -3124,7 +3147,7 @@ def build_snapshot(meta: dict, scores: dict, findings: dict, catalog: dict,
     # ---- the plan --------------------------------------------------------
     roadmap = (summary or {}).get("roadmap") or []
     if roadmap:
-        story.append(PageBreak())
+        _page_break(story)
         story.append(Paragraph("Our Recommended Plan", S["h2"]))
         story.append(_rule())
         story.append(Paragraph(
@@ -3150,7 +3173,7 @@ def build_snapshot(meta: dict, scores: dict, findings: dict, catalog: dict,
     _rep = _x.get("reputation") or {}
     _rs = (_rep.get("summary") or {}) if _rep.get("ok") else {}
     if _v.get("citation_rate") is not None or _rs:
-        story.append(PageBreak())
+        _page_break(story)
         story.append(Paragraph("AI Search and Reputation", S["h2"]))
         story.append(_rule())
         story.append(Paragraph(
@@ -3218,6 +3241,25 @@ def build_snapshot(meta: dict, scores: dict, findings: dict, catalog: dict,
                             S["small"]),
                   Spacer(1, 6), _tiles2]
         story.append(KeepTogether(_block))
+        # THE NUMBER THE AVERAGE IS DESIGNED TO HIDE.
+        #
+        # A 4.86 across 400 reviews is the figure the client is comfortable
+        # with, and ten one-star reviews move it by about a tenth of a point.
+        # The full audit gives this a table with the bands broken out; the
+        # snapshot gets the one sentence, because it is the sentence that
+        # starts the conversation.
+        _bands = (_rs.get("stars") or {}).get("listings") or []
+        _low = sum((L.get("one") or 0) + (L.get("two") or 0)
+                   + (L.get("three") or 0) for L in _bands)
+        if _low:
+            _floor = any(L.get("at_least") for L in _bands)
+            story.append(Spacer(1, 8))
+            story.append(Paragraph(
+                f"<b>{'At least ' if _floor else ''}{_low} review"
+                f"{'s' if _low != 1 else ''} sit at three stars or below.</b> "
+                f"Those are the ones a person reads first when they sort by "
+                f"lowest, and an average this size barely moves when they "
+                f"arrive.", S["small"]))
         if _worst and _rs.get("rating") and \
                 float(_worst.get("rating") or 5) < float(_rs["rating"]) - 0.3:
             story.append(Spacer(1, 8))

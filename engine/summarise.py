@@ -1100,6 +1100,18 @@ def build_roadmap(findings: dict, catalog: dict) -> list:
 
 
 # --------------------------------------------------------------------------
+def can_polish() -> bool:
+    """
+    Is there a key on THIS container to rewrite with?
+
+    Asked by the UI so it does not draw a button that silently does nothing.
+    The API and the worker have separate environments, and this runs in the
+    API - so the answer here is about the API's keys, which are the ones the
+    polish route would use.
+    """
+    return bool(os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY"))
+
+
 def polish_with_llm(summary: dict, meta: dict) -> dict:
     """
     Optional: rewrite the deterministic draft as client-ready prose.
@@ -1111,6 +1123,16 @@ def polish_with_llm(summary: dict, meta: dict) -> dict:
     """
     key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")
     if not key:
+        # A SILENT NO-OP IS WORSE THAN NO BUTTON.
+        #
+        # This returned the input unchanged with nothing anywhere saying so,
+        # so the "polished" PDF was byte-for-byte the plain one - and the
+        # operator, reasonably, asked what the button was for. It is not that
+        # the polish is subtle; it never ran. `can_polish` below lets the UI
+        # decline to offer a control that cannot do anything, which is the
+        # honest version of this.
+        print("[summarise] polish skipped - no ANTHROPIC_API_KEY or "
+              "OPENAI_API_KEY on this container", flush=True)
         return summary
 
     prompt = (

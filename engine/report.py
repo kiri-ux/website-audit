@@ -1006,13 +1006,19 @@ def render_html(meta, sc, findings, catalog, summary=None):
                  # A sparkle button tucked against the PDF button says what
                  # it is in the one place people already understand: this is
                  # the AI version of the thing to its left.
-                 + f"<a href='{e(meta['pdf_url'])}?polish=1' target='_blank' "
-                   f"rel='noopener' title='The same PDF with the wording "
-                   f"rewritten by AI. Same findings, same numbers.' "
-                   f"style='display:inline-block;margin-left:6px;"
-                   f"padding:9px 12px;border:1px solid var(--line);"
-                   f"border-radius:7px;font-size:14px;line-height:1;"
-                   f"text-decoration:none'>\u2728</a>"
+                 + (f"<a href='{e(meta['pdf_url'])}?polish=1' target='_blank' "
+                    f"rel='noopener' title='The same PDF with the wording "
+                    f"rewritten by AI. Same findings, same numbers.' "
+                    f"style='display:inline-block;margin-left:6px;"
+                    f"padding:9px 12px;border:1px solid var(--line);"
+                    f"border-radius:7px;font-size:14px;line-height:1;"
+                    f"text-decoration:none'>\u2728</a>"
+                    # NOT DRAWN WHEN IT CANNOT RUN. With no model key on this
+                    # container the route returns the identical PDF, silently
+                    # - which is how a button ends up in a deliverable review
+                    # with the question "what does this actually change?"
+                    # attached to it. The answer was "nothing, here".
+                    if meta.get("can_polish") else "")
                  # THREE BUTTONS, ONE ROW. The snapshot and the consent scan
                  # were link text beside a button, so the two things somebody
                  # actually opens after the PDF looked like footnotes to it.

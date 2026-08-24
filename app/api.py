@@ -29,7 +29,7 @@ from engine import checks as engine_checks
 from engine import scoring as engine_scoring
 from .capture import artifact_from_capture
 from engine.pdf_report import build_pdf, build_snapshot
-from engine.summarise import build_summary, polish_with_llm
+from engine.summarise import build_summary, polish_with_llm, can_polish
 
 app = FastAPI(title="Vici SEO/GEO Audit", version="1.0")
 Q = get_queue()
@@ -936,6 +936,8 @@ def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
     cat = db.catalog()
     meta["pdf_url"] = f"/audits/{audit_id}.pdf"
     meta["snapshot_url"] = f"/audits/{audit_id}.snapshot.pdf"
+    # Only offered when this container can actually do it - see can_polish.
+    meta["can_polish"] = can_polish()
     # Only when there is something to show. A link to an empty page is worse
     # than no link: it reads as a broken feature rather than a phase nobody
     # ticked.
