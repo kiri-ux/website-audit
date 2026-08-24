@@ -389,7 +389,9 @@ def _stamp(ts, with_time: bool) -> str:
     try:
         import datetime as _dt
         d = _dt.datetime.fromtimestamp(float(ts))
-        return d.strftime("%Y-%m-%d %H:%M" if with_time else "%Y-%m-%d")
+        # US format, matching every other date in the deliverable. ISO reads
+        # as a log line, which is what the block this replaced looked like.
+        return d.strftime("%m/%d/%Y %I:%M %p" if with_time else "%m/%d/%Y")
     except (TypeError, ValueError, OSError):
         return str(ts)[:16]
 
@@ -994,6 +996,23 @@ def render_html(meta, sc, findings, catalog, summary=None):
                  f"style='display:inline-block;padding:9px 18px;background:var(--seq);"
                  f"color:#fff;border-radius:7px;font-weight:640;font-size:13.5px;"
                  f"text-decoration:none'>Open client PDF</a>"
+                 # AN ENHANCEMENT OF THE BUTTON BESIDE IT, NOT A FOURTH
+                 # DOCUMENT.
+                 #
+                 # It produces the SAME PDF with the prose rewritten by a
+                 # model - same findings, same numbers - so a full-width
+                 # button of its own in the row overstated it, and the text
+                 # link that replaced that understated it into a footnote.
+                 # A sparkle button tucked against the PDF button says what
+                 # it is in the one place people already understand: this is
+                 # the AI version of the thing to its left.
+                 + f"<a href='{e(meta['pdf_url'])}?polish=1' target='_blank' "
+                   f"rel='noopener' title='The same PDF with the wording "
+                   f"rewritten by AI. Same findings, same numbers.' "
+                   f"style='display:inline-block;margin-left:6px;"
+                   f"padding:9px 12px;border:1px solid var(--line);"
+                   f"border-radius:7px;font-size:14px;line-height:1;"
+                   f"text-decoration:none'>\u2728</a>"
                  # THREE BUTTONS, ONE ROW. The snapshot and the consent scan
                  # were link text beside a button, so the two things somebody
                  # actually opens after the PDF looked like footnotes to it.
@@ -1004,17 +1023,7 @@ def render_html(meta, sc, findings, catalog, summary=None):
                     f"border-radius:7px;font-weight:600;font-size:13px;"
                     f"color:var(--ink);text-decoration:none'>Snapshot</a>"
                     if meta.get("snapshot_url") else "")
-                 # WHAT THE SECOND LINK ACTUALLY DOES.
-                 #
-                 # "with AI-written summary" named the mechanism and left the
-                 # reader to guess whether the FINDINGS were AI-written too.
-                 # They are not, and that is the only thing worth saying: the
-                 # facts are identical, a model rewrites the prose.
-                 + f"<a href='{e(meta['pdf_url'])}?polish=1' target='_blank' "
-                   f"rel='noopener' title='Same findings and same numbers - a "
-                   f"model rewrites the wording only' style='margin-left:14px;"
-                   f"font-size:12.5px;color:var(--ink2)'>PDF with the wording "
-                   f"polished</a>"
+
                  # THE CONSENT SCAN IS BIGGER THAN THE NINE ROWS BELOW.
                  #
                  # Every CMP signature and its evidence, container ids,

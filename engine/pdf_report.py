@@ -2150,8 +2150,7 @@ def _ai_gate(findings, S):
         # negative wrapped around a piece of our own reasoning. The client
         # needs one fact: they are allowed in.
         body = ("We found a robots.txt file on your site, and it allows the "
-                "AI tools to crawl the site. Nothing above is caused by a "
-                "setting that blocks them.")
+                "AI tools to crawl the site.")
         tone = colors.HexColor("#1E7A45")
     return [Spacer(1, 12),
             KeepTogether([Paragraph("Can the AI tools read your site?",
@@ -2843,14 +2842,55 @@ def _coverage_counts(findings: dict, catalog: dict) -> tuple:
     return (c["measured"], c["client"], c["vendor"] + c["manual"], c["na"])
 
 
-def _snap_tile(big, label, S):
-    """One figure and its label, for the snapshot's compressed tile rows."""
-    return [Paragraph(_p(big), ParagraphStyle(
-                "snapbig", parent=S["cellsm"], fontName=_fonts.BOLD,
-                fontSize=17, leading=20, textColor=INK)),
-            Paragraph(_p(label), ParagraphStyle(
-                "snaplab", parent=S["cellsm"], fontSize=7.5, leading=9.5,
-                textColor=colors.HexColor("#4A5461")))]
+def _opportunity_box(text, S):
+    """
+    The biggest opportunity, in a box of its own.
+
+    It is the single most-read paragraph in the document and it was set as
+    body copy under a small heading - typographically identical to the four
+    paragraphs around it, in a section whose whole job is to make one thing
+    stand out. A tinted card with a gold rule gives it the weight the content
+    already has.
+    """
+    inner = [Paragraph("<b>Biggest Opportunity</b>", ParagraphStyle(
+                 "oppttl", parent=S["cell"], fontName=_fonts.BOLD,
+                 fontSize=11, leading=14, textColor=INK)),
+             Spacer(1, 4),
+             Paragraph(_pl(text), S["cell"])]
+    t = Table([[inner]], colWidths=[6.6 * inch])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FEFAF1")),
+        ("ROUNDEDCORNERS", [10, 10, 10, 10]),
+        ("LINEBEFORE", (0, 0), (0, -1), 3, GOLD),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#F0E4CA")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 14),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 14),
+        ("TOPPADDING", (0, 0), (-1, -1), 12),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 12)]))
+    return KeepTogether([t])
+
+
+def _snap_tile(big, label, S, gloss=""):
+    """
+    One figure, its label, and what it counts.
+
+    The gloss is not decoration. Four figures with two-word labels is a
+    dashboard for somebody who already knows the vocabulary - a client
+    reading "2 of 9" has no way to know nine of what, and "named you" beside
+    "linked to you" is the exact distinction the whole section turns on.
+    """
+    out = [Paragraph(_p(big), ParagraphStyle(
+               "snapbig", parent=S["cellsm"], fontName=_fonts.BOLD,
+               fontSize=17, leading=20, textColor=INK)),
+           Paragraph(_p(label), ParagraphStyle(
+               "snaplab", parent=S["cellsm"], fontName=_fonts.BOLD,
+               fontSize=7.5, leading=9.5, textColor=INK))]
+    if gloss:
+        out.append(Paragraph(_p(gloss), ParagraphStyle(
+            "snapgloss", parent=S["cellsm"], fontSize=6.8, leading=8.4,
+            textColor=colors.HexColor("#6B7683"))))
+    return out
 
 
 def _roadmap_blocks(roadmap, S):
@@ -3039,10 +3079,9 @@ def build_snapshot(meta: dict, scores: dict, findings: dict, catalog: dict,
         # said anything else.
         opp = summary.get("opportunity")
         if opp:
-            story.append(KeepTogether([
-                Paragraph("Biggest Opportunity", S["h3"]),
-                Paragraph(_pl(opp if isinstance(opp, str) else " ".join(opp)),
-                          S["body"])]))
+            story.append(Spacer(1, 4))
+            story.append(_opportunity_box(
+                opp if isinstance(opp, str) else " ".join(opp), S))
             story.append(Spacer(1, 10))
 
     # ---- scores by area, as the bar chart --------------------------------
@@ -3115,18 +3154,21 @@ def build_snapshot(meta: dict, scores: dict, findings: dict, catalog: dict,
         story.append(Paragraph("AI Search and Reputation", S["h2"]))
         story.append(_rule())
         story.append(Paragraph(
-            "The short version of two sections in the full audit: what the AI "
-            "tools say when somebody asks about your industry, and what a "
-            "stranger finds when they search your name.", S["small"]))
+            "What the AI tools say when somebody asks about your industry, "
+            "and what a stranger finds when they search your name.",
+            S["small"]))
         story.append(Spacer(1, 10))
 
     if _v.get("citation_rate") is not None:
         _plats = len(_ai_platforms(_v))
         _tiles = Table([[
-            _snap_tile(f"{_v.get('mention_rate') or 0}%", "named you", S),
-            _snap_tile(f"{_v.get('citation_rate') or 0}%", "linked to you", S),
-            _snap_tile(str(_v.get("questions") or 0), "questions asked", S),
-            _snap_tile(str(_plats), "AI tools", S),
+            _snap_tile(f"{_v.get('mention_rate') or 0}%", "named you",
+                       S, "said your name in the answer"),
+            _snap_tile(f"{_v.get('citation_rate') or 0}%", "linked to you",
+                       S, "used your site as a source"),
+            _snap_tile(str(_v.get("questions") or 0), "questions asked",
+                       S, "built from your own services"),
+            _snap_tile(str(_plats), "AI tools", S, "ChatGPT, Gemini and the rest"),
         ]], colWidths=[1.65 * inch] * 4)
         _tiles.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -3147,14 +3189,19 @@ def build_snapshot(meta: dict, scores: dict, findings: dict, catalog: dict,
 
     if _rs:
         _worst = _rs.get("worst") or {}
+        _locs = _rs.get("locations") or 0
         _tiles2 = Table([[
-            _snap_tile(f"{_rs.get('rating') or '—'}", "average rating", S),
-            _snap_tile(f"{_rs.get('reviews') or 0:,}", "reviews", S),
+            _snap_tile(f"{_rs.get('rating') or '—'}", "average rating", S,
+                       f"across {_locs} Google listing"
+                       f"{'s' if _locs != 1 else ''}"),
+            _snap_tile(f"{_rs.get('reviews') or 0:,}", "reviews", S,
+                       "on those listings"),
             _snap_tile(f"{_rs.get('owned_in_top10') or 0} of "
                        f"{(_rs.get('owned_in_top10') or 0) + (_rs.get('third_party_in_top10') or 0)}",
-                       "page one is yours", S),
+                       "page one is yours", S,
+                       "results for your name and reviews"),
             _snap_tile(f"{_rs.get('brand_volume') or 0:,}",
-                       "searches a month", S),
+                       "searches a month", S, "for your name and variants"),
         ]], colWidths=[1.65 * inch] * 4)
         _tiles2.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -3478,6 +3525,19 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                            ("opportunity", "Biggest Opportunity")):
             items = summary.get(key)
             if not items:
+                continue
+            # THE OPPORTUNITY GETS A CARD, NOT A HEADING.
+            #
+            # It is the single most-read paragraph in the report and it was
+            # set as body copy under a small heading - typographically the
+            # same as everything around it, in the one section whose job is
+            # to make one thing stand out. Same card in the snapshot; one
+            # function, so they cannot drift.
+            if key == "opportunity":
+                story.append(Spacer(1, 4))
+                story.append(_opportunity_box(
+                    items if isinstance(items, str) else " ".join(items), S))
+                story.append(Spacer(1, 6))
                 continue
             story.append(Paragraph(title, S["h3"]))
             block = []
@@ -3997,29 +4057,19 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
          f"{len(catalog)} checkpoints across {len(SECTION_NAMES)} areas, covering "
          f"technical SEO, on-page, structured data, performance, security, "
          f"E-E-A-T and generative-engine visibility."),
+        # NO CARRY-FORWARD SENTENCE HERE EITHER. Which of our phases we
+        # re-ran is a fact about our process; it lives on the internal panel
+        # with the rest of them. See engine/report._todo_panel.
         ("What we measured", f"{m} checks answered from your live site plus "
-                             f"third-party data."
-         + (f" {_cf['count']} of them were measured on an earlier run of this "
-            f"site and carried forward rather than repeated, so they describe "
-            f"the site as of that run."
-            if (_cf := ((meta.get("extras") or {}).get("carried_forward") or {})
-                ).get("count") else "")),
-        ("What we need from you",
-         f"{need_client} checks read from Search Console and Analytics, which "
-         f"we cannot see without a read-only grant. They are left out of the "
-         f"scoring rather than counted against you, and they are the only "
-         f"thing on this list that needs anything from your side."
-         if need_client else
-         "Nothing — every check that depends on your accounts was answered."),
-        # Two faults in the old wording. It said "crawler", which does not
-        # belong in a client document, and it left the reader unsure whether
-        # any of it was theirs to do. Nothing on this line is.
-        ("What we complete during the engagement",
-         f"{ours} checks we finish ourselves. Nothing needed from you."),
+                             f"third-party data."),
         # AN EXAMPLE, NOT A CATEGORY. "Checks that don't apply to a site built
         # like yours" is true of any number and tells the reader nothing about
         # which checks or why, so it reads as padding on a count they cannot
         # verify.
+        # "What we need from you" and "What we complete during the engagement"
+        # are appended BELOW, and only when they have something to say. A row
+        # whose whole content is "Nothing" earns its place on a page nobody
+        # reads twice by not being there.
         ("Not applicable",
          f"{na} checks are for things this site does not do - product and "
          f"review markup on a site that sells nothing online, language "
@@ -4029,6 +4079,21 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
                     "weighted by severity. If there wasn't enough to go on, the "
                     "area is marked Not Assessed instead of scored low."),
     ]
+    # ONLY WHEN THERE IS SOMETHING TO SAY.
+    #
+    # These two were unconditional and, on a clean run, both said "nothing" -
+    # a row headed "What we need from you" whose content is "Nothing", and
+    # another saying nothing is needed a second time. A client reading a row
+    # that exists to report an absence learns only that we had a template.
+    if need_client:
+        method.append((
+            "What we need from you",
+            f"{need_client} checks read from Search Console and Analytics, "
+            f"which we cannot see without a read-only grant. They are left "
+            f"out of the scoring rather than counted against you."))
+    if ours:
+        method.append(("What we finish ourselves",
+                       f"{ours} checks we complete during the engagement."))
     if meta.get("truncated"):
         method.append(("Coverage limit",
                        _p(meta["truncated"]) + ". Sitewide counts describe the "
