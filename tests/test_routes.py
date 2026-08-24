@@ -383,6 +383,22 @@ def main():
     print("\n" + "=" * 68)
     print(f"  {len(FAILURES)} FAILED: {FAILURES}" if FAILURES
           else "  ALL CHECKS PASSED — the PDF link works over HTTP, not just in code")
+    print("\nTHE TAB INDICATOR HAS TO RUN AFTER THE PAGE IT DECORATES")
+    # It was injected above both <title> and the brand favicon and ran at
+    # parse time, so it read an empty title and set an icon the brand's own
+    # link then replaced. Correct code, two lines too early - the pulse never
+    # appeared once in three builds.
+    from app.ui import _tab as _tabjs
+    _js = _tabjs("running")
+    check("the pulse waits for the document to be parsed",
+          "DOMContentLoaded" in _js, _js[:80])
+    check("it does not read the title before the title exists",
+          "var mode=" in _js and "base=''" in _js.replace(" ", ""),
+          _js[_js.find("var mode="):_js.find("var mode=") + 60])
+    check("it takes the icon over instead of sharing it",
+          "removeChild" in _js)
+    check("a page that is not running gets no script", _tabjs(None) == "")
+
     print("=" * 68 + "\n")
     return 1 if FAILURES else 0
 

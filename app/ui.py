@@ -541,9 +541,26 @@ RAIL = (
 #
 # Drawn on a canvas rather than swapped between two files: it is a dozen
 # lines, it cannot 404, and it keeps working if the brand icon changes.
+# WHY THIS RAN AND DID NOTHING FOR THREE BUILDS.
+#
+# The script was injected into <head> ABOVE both the <title> tag and the
+# brand's own favicon link, and it ran the moment it was parsed. So:
+#
+#   * `base = document.title` read an EMPTY string, because <title> had not
+#     been parsed yet - and the browser then parsed <title> and overwrote
+#     whatever the pulse had set. The dot never appeared in the tab label.
+#   * it set an icon link, and `brand.HEAD_TAGS` - parsed immediately after -
+#     added the real Vici favicon, which won. So the tab kept its normal icon
+#     the entire time a scan was running.
+#
+# Nothing was wrong with the drawing code, which is why it survived review:
+# it was correct code running two lines too early. It now waits for the
+# document to be parsed, takes the title from the DOM at that point, and
+# actively removes the other icon links rather than politely reusing the
+# first one it finds.
 _TAB_JS = """
 <script>(function(){
- var mode=%s, base=document.title, on=true, link=null;
+ var mode=%s, base='', on=true, link=null;
  function icon(color, alpha){
   var c=document.createElement('canvas'); c.width=c.height=32;
   var x=c.getContext('2d');
@@ -555,9 +572,13 @@ _TAB_JS = """
   return c.toDataURL('image/png');
  }
  function paint(){
-  if(!link){link=document.querySelector("link[rel~='icon']");
-   if(!link){link=document.createElement('link');link.rel='icon';
-    document.head.appendChild(link);} }
+  if(!link){
+   // Take the icon over outright. Leaving the brand's SVG link in place
+   // means two icon links and a browser free to prefer either one.
+   var old=document.querySelectorAll("link[rel~='icon']");
+   for(var i=0;i<old.length;i++){old[i].parentNode.removeChild(old[i]);}
+   link=document.createElement('link');link.rel='icon';
+   document.head.appendChild(link);}
   if(mode==='running'){
    on=!on;
    link.type='image/png';
@@ -569,8 +590,16 @@ _TAB_JS = """
    document.title=base;
   }
  }
- paint();
- if(mode==='running') setInterval(paint, 900);
+ function start(){
+  base=document.title||'';
+  paint();
+  if(mode==='running') setInterval(paint, 900);
+ }
+ // After the document is parsed, so <title> and the brand favicon both exist
+ // and can be read and replaced rather than raced.
+ if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded', start);
+ }else{ start(); }
 })();</script>
 """
 

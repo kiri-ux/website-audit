@@ -1574,12 +1574,16 @@ def _reputation(meta, S):
                           + (f"<br/><font color='#8096AC'>"
                              f"{_p(L.get('address'))}</font>"
                              if L.get("address") else ""), S["cellsm"]),
-                # Star BESIDE the figure, not above it. A list of two
-                # flowables in a cell stacks them, which put the star on its
-                # own line and made the column two rows deep for no reason.
-                _inline(_star_row(1, _STAR_GOOD),
-                        Paragraph(f"{L.get('rating') or '—'} / "
-                                  f"{L.get('reviews') or 0:,}", S["cellsm"])),
+                # NO STAR IN THIS CELL.
+                #
+                # A drawn star, then a number, then a slash, then another
+                # number, inside a one-inch column - four marks doing the work
+                # of one phrase, and it read as clutter rather than as a
+                # rating. The band headers are where the star glyph earns its
+                # place, because there the shape IS the label. Here the words
+                # are shorter than the decoration.
+                Paragraph(f"{L.get('rating') or '—'} from "
+                          f"{L.get('reviews') or 0:,}", S["cellsm"]),
                 Paragraph(_band(L.get("one"), _fl), S["cellsm"]),
                 Paragraph(_band(L.get("two"), _fl), S["cellsm"]),
                 Paragraph(_band(L.get("three"), _fl), S["cellsm"]),
@@ -1595,8 +1599,8 @@ def _reputation(meta, S):
             ("TOPPADDING", (0, 0), (-1, -1), 5),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
         _low = sum((L.get("one") or 0) + (L.get("two") or 0) for L in _stars)
-        _sub = ("The average is an average. These are the reviews a person "
-                "reads first when they sort by lowest.")
+        _sub = ("These are the reviews a person reads first when they sort "
+                "by lowest.")
         if _low:
             _sub = (f"<b>{_low} review{'s' if _low != 1 else ''} at one or two "
                     f"stars.</b> " + _sub)
@@ -1757,7 +1761,16 @@ def _reputation(meta, S):
         for i, g in enumerate(_panels[:2]):
             _panel = [Paragraph(f"<b>“{_p(g.get('keyword'))}”</b>",
                                 S["cellsm"]),
-                      Spacer(1, 4), _grid(list(g["items"])[:10], cols=1)]
+                      # TWO UP, LIKE THE QUOTE TOOL.
+                      #
+                      # A single full-width column reproduced Google's
+                      # drop-down faithfully and ran ten rows down the page
+                      # for it - most of a sheet spent on a list of short
+                      # phrases with three inches of white to the right of
+                      # every one. Two columns keep the magnifier, the bold
+                      # modifier and the red highlight, and fit the same
+                      # exhibit in half the height.
+                      Spacer(1, 4), _grid(list(g["items"])[:10], cols=2)]
             out.append(KeepTogether((_intro + [Spacer(1, 8)] + _panel)
                                     if i == 0 else _panel))
             if i == 0:
@@ -2270,10 +2283,27 @@ def _strength(text, S, width=6.55 * inch):
     # Anything that is not a plain count stays in the body. "8 of 9 checks
     # passed, scoring 94 out of 100" carries a second fact, and squeezing that
     # into a corner chip would lose it.
-    _m = re.match(r"^\s*(\d+)\s+of\s+(\d+)\s+checks?\s+passed\.?\s*$",
-                  rest or "", re.I)
+    # THE SCORE IN THE CORNER, AND THE SENTENCE GONE.
+    #
+    # First pass moved a bare "4 of 4 checks passed." into a badge and left
+    # anything richer in the body - so the HTML card still spent a full line
+    # on "8 of 9 checks passed, scoring 94 out of 100." while its neighbours
+    # had none, and the grid came out ragged. Worse, that line is the least
+    # interesting thing on a card whose job is to say what the area IS: the
+    # client does not care that one of nine checks missed, they care that the
+    # area scores 94.
+    #
+    # So the SCORE wins the badge where there is one, the ratio takes it where
+    # there is not, and the sentence is dropped either way. Four cards, four
+    # lines back - which is what finally gives Biggest Opportunity room on
+    # page 2 rather than leaving it one line short.
+    _sc = re.search(r"scoring\s+(\d+)\s+out\s+of\s+100", rest or "", re.I)
+    _m = re.match(r"^\s*(\d+)\s+of\s+(\d+)\s+checks?\s+passed\b", rest or "",
+                  re.I)
     badge, body_rest = "", rest
-    if _m:
+    if _sc:
+        badge, body_rest = _sc.group(1), ""
+    elif _m:
         badge, body_rest = f"{_m.group(1)}/{_m.group(2)}", ""
     body = f"<b>{_p(head)}</b>" + (f"<br/>{_p(body_rest)}" if body_rest
                                    else "")
@@ -2504,7 +2534,14 @@ def _hero_shot(meta, S):
     # this drew it 1280x620 with preserveAspectRatio off - every face on the
     # page a quarter too short. Read the header; fall back to the viewport
     # shape only if the bytes will not parse.
-    w = 6.55 * inch
+    # NARROWER THAN THE MEASURE, ON PURPOSE.
+    #
+    # The capture is decorative - it is the thing the document is about, not a
+    # finding - and at full measure a wide viewport shot is 220pt of page 2
+    # spent on a picture nobody reads. Insetting it buys the Biggest
+    # Opportunity block its place beside Current Strengths, which is content,
+    # and an inset image also reads as a figure rather than as a banner.
+    w = 5.9 * inch
     iw, ih = _png_size(home["png"])
     ratio = (ih / iw) if (iw and ih) else (820 / 1280)
     # A full-page capture would run past the bottom of the page and print as a
@@ -2512,7 +2549,7 @@ def _hero_shot(meta, S):
     # image itself is still drawn at its own proportions.
     full = w * ratio
     return [Spacer(1, 4),
-            Shot(home["png"], w, min(full, 4.35 * inch), draw_h=full),
+            Shot(home["png"], w, min(full, 3.9 * inch), draw_h=full),
             Spacer(1, 9)]
 
 

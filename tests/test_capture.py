@@ -229,6 +229,35 @@ def main():
     # So: a step per capture, a cancel that lands mid-phase, and a wall-clock
     # budget that makes good on "a browser that hangs costs us a picture
     # rather than the report" - which was a comment, not a mechanism.
+    print("\nTHE CHECKS THAT FAIL HAVE SOMETHING TO PHOTOGRAPH")
+    # AN EMPTY CANDIDATE LIST IS NOT A CAPTURE FAILURE.
+    #
+    # A real audit came back with no evidence shots at all, and the capture
+    # code was never reached: the selector map covered images, headings and
+    # footers, while the audit's top finding was "the practice-area pages
+    # carry only a nav menu and a short blurb" - ONP-10 and ONP-13, neither of
+    # which had a selector or a page-level entry. Nothing was eligible, so
+    # nothing was tried, so the section omitted itself.
+    from engine.screenshots import SELECTORS as _SEL, PAGE_LEVEL as _PL
+    import csv as _csv
+    _cat_ids = set()
+    with open(os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "seed", "checkpoints.csv")) as fh:
+        for row in _csv.reader(fh):
+            if row and row[0] and "-" in row[0]:
+                _cat_ids.add(row[0].strip())
+    _bogus = [c for c in list(_SEL) + list(_PL) if c not in _cat_ids]
+    check("every selector points at a checkpoint that exists",
+          not _bogus, str(_bogus))
+    # The content-thin family is the one that actually fails on the sites this
+    # tool is pointed at, so it is named explicitly rather than counted.
+    for _cid in ("ONP-10", "ONP-13"):
+        check(f"{_cid} (thin content) can be photographed",
+              _cid in _SEL or _cid in _PL)
+    check("the eligible set is not a handful",
+          len(set(_SEL) | set(_PL)) >= 20,
+          str(len(set(_SEL) | set(_PL))))
+
     print("\nA LONG PHASE KEEPS TALKING")
     import types
     from app import worker as _w

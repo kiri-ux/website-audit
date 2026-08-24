@@ -32,6 +32,12 @@ import os
 # checks that DID fail fell through to the page-level list, which produces an
 # unboxed shot - and the report only prints boxed ones. Every id below is now
 # checked against seed/checkpoints.csv.
+# The page's own content region, in the order themes actually mark it up.
+# Kept as one constant because nine checkpoints point at it and a list that
+# drifts between them would photograph different things for the same finding.
+_CONTENT = ("main, [role=main], article, .entry-content, .post-content, "
+            ".page-content, .elementor-widget-container, #content, #main")
+
 SELECTORS = {
     "ONP-08": "h1",                                   # more than one H1
     "ONP-14": "img:not([alt]), img[alt='']",          # images missing alt text
@@ -49,6 +55,26 @@ SELECTORS = {
     # narrow version quietly cost these two checks their evidence.
     "EEAT-05": "footer, [class*=footer], [id*=footer]",   # trust signals
     "EEAT-06": "footer, [class*=footer], [id*=footer]",
+    # THE CHECKS THAT ACTUALLY FAIL ON A THIN SITE HAD NO SELECTOR AT ALL.
+    #
+    # Twelve entries, all about images, headings and footers - and the top
+    # finding on a real audit was "the practice-area pages carry only a nav
+    # menu and a short blurb", which is ONP-10 and ONP-13. Neither was in
+    # here, and neither is page-level, so the candidate list came back EMPTY
+    # and the evidence section omitted itself. Not a capture failure: there
+    # was nothing to photograph because nothing was eligible.
+    #
+    # The honest thing to outline for a thin page is the CONTENT REGION. The
+    # red box around a two-inch tall <main> on a full-height page is the
+    # finding, exactly - "this is all the copy there is". The selector list is
+    # ordered most-specific first so a theme that marks up <main> properly
+    # wins over the generic wrapper classes.
+    "ONP-09": _CONTENT, "ONP-10": _CONTENT, "ONP-11": _CONTENT,
+    "ONP-12": _CONTENT, "ONP-13": _CONTENT,
+    # Same argument for the judgment layer's content rows: what it read is
+    # what should be in the picture.
+    "EEAT-01": _CONTENT, "EEAT-02": _CONTENT, "EEAT-03": _CONTENT,
+    "EEAT-12": _CONTENT,
 }
 
 # Checks worth a plain page shot even with no element to box.
