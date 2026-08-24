@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-95"
-BUILD_NOTES = ("A three-page Snapshot PDF built from the same findings, one "
-               "dated list of where the data came from, and robots.txt named "
-               "in the crawler-access line")
+BUILD = "2026.08.20-96"
+BUILD_NOTES = ("Snapshot gets the site shot, the real plan and the AI and "
+               "reputation numbers; the data-source note is two lines; "
+               "Snapshot and consent scan are buttons")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

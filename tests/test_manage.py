@@ -622,7 +622,7 @@ def main():
     check("the panel dates every area of the report",
           "Technical SEO" in _html3 and "On-Page SEO" in _html3, _html3[-200:])
     check("and marks the ones that are not from today",
-          "carried forward" in _html3, _html3[-200:])
+          "Carried from an earlier run" in _html3, _html3[-200:])
     check("without printing an audit id at anybody", _old not in _html3)
 
     print("\n" + "=" * 68)

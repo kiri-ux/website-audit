@@ -556,7 +556,11 @@ class _Doc(BaseDocTemplate):
         canvas.setStrokeColor(LINE)
         y = self.bottomMargin - 16
         canvas.line(self.leftMargin, y + 11, self.leftMargin + self.width, y + 11)
-        left = f"{self.meta.get('client','')} - Website Audit"
+        # The document names itself. The snapshot was printing "Website
+        # Audit" in its footer, which is the one line on the page that tells
+        # somebody which of the two files they are holding.
+        left = (f"{self.meta.get('client','')} - "
+                f"{self.meta.get('doc_title') or 'Website Audit'}")
         canvas.drawString(self.leftMargin, y, left[:90])
         canvas.drawRightString(self.leftMargin + self.width, y, f"Page {doc.page}")
         # No build id here. It is operational information for us, and a version
@@ -2839,6 +2843,97 @@ def _coverage_counts(findings: dict, catalog: dict) -> tuple:
     return (c["measured"], c["client"], c["vendor"] + c["manual"], c["na"])
 
 
+def _snap_tile(big, label, S):
+    """One figure and its label, for the snapshot's compressed tile rows."""
+    return [Paragraph(_p(big), ParagraphStyle(
+                "snapbig", parent=S["cellsm"], fontName=_fonts.BOLD,
+                fontSize=17, leading=20, textColor=INK)),
+            Paragraph(_p(label), ParagraphStyle(
+                "snaplab", parent=S["cellsm"], fontSize=7.5, leading=9.5,
+                textColor=colors.HexColor("#4A5461")))]
+
+
+def _roadmap_blocks(roadmap, S):
+    """
+    The phase cards, for whichever document is asking.
+
+    ONE IMPLEMENTATION, TWO DOCUMENTS. The snapshot grew its own condensed
+    version of the plan, and within a build the two were already different -
+    the full report showed an item count and a rationale per phase, the
+    snapshot showed a comma list. Two renderings of the same plan is two
+    things to keep right, and the client sees both.
+    """
+    out = []
+    for i, phase in enumerate(roadmap, start=1):
+        actions = phase.get("actions", []) or []
+        # The chip already says "Phase 2"; repeating it in the title reads
+        # as a template that forgot what it had already printed.
+        title = _p(re.sub(r"^Phase\s*\d+\s*[—\-:]\s*", "",
+                          str(phase.get("phase", ""))))
+        # A phase is a card: a numbered chip, the phase name, the count, a
+        # one-line rationale and the work itself. The chip and the count do
+        # the visual work a wall of bullets could not.
+        head = Table([[
+            _pill(f"Phase {i}", {f"Phase {i}": (ORD_PHASE[min(i, 3) - 1],
+                                                colors.white)}, S, 0.62 * inch),
+            Paragraph(f"<b>{title}</b>", S["body"]),
+            Paragraph(f"<font color='#52514e'>{len(actions)} item"
+                      f"{'s' if len(actions) != 1 else ''}</font>", S["cellsm"]),
+        ]], colWidths=[0.72 * inch, 4.6 * inch, 1.2 * inch])
+        head.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (2, 0), (2, 0), "RIGHT"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        block = [head]
+        if phase.get("rationale"):
+            # Indented to the phase NAME, not to the page margin.
+            #
+            # The header is a table whose first column is the 0.72in "Phase
+            # 2" chip, so a paragraph starting at x=0 begins underneath the
+            # chip and hangs to the left of both the title above it and the
+            # card below it — the one element on the block not lined up
+            # with anything. It is a caption for the title; it should start
+            # where the title starts.
+            mid = ParagraphStyle("phasecap", parent=S["small"],
+                                 textColor=INK2, leftIndent=0.72 * inch)
+            block.append(Paragraph(_pl(phase["rationale"]), mid))
+        block.append(Spacer(1, 5))
+
+        # Work items, not instructions: the checkpoint name is what we are
+        # taking on. The fix itself is the engagement.
+        cells = []
+        for a in actions[:14]:
+            label = str(a).split(" — ")[0].strip().rstrip(".")
+            cells.append(Paragraph(f"•  {_pl(label)}", S["cellsm"]))
+        if cells:
+            pairs = [cells[i:i + 2] for i in range(0, len(cells), 2)]
+            if len(pairs[-1]) == 1:
+                pairs[-1].append("")
+            grid = Table(pairs, colWidths=[3.27 * inch, 3.27 * inch])
+            grid.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("BACKGROUND", (0, 0), (-1, -1), SURFACE),
+                ("BOX", (0, 0), (-1, -1), 0.5, LINE),
+                ("ROUNDEDCORNERS", [8, 8, 8, 8]),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]))
+            block.append(grid)
+        if len(actions) > 14:
+            block.append(Paragraph(
+                f"<font color='#898781'>+ {len(actions) - 14} more in this "
+                f"phase, listed in the appendix.</font>", S["muted"]))
+        block.append(Spacer(1, 14))
+        out.append(KeepTogether(block))
+
+    return out
+
+
 def build_snapshot(meta: dict, scores: dict, findings: dict, catalog: dict,
                    summary: dict | None = None,
                    logo_path: str | None = None) -> bytes:
@@ -2863,7 +2958,9 @@ def build_snapshot(meta: dict, scores: dict, findings: dict, catalog: dict,
     """
     S = _styles()
     buf = io.BytesIO()
-    doc = _Doc(buf, meta)
+    # A copy, so naming this document does not rename the full report when a
+    # caller renders both from one meta dict.
+    doc = _Doc(buf, {**meta, "doc_title": "Website Snapshot"})
     story = []
     o = scores.get("overall", {}) or {}
 
@@ -2891,7 +2988,17 @@ def build_snapshot(meta: dict, scores: dict, findings: dict, catalog: dict,
         [Paragraph("<b>Checks evaluated</b>", S["cell"]),
          Paragraph(_p(meta.get("coverage")), S["cell"])],
     ]))
-    story.append(Spacer(1, 12))
+    story.append(Spacer(1, 6))
+    # THE SITE ITSELF, ON THE FIRST PAGE.
+    #
+    # Same argument as the full report: it is not evidence, it is the thing
+    # the document is about, and it is what makes three pages of numbers read
+    # as being about a real business rather than about a spreadsheet. On a
+    # document this short it matters more, not less - there is nothing else
+    # here to establish that anybody looked.
+    for fl in _hero_shot(meta, S):
+        story.append(fl)
+    story.append(Spacer(1, 6))
 
     # ---- the number, and what it means -----------------------------------
     _sev = _severity_counts(findings)
@@ -2924,9 +3031,12 @@ def build_snapshot(meta: dict, scores: dict, findings: dict, catalog: dict,
     if summary:
         if summary.get("overview"):
             story.append(Paragraph(_pl(summary["overview"]), S["body"]))
-        if summary.get("headline"):
-            story.append(_banner("", summary["headline"], SEQ, S))
-            story.append(Spacer(1, 8))
+        # NO "TOP ISSUE" PULL QUOTE HERE.
+        #
+        # In a twenty-nine page report it is a signpost; in a three-page one
+        # the same sentence appears again as Top Finding 1 about four inches
+        # later, so it reads as the document repeating itself before it has
+        # said anything else.
         opp = summary.get("opportunity")
         if opp:
             story.append(KeepTogether([
@@ -2982,24 +3092,95 @@ def build_snapshot(meta: dict, scores: dict, findings: dict, catalog: dict,
             "The order we would work in. Item counts come from the findings "
             "in the full audit.", S["small"]))
         story.append(Spacer(1, 10))
-        for i, phase in enumerate(roadmap, start=1):
-            title = _p(re.sub(r"^Phase\s*\d+\s*[—\-:]\s*", "",
-                              str(phase.get("phase", ""))))
-            actions = phase.get("actions", []) or []
-            block = [_pill(f"Phase {i}", {f"Phase {i}": (SURFACE, INK2)}, S,
-                           0.75 * inch),
-                     Spacer(1, 3),
-                     Paragraph(f"<b>{title}</b>", S["cell"])]
-            if actions:
-                block.append(Spacer(1, 3))
-                block.append(Paragraph(
-                    "<font color='#52514e'>"
-                    + _listy_pdf([_p(a) for a in actions[:4]]) + ".</font>",
-                    S["cellsm"]))
-            story.append(KeepTogether(block))
-            story.append(Spacer(1, 9))
+        # The SAME cards the full audit prints - see _roadmap_blocks. A
+        # second rendering of the plan is a second thing to keep right, and
+        # the client sees both documents.
+        for fl in _roadmap_blocks(roadmap, S):
+            story.append(fl)
 
-    story.append(Spacer(1, 14))
+    # ---- what the AI tools and the public record say ---------------------
+    #
+    # THE TWO SECTIONS A CLIENT ASKS ABOUT FIRST, IN THREE LINES EACH.
+    #
+    # A snapshot that drops these entirely is a snapshot of a 2019 SEO audit.
+    # They are also the two sections with the most figures per inch, so what
+    # goes in is the headline number and nothing else - the full report has
+    # the market split, the source table, the star bands and the examples.
+    _x = meta.get("extras") or {}
+    _v = _x.get("ai_visibility") or {}
+    _rep = _x.get("reputation") or {}
+    _rs = (_rep.get("summary") or {}) if _rep.get("ok") else {}
+    if _v.get("citation_rate") is not None or _rs:
+        story.append(PageBreak())
+        story.append(Paragraph("AI Search and Reputation", S["h2"]))
+        story.append(_rule())
+        story.append(Paragraph(
+            "The short version of two sections in the full audit: what the AI "
+            "tools say when somebody asks about your industry, and what a "
+            "stranger finds when they search your name.", S["small"]))
+        story.append(Spacer(1, 10))
+
+    if _v.get("citation_rate") is not None:
+        _plats = len(_ai_platforms(_v))
+        _tiles = Table([[
+            _snap_tile(f"{_v.get('mention_rate') or 0}%", "named you", S),
+            _snap_tile(f"{_v.get('citation_rate') or 0}%", "linked to you", S),
+            _snap_tile(str(_v.get("questions") or 0), "questions asked", S),
+            _snap_tile(str(_plats), "AI tools", S),
+        ]], colWidths=[1.65 * inch] * 4)
+        _tiles.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("BACKGROUND", (0, 0), (-1, -1), SURFACE),
+            ("BOX", (0, 0), (-1, -1), 0.5, LINE),
+            ("INNERGRID", (0, 0), (-1, -1), 0.5, LINE),
+            ("ROUNDEDCORNERS", [9, 9, 9, 9]),
+            ("LEFTPADDING", (0, 0), (-1, -1), 11),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 11),
+            ("TOPPADDING", (0, 0), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 10)]))
+        story.append(KeepTogether([
+            Paragraph("AI Search Visibility", S["h3"]),
+            Paragraph("Being named is not the same as being linked to - only "
+                      "the link sends anyone to you.", S["small"]),
+            Spacer(1, 6), _tiles]))
+        story.append(Spacer(1, 14))
+
+    if _rs:
+        _worst = _rs.get("worst") or {}
+        _tiles2 = Table([[
+            _snap_tile(f"{_rs.get('rating') or '—'}", "average rating", S),
+            _snap_tile(f"{_rs.get('reviews') or 0:,}", "reviews", S),
+            _snap_tile(f"{_rs.get('owned_in_top10') or 0} of "
+                       f"{(_rs.get('owned_in_top10') or 0) + (_rs.get('third_party_in_top10') or 0)}",
+                       "page one is yours", S),
+            _snap_tile(f"{_rs.get('brand_volume') or 0:,}",
+                       "searches a month", S),
+        ]], colWidths=[1.65 * inch] * 4)
+        _tiles2.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("BACKGROUND", (0, 0), (-1, -1), SURFACE),
+            ("BOX", (0, 0), (-1, -1), 0.5, LINE),
+            ("INNERGRID", (0, 0), (-1, -1), 0.5, LINE),
+            ("ROUNDEDCORNERS", [9, 9, 9, 9]),
+            ("LEFTPADDING", (0, 0), (-1, -1), 11),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 11),
+            ("TOPPADDING", (0, 0), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 10)]))
+        _block = [Paragraph("Reputation", S["h3"]),
+                  Paragraph("What a stranger finds when they look you up.",
+                            S["small"]),
+                  Spacer(1, 6), _tiles2]
+        story.append(KeepTogether(_block))
+        if _worst and _rs.get("rating") and \
+                float(_worst.get("rating") or 5) < float(_rs["rating"]) - 0.3:
+            story.append(Spacer(1, 8))
+            story.append(_banner(
+                "", f"{_p(_worst.get('title'))} is your weakest listing at "
+                    f"{_worst.get('rating')} - one location can carry the "
+                    f"whole brand's rating down.", GOLD, S))
+        story.append(Spacer(1, 14))
+
+    story.append(Spacer(1, 6))
     story.append(_banner(
         "", "This is a summary. The full audit carries every checkpoint we "
             "ran, the evidence behind each finding, and the methodology.",
@@ -3608,72 +3789,9 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             "phase. Item counts come straight from the findings above.",
             S["small"]))
         story.append(Spacer(1, 10))
-        for i, phase in enumerate(summary["roadmap"], start=1):
-            actions = phase.get("actions", []) or []
-            # The chip already says "Phase 2"; repeating it in the title reads
-            # as a template that forgot what it had already printed.
-            title = _p(re.sub(r"^Phase\s*\d+\s*[—\-:]\s*", "",
-                              str(phase.get("phase", ""))))
-            # A phase is a card: a numbered chip, the phase name, the count, a
-            # one-line rationale and the work itself. The chip and the count do
-            # the visual work a wall of bullets could not.
-            head = Table([[
-                _pill(f"Phase {i}", {f"Phase {i}": (ORD_PHASE[min(i, 3) - 1],
-                                                    colors.white)}, S, 0.62 * inch),
-                Paragraph(f"<b>{title}</b>", S["body"]),
-                Paragraph(f"<font color='#52514e'>{len(actions)} item"
-                          f"{'s' if len(actions) != 1 else ''}</font>", S["cellsm"]),
-            ]], colWidths=[0.72 * inch, 4.6 * inch, 1.2 * inch])
-            head.setStyle(TableStyle([
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ALIGN", (2, 0), (2, 0), "RIGHT"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ]))
-            block = [head]
-            if phase.get("rationale"):
-                # Indented to the phase NAME, not to the page margin.
-                #
-                # The header is a table whose first column is the 0.72in "Phase
-                # 2" chip, so a paragraph starting at x=0 begins underneath the
-                # chip and hangs to the left of both the title above it and the
-                # card below it — the one element on the block not lined up
-                # with anything. It is a caption for the title; it should start
-                # where the title starts.
-                mid = ParagraphStyle("phasecap", parent=S["small"],
-                                     textColor=INK2, leftIndent=0.72 * inch)
-                block.append(Paragraph(_pl(phase["rationale"]), mid))
-            block.append(Spacer(1, 5))
-
-            # Work items, not instructions: the checkpoint name is what we are
-            # taking on. The fix itself is the engagement.
-            cells = []
-            for a in actions[:14]:
-                label = str(a).split(" — ")[0].strip().rstrip(".")
-                cells.append(Paragraph(f"•  {_pl(label)}", S["cellsm"]))
-            if cells:
-                pairs = [cells[i:i + 2] for i in range(0, len(cells), 2)]
-                if len(pairs[-1]) == 1:
-                    pairs[-1].append("")
-                grid = Table(pairs, colWidths=[3.27 * inch, 3.27 * inch])
-                grid.setStyle(TableStyle([
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("BACKGROUND", (0, 0), (-1, -1), SURFACE),
-                    ("BOX", (0, 0), (-1, -1), 0.5, LINE),
-                    ("ROUNDEDCORNERS", [8, 8, 8, 8]),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 10),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-                    ("TOPPADDING", (0, 0), (-1, -1), 5),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                ]))
-                block.append(grid)
-            if len(actions) > 14:
-                block.append(Paragraph(
-                    f"<font color='#898781'>+ {len(actions) - 14} more in this "
-                    f"phase, listed in the appendix.</font>", S["muted"]))
-            block.append(Spacer(1, 14))
-            story.append(KeepTogether(block))
+        out = _roadmap_blocks(summary["roadmap"], S)
+        for fl in out:
+            story.append(fl)
 
     # ------------------------------------------------ detailed findings
     story.append(PageBreak())

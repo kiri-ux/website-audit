@@ -935,6 +935,7 @@ def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
     meta = _report_meta(a)
     cat = db.catalog()
     meta["pdf_url"] = f"/audits/{audit_id}.pdf"
+    meta["snapshot_url"] = f"/audits/{audit_id}.snapshot.pdf"
     # Only when there is something to show. A link to an empty page is worse
     # than no link: it reads as a broken feature rather than a phase nobody
     # ticked.

@@ -365,6 +365,35 @@ def _brand_head() -> str:
         return "<meta name='theme-color' content='#002D58'>"
 
 
+def _listy(items) -> str:
+    """a, b and c - so a list of areas reads as a sentence, not a column."""
+    items = [str(i) for i in items if i]
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    return ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def _same_day(a, b) -> bool:
+    try:
+        import datetime as _dt
+        return (_dt.date.fromtimestamp(float(a))
+                == _dt.date.fromtimestamp(float(b)))
+    except (TypeError, ValueError, OSError):
+        return False
+
+
+def _stamp(ts, with_time: bool) -> str:
+    """A date, or a date and time when the date alone would be ambiguous."""
+    try:
+        import datetime as _dt
+        d = _dt.datetime.fromtimestamp(float(ts))
+        return d.strftime("%Y-%m-%d %H:%M" if with_time else "%Y-%m-%d")
+    except (TypeError, ValueError, OSError):
+        return str(ts)[:16]
+
+
 def _now() -> float:
     import time as _t
     return _t.time()
@@ -710,23 +739,49 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
 
     _fresh_rows = _section_dates()
     if _fresh_rows:
-        _stale_any = any(c for _l, _w, c in _fresh_rows)
-        _body = "".join(
-            f"<tr><td class='hw'>{e(label)}</td><td>{e(_fmt_when(when))}"
-            + ("<span class='sm' style='color:var(--warning)'> &middot; "
-               "carried forward</span>" if is_carried else "")
-            + "</td></tr>"
-            for label, when, is_carried in _fresh_rows)
+        # ---- CONDENSED, AND THE DATE ONLY WHERE IT DIFFERS ----------------
+        #
+        # The first version printed nineteen table rows, every one of them the
+        # same date, most of them tagged "carried forward" - so it filled half
+        # a screen to say something that fits on two lines, and the tag looked
+        # wrong: if the carried run was ALSO today, what does carried mean?
+        #
+        # It means the data was measured by a different run. That is a real
+        # distinction and it does not stop being real when both runs happen on
+        # the same day - but it is not worth a row each. So: two sentences,
+        # areas named inline, and the date shown ONLY on the carried group,
+        # where it is the thing being reported. When a carried date matches
+        # this run's date the time is added, because "carried from today" with
+        # no clock reads as a contradiction.
+        _run_at = (meta or {}).get("generated_at") or _now()
+        _today = _stamp(_run_at, False)
+        _fresh = [l for l, _w, c in _fresh_rows if not c]
+        _stale_rows = [(l, w) for l, w, c in _fresh_rows if c]
+        _bits = []
+        if _fresh:
+            _bits.append(
+                f"<b>Measured on this run</b> ({e(_today)}): "
+                f"{e(_listy([_l for _l in _fresh]))}.")
+        if _stale_rows:
+            # Group by the date they came from - usually one date, sometimes
+            # two, never nineteen.
+            _by = {}
+            for _l, _w in _stale_rows:
+                _by.setdefault(_stamp(_w, _same_day(_w, _run_at)), []).append(_l)
+            for _when_s, _labels in sorted(_by.items()):
+                _bits.append(
+                    f"<b>Carried from an earlier run</b> ({e(_when_s)}): "
+                    f"{e(_listy(_labels))}.")
         out.append(
             f"<div style='margin-top:12px'>"
             f"<b style='color:var(--ink2)'>Where this report's data came from"
-            f"</b><div class='sm' style='color:var(--ink2);margin-top:2px'>"
-            + ("Anything marked carried forward was measured on an earlier "
-               "run of this site and is scored as measured. Re-tick that "
-               "phase to refresh it." if _stale_any else
-               "Every area was measured on this run.")
-            + f"</div><table class='sub' style='margin-top:6px'>{_body}"
-              f"</table></div>")
+            f"</b>"
+            f"<div class='sm' style='color:var(--ink2);margin-top:2px;"
+            f"line-height:1.55'>" + " ".join(_bits)
+            + ("<br/>Carried areas were measured by an earlier run of this "
+               "site and are scored as measured. Re-tick that phase to "
+               "refresh them." if _stale_rows else "")
+            + "</div></div>")
 
     # NO EVIDENCE PICTURES, AND THE REASON.
     #
@@ -939,9 +994,27 @@ def render_html(meta, sc, findings, catalog, summary=None):
                  f"style='display:inline-block;padding:9px 18px;background:var(--seq);"
                  f"color:#fff;border-radius:7px;font-weight:640;font-size:13.5px;"
                  f"text-decoration:none'>Open client PDF</a>"
-                 f"<a href='{e(meta['pdf_url'])}?polish=1' target='_blank' "
-                 f"rel='noopener' style='margin-left:12px;"
-                 f"font-size:12.5px;color:var(--ink2)'>with AI-written summary</a>"
+                 # THREE BUTTONS, ONE ROW. The snapshot and the consent scan
+                 # were link text beside a button, so the two things somebody
+                 # actually opens after the PDF looked like footnotes to it.
+                 + (f"<a href='{e(meta['snapshot_url'])}' target='_blank' "
+                    f"rel='noopener' title='Three pages - same findings, no "
+                    f"appendix' style='display:inline-block;margin-left:10px;"
+                    f"padding:9px 16px;border:1px solid var(--line);"
+                    f"border-radius:7px;font-weight:600;font-size:13px;"
+                    f"color:var(--ink);text-decoration:none'>Snapshot</a>"
+                    if meta.get("snapshot_url") else "")
+                 # WHAT THE SECOND LINK ACTUALLY DOES.
+                 #
+                 # "with AI-written summary" named the mechanism and left the
+                 # reader to guess whether the FINDINGS were AI-written too.
+                 # They are not, and that is the only thing worth saying: the
+                 # facts are identical, a model rewrites the prose.
+                 + f"<a href='{e(meta['pdf_url'])}?polish=1' target='_blank' "
+                   f"rel='noopener' title='Same findings and same numbers - a "
+                   f"model rewrites the wording only' style='margin-left:14px;"
+                   f"font-size:12.5px;color:var(--ink2)'>PDF with the wording "
+                   f"polished</a>"
                  # THE CONSENT SCAN IS BIGGER THAN THE NINE ROWS BELOW.
                  #
                  # Every CMP signature and its evidence, container ids,
@@ -951,8 +1024,11 @@ def render_html(meta, sc, findings, catalog, summary=None):
                  # fits in a checkpoint row. The link is only drawn when a
                  # consent scan actually ran.
                  + (f"<a href='{e(meta.get('consent_url'))}' "
-                    f"style='margin-left:16px;font-size:12.5px;"
-                    f"color:var(--ink2)'>Full consent scan &rsaquo;</a>"
+                    f"style='display:inline-block;margin-left:10px;"
+                    f"padding:9px 16px;border:1px solid var(--line);"
+                    f"border-radius:7px;font-weight:600;font-size:13px;"
+                    f"color:var(--ink);text-decoration:none'>Full consent "
+                    f"scan</a>"
                     if meta.get("consent_url") else "")
                  + "</div>")
 

@@ -530,7 +530,10 @@ def main():
     # NO AUDIT IDS. Both blocks this replaced printed one, and nobody has
     # ever needed to type a run id into anything.
     check("and no audit id is printed at the reader", "abc123" not in html4)
-    check("carried areas are marked as such", "carried forward" in html4)
+    # Condensed to two sentences rather than a row per area - see the note
+    # on _section_dates. The wording moved with it.
+    check("carried areas are marked as such",
+          "Carried from an earlier run" in html4, html4[-200:])
 
     # ...but there IS evidence, and it was there the whole time. Every audit
     # row stores the options it was submitted with, and run_consent /
