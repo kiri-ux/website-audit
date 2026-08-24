@@ -365,6 +365,16 @@ def _brand_head() -> str:
         return "<meta name='theme-color' content='#002D58'>"
 
 
+def _fmt_when(ts) -> str:
+    """A stored epoch or ISO string as a plain date. Local to this module:
+    app/ui has its own, and the report must not import the web layer."""
+    try:
+        import datetime as _dt
+        return _dt.date.fromtimestamp(float(ts)).isoformat()
+    except (TypeError, ValueError, OSError):
+        return str(ts)[:10]
+
+
 def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list:
     """
     "Action needed" — what is unfinished, and crucially WHOSE MOVE IT IS.
@@ -657,28 +667,59 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
                if (meta or {}).get("audit_id") else "")
             + "</div>")
 
-    if skipped:
-        # Muted, and phrased as a choice. This is not a defect list — it is
-        # "here is what this run did not cover, and here is the one click that
-        # would have covered it".
-        from collections import Counter as _C
-        per = _C()
-        fixes = {}
-        for _cid, (name, fix) in skipped:
-            per[name] += 1
-            fixes[name] = fix
-        rows = "".join(
-            f"<li><b>{n}</b> — {name} <span class='sm' "
-            f"style='color:var(--muted)'>&mdash; {fixes[name]}</span></li>"
-            for name, n in per.most_common())
+    # THE "NOT REQUESTED" GROUP HAS BEEN REMOVED.
+    #
+    # It listed the optional phases somebody had just chosen to switch off,
+    # and told them to switch them on. That is the panel narrating a decision
+    # the reader made thirty seconds earlier, and it is the third time a group
+    # here has filled with items nobody can act on - the same failure as the
+    # permanent boundary rows and the platforms we do not subscribe to. The
+    # rows themselves still say "not measured" in the body of the report,
+    # where a reader meets them; they no longer need a summary of their own.
+    #
+    # `skipped` is still computed above, because it is what keeps those rows
+    # OUT of "ours to fix", which was the whole reason it exists.
+
+    # ---- WHAT IN THIS REPORT IS NOT FROM TODAY ------------------------
+    #
+    # Everything below used to be printed in the CLIENT's copy, dated, on the
+    # grounds that reprinting last month's numbers silently would be
+    # dishonest. The instinct was right and the placement was wrong: a client
+    # does not need a note about which of OUR phases we re-ran, and reading
+    # one mid-document is us narrating our own process in their report.
+    #
+    # It belongs here, where every other note about how a run was assembled
+    # already lives, and where the person who has to decide whether to re-pull
+    # it will actually see it.
+    _ex2 = (meta or {}).get("extras") or {}
+    _aged = []
+    for _key, _label in (("reputation", "Reputation profile"),
+                         ("ai_visibility", "AI visibility panel")):
+        _blob = _ex2.get(_key) or {}
+        if isinstance(_blob, dict) and _blob.get("carried_at"):
+            _aged.append((_label, _blob.get("carried_at"),
+                          _blob.get("carried_from") or _blob.get("carried_from_run")))
+    if _aged or carried.get("count"):
+        _bits = []
+        for _label, _at, _from in _aged:
+            _bits.append(f"<li><b>{e(_label)}</b> &mdash; pulled "
+                         f"{e(_fmt_when(_at))}"
+                         + (f", from run <code>{e(str(_from)[:16])}</code>"
+                            if _from else "") + "</li>")
+        if carried.get("count"):
+            _bits.append(
+                f"<li><b>{carried['count']} checkpoint"
+                f"{'s' if carried['count'] != 1 else ''}</b> &mdash; answered "
+                f"on an earlier run of this site"
+                + (f", from <code>{e(str((carried.get('from') or ['?'])[0])[:16])}"
+                   f"</code>" if carried.get("from") else "") + "</li>")
         out.append(
             f"<div style='margin-top:12px'>"
-            f"<b style='color:var(--ink2)'>Not requested on this run &middot; "
-            f"{len(skipped)}</b>"
+            f"<b style='color:var(--ink2)'>Not measured today</b>"
             f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
-            f"Optional phases that were switched off. Not a fault, and not "
-            f"scored against the client &mdash; they are simply unmeasured."
-            f"</div><ul style='margin:6px 0 0 18px'>{rows}</ul></div>")
+            f"Carried forward from an earlier run of this site and scored as "
+            f"measured. Re-tick the phase to refresh it.</div>"
+            f"<ul style='margin:6px 0 0 18px'>{''.join(_bits)}</ul></div>")
 
     # NO EVIDENCE PICTURES, AND THE REASON.
     #
@@ -743,7 +784,7 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             # separate scheduled run, so from this audit's point of view
             # somebody still has to set it going.
             "GEO": "Start an AI visibility monitor run for this client; it asks "
-                   "each assistant and records whether the brand is cited.",
+                   "each AI tool and records whether the brand is cited.",
             "TECH": "Open the failing images, stylesheets and scripts and "
                     "confirm whether they are genuinely broken or merely slow.",
             "SEC": "Check subdomain TLS and HSTS with an external scanner.",

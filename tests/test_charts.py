@@ -476,29 +476,57 @@ def main():
             return int(m.group(1)) if m else 0
         return _n("Ours to fix"), _n("Not requested on this run"), html
 
+    # WHAT THIS SPLIT IS FOR, NOW THAT THE GROUP IS GONE.
+    #
+    # The panel used to print a "Not requested on this run" list: the optional
+    # phases somebody had just switched off, with instructions to switch them
+    # on. That group has been removed - it narrated a decision the reader had
+    # made thirty seconds earlier, the same failure as the permanent-boundary
+    # rows and the platforms we do not subscribe to.
+    #
+    # The SPLIT still matters and is what these assertions protect: an
+    # unticked phase's rows must stay OFF the fix list, and a TICKED phase
+    # that returned nothing must stay ON it. That was always the point; the
+    # list was only ever how it was displayed.
     ours, skip, html = _counts({"run_consent": False, "run_aivis": False})
     check("both phases off leaves only the real failure to fix",
           ours == 1, f"{ours} ours")
-    check("and the rest are listed as not requested",
-          skip == len(_CONS) + len(_GEO), f"{skip} skipped")
-    check("phrased as a choice, never as a fault",
-          "Not a fault" in html and "not scored against the client" in html)
-    check("and it names the checkbox that would have covered them",
-          "tick 'Consent &amp; privacy' on the next run" in html)
+    check("an unticked phase is not narrated back at the operator",
+          "Not requested on this run" not in html)
+    check("and it does not tell them to tick a box they just unticked",
+          "on the next run" not in html)
 
     # THE CASE THAT MUST NOT REGRESS. Ticking the box and getting nothing back
     # is a bug, and it has to stay on the fix list.
     ours2, skip2, _ = _counts({"run_consent": True, "run_aivis": False})
     check("a phase that WAS requested and returned nothing is still ours to fix",
           ours2 == 1 + len(_CONS), f"{ours2} ours")
-    check("and only the unticked phase moves",
-          skip2 == len(_GEO), f"{skip2} skipped")
+    check("and an unticked one still stays off it",
+          ours2 == 1 + len(_CONS), f"{ours2} ours")
 
     # An older audit recorded nothing. Claiming "not requested" without
-    # evidence would hide real failures, so the RENDERER claims nothing...
+    # evidence would hide real failures, so the renderer claims nothing.
     html3 = "".join(_todo_panel(_F, _cat, {"extras": {}}))
     check("the renderer claims nothing without evidence",
           "Not requested" not in html3)
+
+    # AND THE DATING MOVED HERE FROM THE CLIENT'S COPY.
+    #
+    # A carried section used to print "measured on an earlier run (date)" in
+    # the client PDF. That is a fact about how WE assembled the run, so it
+    # lives on this panel instead - where the person deciding whether to
+    # re-pull it will see it.
+    import time as _t
+    html4 = "".join(_todo_panel(_F, _cat, {"extras": {
+        "reputation": {"ok": True, "carried_at": _t.time() - 86400,
+                       "carried_from": "abc123"},
+        "ai_visibility": {"citation_rate": 9.0, "carried_at": _t.time() - 86400,
+                          "carried_from": "abc123"}}}))
+    check("carried sections are dated on the internal panel",
+          "Not measured today" in html4, html4[:120])
+    check("and both are named", "Reputation profile" in html4
+          and "AI visibility panel" in html4)
+    check("with the run they came from", "abc123" in html4)
 
     # ...but there IS evidence, and it was there the whole time. Every audit
     # row stores the options it was submitted with, and run_consent /
@@ -526,10 +554,15 @@ def main():
     check("a recorded stamp beats the derived value",
           _ex(_both)["phases_run"]["run_consent"] is True)
 
-    # End to end: the old report re-renders with the split.
-    html4 = "".join(_todo_panel(_F, _cat, {"extras": _ex(_pre32)}))
+    # End to end: the old report re-renders with the split. The evidence is
+    # now the ABSENCE of those rows from the fix list rather than the presence
+    # of a "not requested" group, which no longer exists - see above.
+    html5 = "".join(_todo_panel(_F, _cat, {"extras": _ex(_pre32)}))
+    import re as _re2
+    _m5 = _re2.search(r"Ours to fix &middot; (\d+)</b>", html5)
     check("so an existing report stops printing unticked phases as defects",
-          "Not requested on this run" in html4)
+          _m5 and int(_m5.group(1)) == 1,
+          _m5.group(1) if _m5 else "no fix group at all")
 
     print("\nA COUNT TOO SMALL FOR ITS SEGMENT IS STILL READABLE")
     # 4 Critical out of 111 is an 11pt block on a 3in bar - too narrow for the

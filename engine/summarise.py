@@ -65,10 +65,10 @@ WHY_IT_MATTERS = {
            "HTTPS as a ranking signal for a decade.",
     "TECH": "Crawl and indexing problems cap everything downstream: content you "
             "cannot get indexed cannot rank, however good it is.",
-    "GEO": "Assistants are increasingly answering questions that used to start "
+    "GEO": "AI tools are increasingly answering questions that used to start "
            "as searches. Being uncitable there removes you from that channel "
            "entirely, and it is a channel your competitors are already in.",
-    "SCHEMA": "Structured data is how you get rich results and how assistants "
+    "SCHEMA": "Structured data is how you get rich results and how AI tools "
               "understand what a page is about. It is one of the few changes "
               "that alters how you appear, not just where you rank.",
     "PERF": "Speed is both a ranking input and a conversion input. The second "
@@ -209,7 +209,7 @@ THEME_TITLE = {
     "images": "Images are unoptimized",
     "speed": "The site is slower than the Core Web Vitals thresholds",
     "mobile": "The mobile experience has defects",
-    "ai_access": "AI assistants cannot properly cite the site",
+    "ai_access": "AI tools cannot properly cite the site",
     "authority": "Off-site authority is behind",
     "eeat": "Trust and expertise signals are weak",
     "hreflang": "Language and region targeting is misconfigured",
@@ -233,7 +233,7 @@ SECTION_PROBLEM_TITLE = {
     "INTL": "Language and region targeting is misconfigured",
     "HTML": "Markup quality is holding diagnostics back",
     "EEAT": "Trust and expertise signals are weak",
-    "GEO": "The site is not set up to be cited by AI assistants",
+    "GEO": "The site is not set up to be cited by AI search tools",
     "OFF": "Off-site authority is behind",
     "GSC": "Search Console data is not available to us",
     # WAS "Analytics data is not available to us", printed above evidence
@@ -265,7 +265,7 @@ PLAIN_AREA = {
     "SCHEMA": "the structured data behind your listings",
     "ONP": "page titles and headings",
     "SEC": "whether every page is served securely",
-    "GEO": "whether AI assistants can find and cite you",
+    "GEO": "whether AI search tools can find and cite you",
     "EEAT": "the trust signals Google looks for",
     "URL": "how the site is put together",
     "CANON": "duplicate versions of the same page",
@@ -375,7 +375,7 @@ SERVICE_ACTION = {
     # claimable half and a promise nobody can keep about the rest - Super
     # Lawyers refuses self-nominations outright, Best Lawyers is peer review
     # only. The scope line now separates the two the same way the report does.
-    "ai_access": "We open up assistant access, claim and complete your "
+    "ai_access": "We open the site up to these tools, claim and complete your "
                  "profiles on the directories these tools read, put you "
                  "forward for the peer-selected ones, build the pages that "
                  "answer the questions your buyers are asking, and track "
@@ -488,9 +488,9 @@ _JUDGMENT_ACTIONS = {
     "testimonials": "Add attributed testimonials from real clients",
     "reviews": "Surface reviews on site and keep them current",
     "ai-friendly site architecture":
-        "Restructure so assistants can follow the site",
+        "Restructure so AI tools can follow the site",
     "ai-friendly content formatting":
-        "Reformat pages so assistants can extract answers cleanly",
+        "Reformat pages so AI tools can extract answers cleanly",
     "question-answer content": "Answer the questions clients actually ask",
     "conversational content": "Write the way people ask, not the way we index",
     "entity optimization": "Make clear who and what each page is about",
@@ -642,7 +642,7 @@ SCORE_MEANS = {
     "Strong": "the site is in good shape, with a short list of specific gaps",
     "Needs Improvement": "the site works, but enough is missing that it is "
                          "not competing on equal footing",
-    "Weak": "several of the basics search engines and AI assistants rely on "
+    "Weak": "several of the basics search engines and AI tools rely on "
             "are missing",
     "Critical": "the foundations are not in place, and that is holding back "
                 "everything built on top of them",

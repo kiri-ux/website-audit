@@ -947,7 +947,7 @@ CHECK_MEANS = {
     "GEO-20": "Whether the authors are identifiable as real, named people.",
     "GEO-21": "Whether the organization is identifiable as a real, named "
               "entity.",
-    "GEO-22": "Whether the brand is legible to search engines and assistants "
+    "GEO-22": "Whether the brand is legible to search engines and AI tools "
               "as a single thing.",
     "OFF-05": "A third-party score for how much authority a domain carries. "
               "Useful as a trend, not as a target.",
@@ -1435,18 +1435,8 @@ def _reputation(meta, S):
                "name alongside a complaint.".format(
                    _p(rep.get("brand") or meta.get("client") or "your name")),
                S["small"])]
-    # A CARRIED PROFILE SAYS SO.
-    #
-    # Reputation is the fastest-moving section in the report - one bad week
-    # moves a star rating - so a profile taken from an earlier run has to be
-    # dated on the page. Silently reprinting last month's number as this
-    # month's is the exact failure this codebase keeps chasing.
-    if rep.get("carried_at"):
-        out.append(Paragraph(
-            f"Measured on an earlier run of this site "
-            f"({_p(str(rep['carried_at'])[:10])}) and carried forward, so it "
-            f"describes the public record as of that date.", S["tiny"]
-            if "tiny" in S else S["small"]))
+    # Same as the AI section: the date this was pulled is an internal fact and
+    # lives on the internal panel, not in the client's copy.
     out.append(Spacer(1, 10))
 
     _big = ParagraphStyle("repbig", parent=S["cellsm"], fontName=_fonts.BOLD,
@@ -1996,7 +1986,7 @@ def _ai_sources(v, S, rep=None):
 
     rows = [[Paragraph("<b>Source</b>", S["cellsm"]), "",
              Paragraph("<b>Cited</b>", S["cellsm"]),
-             Paragraph("<b>What it is</b>", S["cellsm"]),
+             Paragraph("<b>Your way in</b>", S["cellsm"]),
              Paragraph("<b>You on it?</b>", S["cellsm"])]]
     _OWN = (colors.HexColor("#E4F1E8"), colors.HexColor("#1E7A45"))
     _DIR = (colors.HexColor("#FDF3E2"), colors.HexColor("#8A5A00"))
@@ -2057,16 +2047,16 @@ def _ai_sources(v, S, rep=None):
     # And DIRECTORY was used as a column value before anything said what one
     # is. It is the load-bearing word in the section: the whole point is that
     # some of these sites will list you if you ask, and the rest will not.
-    lead = ("When an assistant answers a question about your industry in "
+    lead = ("When an AI tool answers a question about your industry in "
             "your area, it builds that answer out of these websites. "
             "<b>Can join</b> means a directory that will list you on request "
             "- sites like Avvo and Justia already hold a profile for every "
-            "licensed attorney, and completing one is a form rather than a "
-            "campaign. <b>By invite</b> means a directory that chooses who "
+            "licensed attorney, and completing one is a form. <b>By invite</b> "
+            "means a directory that chooses who "
             "appears - Super Lawyers and Best Lawyers are peer-nominated and "
             "will not accept a self-nomination at any price, so we can put "
-            "you forward and no more than that. The rest are other firms' "
-            "own websites.")
+            "you forward but not guarantee it. The rest are other firms' own "
+            "websites.")
     if checked and listable:
         _missing = [str(d["domain"]).lower().replace("www.", "")
                     for d in sov[:8]
@@ -2131,11 +2121,11 @@ def _ai_gate(findings, S):
         return []
     blocked = list((f.get("value") or {}).get("blocked") or [])
     if blocked:
-        body = ("Your site is telling " + _listy_pdf(blocked) + " not to "
-                "read it. An assistant cannot quote a page it is not allowed "
-                "to open, so the numbers above are measuring that block, not "
-                "your content. Usually a security plugin or a firewall "
-                "setting rather than a decision anybody made - and a one-line "
+        body = ("Your site is blocking " + _listy_pdf(blocked) + ". They "
+                "cannot quote a page they are not allowed to open, so the "
+                "numbers above measure that block rather than your content. "
+                "This is usually a security plugin or a firewall setting "
+                "rather than a decision anybody made, and it is a one-line "
                 "change to fix.")
         tone = colors.HexColor("#A6192E")
     else:
@@ -2143,12 +2133,11 @@ def _ai_gate(findings, S):
         # is the cheapest possible cause and it has been ruled out." A double
         # negative wrapped around a piece of our own reasoning. The client
         # needs one fact: they are allowed in.
-        body = ("Your site allows the AI crawlers in, so whatever the numbers "
-                "above say, they are about your content rather than about a "
-                "setting blocking access.")
+        body = ("Your site lets these tools read it. Nothing above is caused "
+                "by a setting that blocks them.")
         tone = colors.HexColor("#1E7A45")
     return [Spacer(1, 12),
-            KeepTogether([Paragraph("Can the assistants read your site?",
+            KeepTogether([Paragraph("Can the AI tools read your site?",
                                     S["h3"]),
                           Spacer(1, 4), _banner("", body, tone, S)])]
 
@@ -2171,16 +2160,11 @@ def _ai_visibility(meta, S, findings=None):
            _rule(),
            Paragraph(_p(_ai_intro(v)).replace("\n", "<br/><br/>"),
                      S["small"])]
-    # A CARRIED PANEL SAYS SO, exactly like the reputation profile. These
-    # answers cost money to collect and are worth reusing across a re-run;
-    # they are also the fastest-moving numbers in the document, so reprinting
-    # last week's silently would be the same fault this codebase keeps
-    # chasing in a new section.
-    if v.get("carried_at"):
-        out.append(Paragraph(
-            f"Asked on an earlier run of this site "
-            f"({_p(str(_when(v['carried_at'])))}) and carried forward, so "
-            f"these are the answers as of that date.", S["small"]))
+    # NO "CARRIED FORWARD" NOTE HERE. It is a fact about how WE assembled the
+    # run, not about the client's site, and printing it mid-document reads as
+    # us narrating our own process. It has not been dropped - the internal
+    # panel carries it, dated, which is where every other note about how a run
+    # was put together already lives. See engine/report._todo_panel.
     out.append(Spacer(1, 8))
     _gate = _ai_gate(findings, S)
 
@@ -2261,11 +2245,9 @@ def _ai_visibility(meta, S, findings=None):
         # method. The reader needs two things: the range, and the rule for
         # reading next month's number against it.
         out += [Spacer(1, 10), Paragraph(
-            f"<b>How firm is that?</b> We asked every question {_rep} times "
-            f"({_ci['n']:,} answers in total), because these tools do not "
-            f"answer the same way twice. The real figure is "
-            f"<b>{cite}%, give or take {_pm} points</b>. Treat a move smaller "
-            f"than that next month as noise.", S["small"])]
+            f"These tools give a slightly different answer every time, so we "
+            f"asked each question {_rep} times. Read the figure above as "
+            f"<b>{cite}% give or take {_pm} points</b>.", S["small"])]
 
     # ---- MARKET BY MARKET ------------------------------------------------
     #
