@@ -23,7 +23,9 @@ what other people say about them on other people's sites is a different kind of
 fact. It renders as its own section, from `extras`, exactly like AI visibility.
 """
 
+import os
 import re
+import time
 
 from .collectors.dataforseo import dfs_post as _post, configured
 
@@ -468,7 +470,8 @@ def reviews_collect(task_ids):
 # answers what - and so a failure in any one of them costs that panel rather
 # than the section.
 def profile(brand: str, domain: str = "", locations_limit: int = 50,
-            progress=None) -> dict:
+            progress=None, stars: bool = True, stars_limit: int = 3,
+            shot: bool = True) -> dict:
     """
     Everything the reputation section renders, or an honest empty.
 
@@ -504,7 +507,157 @@ def profile(brand: str, domain: str = "", locations_limit: int = 50,
         except Exception as exc:  # noqa: BLE001
             out["errors"][name] = f"{type(exc).__name__}: {exc}"
     out["ok"] = any(k in out for k in ("locations", "serp", "terms"))
+
+    # ---- how many of those reviews are the bad ones --------------------
+    #
+    # "4.8 from 227 reviews" is the number the client already knows and feels
+    # fine about. "Ten one-star reviews" is the number that starts the
+    # conversation, and it is invisible in the average - which is the whole
+    # argument of this section, one level down. The listings database gives
+    # the average and the count; only the review pull gives the distribution.
+    #
+    # QUEUED, NOT LIVE. task_post returns immediately and the results appear a
+    # minute or so later, so this polls with a hard ceiling and gives up
+    # cleanly. A star breakdown is worth ~60 seconds of an audit and is worth
+    # ZERO minutes of holding one hostage - the section renders without it.
+    if stars and out.get("locations", {}).get("locations"):
+        try:
+            if progress:
+                progress("reviews")
+            out["stars"] = _star_bands(out["locations"]["locations"],
+                                       limit=stars_limit, progress=progress)
+        except Exception as exc:  # noqa: BLE001
+            out["errors"]["stars"] = f"{type(exc).__name__}: {exc}"
+
+    # ---- and a picture of the page we have just described --------------
+    if shot:
+        try:
+            if progress:
+                progress("screenshot")
+            out["shot"] = serp_shot(brand, progress=progress)
+        except Exception as exc:  # noqa: BLE001
+            out["errors"]["shot"] = f"{type(exc).__name__}: {exc}"
     return out
+
+
+# How long to wait for the queued review pulls, and how often to look.
+STAR_WAIT_S = float(os.getenv("REP_STAR_WAIT_S", "90"))
+STAR_POLL_S = 6.0
+SHOT_WAIT_S = float(os.getenv("REP_SHOT_WAIT_S", "75"))
+
+
+def serp_shot(brand: str, width=1200, height=1400, progress=None):
+    """
+    A real picture of page one for "<brand> reviews".
+
+    THE ARGUMENT FOR AN IMAGE RATHER THAN THE TABLE WE ALREADY HAVE.
+
+    The table is the analysis and the picture is the evidence, and they do
+    different jobs on a client call. A row saying yelp.com sits at #2 is a
+    claim about their search results; a screenshot of their search results
+    showing Yelp above their own website is the thing itself, and nobody
+    argues with it. The quote builder leads with this shot for exactly that
+    reason.
+
+    Two-step and queued, like the review pull: task_post returns an id, then
+    /serp/screenshot renders it. The endpoint answers with an error while the
+    task is still running, so a failure here is "not ready yet" far more often
+    than it is a real fault - which is why it polls rather than raising, and
+    why running out of patience costs a picture and nothing else.
+    """
+    import base64
+    import urllib.request
+
+    kw = f"{_bare(brand)} reviews"
+    tp = _post("/serp/google/organic/task_post",
+               [{"keyword": kw, "location_code": 2840, "language_code": "en",
+                 "device": "desktop", "priority": 2}], timeout=45)
+    task = (tp.get("tasks") or [{}])[0]
+    tid = task.get("id")
+    if not tid:
+        return {"ok": False, "why": task.get("status_message")
+                or "DataForSEO did not accept the screenshot task."}
+
+    waited = 0.0
+    while waited < SHOT_WAIT_S:
+        time.sleep(6.0)
+        waited += 6.0
+        if progress:
+            progress("screenshot")
+        try:
+            sc = _post("/serp/screenshot",
+                       [{"task_id": tid, "browser_preset": "desktop",
+                         "browser_screen_width": int(width),
+                         "browser_screen_height": int(height)}], timeout=60)
+        except Exception:  # noqa: BLE001
+            continue          # still rendering; the endpoint 4xxs until it is
+        try:
+            url = sc["tasks"][0]["result"][0]["items"][0]["image"]
+        except (KeyError, IndexError, TypeError):
+            url = None
+        if not url:
+            continue
+        # The image lives behind the same basic auth as the API.
+        login = os.getenv("DFS_LOGIN", "")
+        pw = os.getenv("DFS_PASSWORD", "")
+        tok = base64.b64encode(f"{login}:{pw}".encode()).decode()
+        req = urllib.request.Request(
+            url, headers={"Authorization": f"Basic {tok}"})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            png = r.read()
+        return {"ok": True, "keyword": kw, "png": png, "bytes": len(png)}
+    return {"ok": False, "keyword": kw,
+            "why": f"The screenshot was still rendering after "
+                   f"{int(SHOT_WAIT_S)}s."}
+
+
+def _star_bands(locations, limit=3, progress=None):
+    """
+    1, 2 and 3-star counts for the listings with the most to say.
+
+    Worst-rated first, not biggest first: the point of the block is the
+    listing dragging the average down, and a 4.9 with 400 reviews has nothing
+    to add that the average has not already said.
+    """
+    rated = [l for l in locations if l.get("place_id") and l.get("rating")]
+    rated.sort(key=lambda l: float(l["rating"]))
+    picked = rated[:max(1, int(limit))]
+    if not picked:
+        return {}
+    sub = reviews_submit([l["place_id"] for l in picked])
+    ids = [t["id"] for t in (sub.get("tasks") or []) if t.get("ok") and t.get("id")]
+    if not ids:
+        return {"queued": 0,
+                "note": "The review pull was not accepted by DataForSEO."}
+    by_place = {l["place_id"]: l for l in picked}
+    done, waited = {}, 0.0
+    pending = list(ids)
+    while pending and waited < STAR_WAIT_S:
+        time.sleep(STAR_POLL_S)
+        waited += STAR_POLL_S
+        if progress:
+            progress("reviews")
+        res = reviews_collect(pending)
+        for d in res.get("done") or []:
+            loc = by_place.get(d.get("place_id")) or {}
+            done[d.get("place_id") or d.get("id")] = {
+                "title": d.get("title") or loc.get("title"),
+                "address": loc.get("address"),
+                "rating": d.get("profile_rating") or loc.get("rating"),
+                "reviews": d.get("profile_reviews") or loc.get("reviews"),
+                "one": d.get("neg_1") or 0, "two": d.get("neg_2") or 0,
+                "three": d.get("weak_3") or 0,
+                # The pull is depth-limited and sorted worst-first, so hitting
+                # the depth means there are MORE bad ones we did not see. A
+                # count printed as exact when it is a floor is the kind of
+                # number that gets quoted back at you.
+                "at_least": bool(d.get("truncated")),
+            }
+        pending = res.get("pending") or []
+    return {"listings": list(done.values()), "queued": len(ids),
+            "pending": len(pending),
+            "note": ("Still processing when the audit finished."
+                     if pending else "")}
 
 
 def summarize(rep: dict) -> dict:
@@ -551,4 +704,32 @@ def summarize(rep: dict) -> dict:
                             + (serp.get("negative_pasf") or []),
         "forums": serp.get("forums") or [],
         "ai_negative": serp.get("ai_negative") or [],
+        # ---- the visuals -------------------------------------------------
+        #
+        # THE FULL LISTS, NOT ONLY THE NEGATIVE ONES.
+        #
+        # Everything above is the ANALYSIS: what is wrong and how big. The
+        # panels below are the EXHIBIT - Google's own suggestion drop-down,
+        # reproduced, with the bad one picked out among the ordinary ones.
+        # That contrast is the whole point of showing it: "complaints" sitting
+        # seventh in a list of six harmless suggestions is a fact about what
+        # real people type, and it lands in a way "1 negative suggestion"
+        # never does. Filtering to the negatives first would throw the exhibit
+        # away and keep the summary of it.
+        "suggestions": [
+            {"keyword": k,
+             "items": list(v.get("suggestions") or []),
+             "negative": list(v.get("negative") or [])}
+            for k, v in auto.items()
+            if isinstance(v, dict) and (v.get("suggestions") or v.get("negative"))],
+        "pasf": list(serp.get("pasf") or []),
+        "related": list(serp.get("related") or []),
+        "pasf_negative": list(serp.get("negative_pasf") or []),
+        "related_negative": list(serp.get("negative_related") or []),
+        # How many phrases we dropped because they name somebody else. Printed
+        # internally, never to the client - see the note in names_client. A
+        # filter that silently eats input is one nobody can audit.
+        "off_brand_dropped": len(serp.get("off_brand_phrases") or []),
+        "stars": rep.get("stars") or {},
+        "shot": bool((rep.get("shot") or {}).get("ok")),
     }

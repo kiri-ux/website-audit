@@ -239,6 +239,22 @@ GSC_IDS = [f"GSC-{i:02d}" for i in range(1, 23)]
 # though an endpoint answers them.
 GSC_EXTRA_IDS = ("TECH-29", "TECH-35", "ANA-03")
 
+# TWO OF THOSE THREE HAVE NO CHECK OF THEIR OWN.
+#
+# ANA-03 does - it reads the verification tag out of the crawl and answers
+# either way. TECH-29 (sitemap submitted in Search Console) and TECH-35 (index
+# coverage) are answered ONLY on this collector's happy path, so on every run
+# without a Search Console connection nobody wrote them at all. A checkpoint
+# with no row has no evidence to quote, so the internal panel fell back to its
+# generic line - "Search Console produced no result for this run" - and filed
+# two rows under "ours to fix" on an audit whose operator had already run
+# Search Console successfully and could see 118 other rows carried forward.
+#
+# They are Need Access, from the client, exactly like GSC-01..22. The unhappy
+# paths below now say so instead of staying silent. Note ANA-03 is deliberately
+# NOT in here: its own check gives a better answer than this blanket one.
+_GSC_UNANSWERED_IDS = ("TECH-29", "TECH-35")
+
 
 def _candidates(site_url: str) -> set:
     """
@@ -644,7 +660,8 @@ def collect_gsc(site_url: str, refresh_token: str | None = None,
         idx = _token_index()
         if idx and not oauth_configured():
             # Our fault, and it must not read as the client's.
-            return _need_access(GSC_IDS, _MISCONFIGURED, "gsc_misconfigured")
+            return _need_access(list(GSC_IDS) + list(_GSC_UNANSWERED_IDS),
+                                 _MISCONFIGURED, "gsc_misconfigured")
         reason = ("No Vici login has access to this Search Console property"
                   if idx else
                   "Search Console access not configured.")
@@ -652,7 +669,8 @@ def collect_gsc(site_url: str, refresh_token: str | None = None,
             reason += (f" (tried {len(idx)} login(s): {', '.join(idx)}). "
                        f"Ask the client to add a Vici login as a user on the "
                        f"property — the same grant you already use for GTM.")
-        return _need_access(GSC_IDS, reason, "gsc")
+        return _need_access(list(GSC_IDS) + list(_GSC_UNANSWERED_IDS),
+                            reason, "gsc")
     end = date.today() - timedelta(days=2)      # GSC data lags ~2 days
     start = end - timedelta(days=days)
     # The property string Google returned, not the URL the audit was submitted
@@ -699,7 +717,7 @@ def collect_gsc(site_url: str, refresh_token: str | None = None,
         out["GSC-01"]["evidence"] += (f" {n_pages} pages received organic traffic "
                                       f"in the period (read via {label}).")
     except Exception as e:
-        return _need_access(GSC_IDS,
+        return _need_access(list(GSC_IDS) + list(_GSC_UNANSWERED_IDS),
                             f"Search Console query failed: {type(e).__name__}: {e}",
                             "gsc_error")
 

@@ -52,17 +52,30 @@ def _rate_limited(data: dict) -> bool:
     return False
 
 
-def dfs_post(path: str, payload, timeout: int | None = None, retries: int = 1):
+def dfs_post(path: str, payload, timeout: int | None = None, retries: int = 1,
+             method: str = "POST"):
+    """
+    One DataForSEO call, with the retry and rate-limit handling.
+
+    `method` exists for the TASK_GET half of the queued endpoints. DataForSEO's
+    async pattern is POST to task_post, then GET task_get/{id} - and a GET with
+    a JSON body is rejected. The reputation module's review pull was vendored
+    in already calling this with method="GET"; without the parameter it raised
+    TypeError on the first line of the first pull, which would have read as
+    "the review counts are unavailable" rather than as a signature mismatch.
+    """
     login = os.getenv("DFS_LOGIN", "")
     pw = os.getenv("DFS_PASSWORD", "")
     token = base64.b64encode(f"{login}:{pw}".encode()).decode()
     hdrs = {"Authorization": f"Basic {token}", "Content-Type": "application/json"}
-    body = json.dumps(payload).encode()
+    # A GET carries no body. Sending one gets a 404 from their router, which
+    # looks exactly like a task id that does not exist.
+    body = json.dumps(payload).encode() if payload is not None else None
     last = None
     for attempt in range(retries + 1):
         try:
             req = urllib.request.Request(BASE + path, data=body, headers=hdrs,
-                                         method="POST")
+                                         method=method)
             with urllib.request.urlopen(req, timeout=timeout or TIMEOUT) as r:
                 data = json.loads(r.read())
             if attempt < retries and _rate_limited(data):

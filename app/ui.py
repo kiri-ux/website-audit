@@ -726,6 +726,28 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
             "implementation": o.get("implementation") or "",
             "render_js": bool(o.get("render_js")),
             "browser_ua": bool(o.get("user_agent")),
+            # THE PHASES. THE THIRD TIME THIS EXACT OMISSION HAS SHIPPED.
+            #
+            # Twice already a field was added to the form and never added to
+            # this dict, so "Settings used" did not show it and "Run again"
+            # silently reverted it - see the two notes above. The phase
+            # checkboxes made it three, and this one is the most expensive:
+            # the operator ticked "Ask the AI assistants", pressed Run again on
+            # a later run, and got a report with no AI section and a panel
+            # saying the phase was "not requested". They had requested it. The
+            # button un-ticked it on the way past.
+            #
+            # Opt-in phases (AI, reputation, consent) read as their own key.
+            # The three opt-OUT ones are stored inverted - `skip_judgment` is
+            # what gets written - so they are flipped back here, and an ABSENT
+            # skip key means the phase ran, which is why the default is True.
+            "run_aivis": bool(o.get("run_aivis")),
+            "run_reputation": bool(o.get("run_reputation")),
+            "run_consent": bool(o.get("run_consent")),
+            "run_judgment": not o.get("skip_judgment"),
+            "run_collectors": not o.get("skip_collectors"),
+            "run_screenshots": not o.get("skip_screenshots"),
+            "reuse_crawl": bool(o.get("reuse_crawl")),
         }
 
     def _settings_panel(a):
@@ -747,7 +769,19 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
                  ("Tag Manager container", st["gtm_container"] or "auto"),
                  ("Consent states", st["consent_states"] or "none checked"),
                  ("Render JavaScript", "yes" if st["render_js"] else "no"),
-                 ("Browser user-agent", "yes" if st["browser_ua"] else "no")]
+                 ("Browser user-agent", "yes" if st["browser_ua"] else "no"),
+                 # Listed because this panel is the record of what a run
+                 # actually did. A phase missing from here is a phase nobody
+                 # can check was on, which is how the AI section went missing
+                 # without anyone being able to say when.
+                 ("Phases", ", ".join(
+                     n for n, on in (("read and judge", st["run_judgment"]),
+                                     ("collectors", st["run_collectors"]),
+                                     ("screenshots", st["run_screenshots"]),
+                                     ("AI assistants", st["run_aivis"]),
+                                     ("consent", st["run_consent"]),
+                                     ("reputation", st["run_reputation"]))
+                     if on) or "none")]
         rows = "".join(f"<tr><td class='hw'>{e(k)}</td><td>{e(v)}</td></tr>"
                        for k, v in shown)
         blob = _h.escape(_json.dumps(st), quote=True)
@@ -1671,8 +1705,16 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
         if (cs) {{ cs.value = st.consent_states; STATES_TOUCHED = true; }}
         geoSyncStates();
       }}
-      [['render_js', st.render_js], ['browser_ua', st.browser_ua]].forEach(
+      // Every checkbox the form owns, phases included. Restoring only two of
+      // them is what silently turned "Ask the AI assistants" back off; a
+      // partial restore is worse than none, because it looks like it worked.
+      [['render_js', st.render_js], ['browser_ua', st.browser_ua],
+       ['run_judgment', st.run_judgment], ['run_collectors', st.run_collectors],
+       ['run_screenshots', st.run_screenshots], ['run_aivis', st.run_aivis],
+       ['run_consent', st.run_consent], ['run_reputation', st.run_reputation],
+       ['reuse_crawl', st.reuse_crawl]].forEach(
         function (p) {{
+          if (p[1] === undefined) return;   // a run from before that box existed
           var el = document.querySelector('[name=' + p[0] + ']');
           if (el) el.checked = !!p[1];
         }});

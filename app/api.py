@@ -993,6 +993,19 @@ def _extras(a: dict) -> dict:
     if shots:
         extras["screenshot_blobs"] = shots
 
+    # The reputation SERP shot, same arrangement: the name is on the audit,
+    # the bytes are in the blob store, and they are married at render time so
+    # a reload picks up the picture without re-running the scan.
+    _rs = ((extras.get("reputation") or {}).get("shot") or {})
+    if _rs.get("name") and not _rs.get("png"):
+        try:
+            blob = get_artifact(a["id"], _rs["name"])
+            if blob:
+                _rs["png"] = blob
+        except Exception as exc:  # noqa: BLE001
+            print(f"[api] reputation shot missing for {a.get('id')}: "
+                  f"{type(exc).__name__}: {exc}", flush=True)
+
     if extras.get("context"):
         return extras
     try:

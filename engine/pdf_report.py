@@ -1286,7 +1286,11 @@ def _reputation(meta, S):
         return []
     sm = rep.get("summary") or {}
     out = [PageBreak(),
-           Paragraph("Reputation", S["h2"]), _rule(),
+           # "Reputation" named the topic; it did not say what the pages are
+           # about. Every other section heading in this report says what was
+           # examined, and what was examined here is not the client's site at
+           # all - it is what a stranger finds when they look the client up.
+           Paragraph("What People Find When They Search You", S["h2"]), _rule(),
            Paragraph(
                "Before anyone reads a word of your site, most of them search "
                "your name. This is what that search returns: the star rating "
@@ -1320,7 +1324,15 @@ def _reputation(meta, S):
 
     rating = sm.get("rating")
     locs = sm.get("locations") or 0
-    tiles = Table([[
+    # FOUR TILES, BECAUSE THE FOURTH IS THE SIZE OF THE PROBLEM.
+    #
+    # The other three describe the state of the reputation; brand search
+    # volume says how many people MEET it every month. A 3.9 average matters
+    # differently at 200 brand searches a month than at 52,000, and without
+    # the denominator the reader has no way to tell which of those they are
+    # looking at. The quote builder leads on this number for the same reason.
+    _bv = sm.get("brand_volume") or 0
+    _tiles = [
         tile(f"{rating}" if rating else "\u2014", "average rating",
              f"across {locs} listing{'s' if locs != 1 else ''}"),
         tile(f"{sm.get('reviews') or 0:,}", "reviews in total",
@@ -1329,7 +1341,12 @@ def _reputation(meta, S):
              f"{(sm.get('owned_in_top10') or 0) + (sm.get('third_party_in_top10') or 0)}",
              "page one is yours",
              "for \u201c{} reviews\u201d".format(rep.get("brand") or "your name")),
-    ]], colWidths=[2.2 * inch, 2.2 * inch, 2.2 * inch])
+    ]
+    if _bv:
+        _tiles.append(tile(f"{_bv:,}", "searches a month",
+                           "for your name and its variants"))
+    _cw = (6.6 / len(_tiles)) * inch
+    tiles = Table([_tiles], colWidths=[_cw] * len(_tiles))
     tiles.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BACKGROUND", (0, 0), (-1, -1), SURFACE),
@@ -1355,39 +1372,221 @@ def _reputation(meta, S):
                 f"whole brand's rating down in a local pack.", GOLD, S))
 
     # ---- page one for "<brand> reviews" --------------------------------
+    #
+    # OWNED VERSUS THIRD PARTY, AND WHAT WE WOULD DO ABOUT EACH.
+    #
+    # "Yours / Someone else's" answered half the question and stopped. The
+    # quote builder's version of this table is the one that sells, because
+    # every row carries a TACTIC: a result is not just somebody else's, it is
+    # somebody else's and therefore something to suppress, or leave alone
+    # because its four stars are working for you, or get removed outright.
+    # `route_tactic` already decides that per row and stores it - it was being
+    # computed and thrown away here.
     organic = ((rep.get("serp") or {}).get("organic") or [])[:10]
     if organic:
+        _OWN = (colors.HexColor("#E4F1E8"), colors.HexColor("#1E7A45"))
+        _THIRD = (colors.HexColor("#EEF2F6"), colors.HexColor("#4A5461"))
+        # A tactic is a recommendation, so it is colored by what it asks of
+        # us: green where the result is already working, amber where it needs
+        # pushing down, red where it should not be there at all.
+        _TACT = {
+            "owned \u2014 boost": (colors.HexColor("#E4F1E8"), colors.HexColor("#1E7A45")),
+            "positive \u2014 leave": (colors.HexColor("#E4F1E8"), colors.HexColor("#1E7A45")),
+            "suppression": (colors.HexColor("#FDF3E2"), colors.HexColor("#8A5A00")),
+            "site removal": (colors.HexColor("#F7E4E7"), colors.HexColor("#A6192E")),
+        }
         rows = [[Paragraph("<b>#</b>", S["cellsm"]),
-                 Paragraph("<b>What ranks</b>", S["cellsm"]),
+                 Paragraph("<b>Result</b>", S["cellsm"]),
                  Paragraph("<b>Whose</b>", S["cellsm"]),
-                 Paragraph("<b>Rating shown</b>", S["cellsm"])]]
+                 Paragraph("<b>Rating</b>", S["cellsm"]),
+                 Paragraph("<b>What we would do</b>", S["cellsm"])]]
         for o in organic:
+            tac = (o.get("tactic") or "").strip()
             rows.append([
                 Paragraph(str(o.get("pos") or ""), S["cellsm"]),
                 Paragraph(f"<b>{_p(o.get('domain'))}</b><br/>"
                           f"<font color='#8096AC'>{_p(o.get('title'))}</font>",
                           S["cellsm"]),
-                Paragraph("Yours" if o.get("owned") else "Someone else's",
-                          S["cellsm"]),
+                _pill("OWNED" if o.get("owned") else "3RD PARTY",
+                      {"OWNED": _OWN, "3RD PARTY": _THIRD}, S, 0.72 * inch),
                 Paragraph(str(o.get("rating") or "\u2014"), S["cellsm"]),
+                (_pill(tac.upper(), {tac.upper(): _TACT.get(tac, _THIRD)}, S,
+                       1.45 * inch) if tac else Paragraph("", S["cellsm"])),
             ])
-        t = Table(rows, colWidths=[0.35 * inch, 3.65 * inch, 1.2 * inch,
-                                   1.4 * inch])
+        t = Table(rows, colWidths=[0.3 * inch, 2.85 * inch, 0.82 * inch,
+                                   0.58 * inch, 1.55 * inch])
         t.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LINEBELOW", (0, 0), (-1, 0), 0.6, LINE),
             ("LINEBELOW", (0, 1), (-1, -1), 0.35, colors.HexColor("#F1F4F7")),
             ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
             ("TOPPADDING", (0, 0), (-1, -1), 5),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
         out += [Spacer(1, 14),
-                Paragraph("Page one for \u201c{} reviews\u201d".format(
+                Paragraph("Who owns page one for \u201c{} reviews\u201d".format(
                     rep.get("brand") or "your name"), S["h3"]),
                 Paragraph("Every result here is what a person deciding "
-                          "whether to call you reads instead of your site.",
+                          "whether to call you reads instead of your site. "
+                          "The last column is what we would do about each one.",
                           S["small"]),
                 Spacer(1, 6), t]
+
+    # ---- the star bands behind the average -----------------------------
+    #
+    # "4.8 from 227 reviews" is the number the client already knows and is
+    # comfortable with. "Ten one-star reviews" is the one that starts the
+    # conversation, and the average is designed to hide it: ten 1-stars move a
+    # 227-review average by about a tenth of a point. So the bands are printed
+    # beside the profile figure they are invisible inside.
+    _stars = (sm.get("stars") or {}).get("listings") or []
+    if _stars:
+        srows = [[Paragraph("<b>Listing</b>", S["cellsm"]),
+                  Paragraph("<b>Profile</b>", S["cellsm"]),
+                  Paragraph("<b>1 star</b>", S["cellsm"]),
+                  Paragraph("<b>2 star</b>", S["cellsm"]),
+                  Paragraph("<b>3 star</b>", S["cellsm"])]]
+        def _band(n, floor):
+            # "at least 0" is not a floor, it is a typo with a reason. The
+            # truncation flag says the pull ran out of room while still
+            # returning bad reviews, so it qualifies a count we DID find - it
+            # says nothing about a band that came back empty.
+            n = int(n or 0)
+            return f"at least {n}" if (floor and n) else str(n)
+
+        for L in _stars:
+            _fl = bool(L.get("at_least"))
+            srows.append([
+                Paragraph(f"<b>{_p(L.get('title'))}</b>"
+                          + (f"<br/><font color='#8096AC'>"
+                             f"{_p(L.get('address'))}</font>"
+                             if L.get("address") else ""), S["cellsm"]),
+                Paragraph(f"{L.get('rating') or '—'}★ / "
+                          f"{L.get('reviews') or 0:,}", S["cellsm"]),
+                Paragraph(_band(L.get("one"), _fl), S["cellsm"]),
+                Paragraph(_band(L.get("two"), _fl), S["cellsm"]),
+                Paragraph(_band(L.get("three"), _fl), S["cellsm"]),
+            ])
+        st_ = Table(srows, colWidths=[2.9 * inch, 1.1 * inch, 0.87 * inch,
+                                      0.87 * inch, 0.86 * inch])
+        st_.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.6, LINE),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.35, colors.HexColor("#F1F4F7")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
+        _low = sum((L.get("one") or 0) + (L.get("two") or 0) for L in _stars)
+        _sub = ("The average is an average. These are the reviews a person "
+                "reads first when they sort by lowest.")
+        if _low:
+            _sub = (f"<b>{_low} review{'s' if _low != 1 else ''} at one or two "
+                    f"stars.</b> " + _sub)
+        out += [Spacer(1, 14),
+                Paragraph("The reviews behind the rating", S["h3"]),
+                Paragraph(_sub, S["small"]), Spacer(1, 6), st_]
+        if any(L.get("at_least") for L in _stars):
+            out.append(Paragraph(
+                "“At least” means the pull reached its limit while still "
+                "returning bad reviews — there are more below the ones "
+                "counted here.", S["small"]))
+
+    # ---- a picture of that page ----------------------------------------
+    #
+    # The table above is the analysis; this is the evidence. A row saying
+    # yelp.com holds position two is a claim about their search results. A
+    # picture of their search results with Yelp above their own website is the
+    # thing itself, and it ends the argument rather than starting one.
+    _shot = rep.get("shot") or {}
+    if _shot.get("ok") and _shot.get("png"):
+        _w = 6.0 * inch
+        _iw, _ih = _png_size(_shot["png"])
+        _ratio = (_ih / _iw) if (_iw and _ih) else 1.2
+        _full = _w * _ratio
+        out += [PageBreak(),
+                Paragraph("What that search actually looks like", S["h3"]),
+                Paragraph("Google, today, for “{}”. Nothing has been moved or "
+                          "removed.".format(_p(_shot.get("keyword")
+                                               or "your name reviews")),
+                          S["small"]),
+                Spacer(1, 8),
+                # CROPPED TO THE TOP, NOT SHRUNK TO FIT. A full-page Google
+                # capture is several thousand pixels tall; drawn whole it
+                # becomes a thumbnail strip nobody can read, and the part that
+                # matters - who holds the first few results - is the part at
+                # the top. Same treatment as the homepage shot.
+                Shot(_shot["png"], _w, min(_full, 6.2 * inch), draw_h=_full)]
+
+    # ---- what Google suggests while they are typing ---------------------
+    #
+    # Reproduced rather than summarised. "One negative suggestion" is a
+    # statistic; the drop-down itself, with "complaints" sitting seventh among
+    # six harmless ones, is what a person actually sees when they start typing
+    # the client's name - and the ordinary suggestions around it are what make
+    # the odd one out visible. Stripping them to save space would leave the
+    # summary and throw away the exhibit.
+    _panels = [g for g in (sm.get("suggestions") or []) if g.get("items")]
+    _pasf = list(sm.get("pasf") or [])
+    if _panels or _pasf:
+        _negset = {str(x).strip().lower()
+                   for g in _panels for x in (g.get("negative") or [])}
+        _negset |= {str(x).strip().lower()
+                    for x in (sm.get("pasf_negative") or [])}
+        _BAD = (colors.HexColor("#FBEAEC"), colors.HexColor("#A6192E"))
+        _OK = (colors.HexColor("#F7F8FA"), colors.HexColor("#3A4552"))
+
+        def _chip(text, wide):
+            bg, fg = (_BAD if str(text).strip().lower() in _negset else _OK)
+            st_ = ParagraphStyle("sug", parent=S["cellsm"], textColor=fg,
+                                 fontSize=8, leading=10.5)
+            c = Table([[Paragraph(_p(text), st_)]], colWidths=[wide])
+            c.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), bg),
+                ("ROUNDEDCORNERS", [5, 5, 5, 5]),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
+            c.hAlign = "LEFT"
+            return c
+
+        def _grid(items, cols=2):
+            wide = (6.6 / cols) * inch - 6
+            rws = [items[i:i + cols] for i in range(0, len(items), cols)]
+            cells = [[_chip(x, wide) for x in r] + [""] * (cols - len(r))
+                     for r in rws]
+            g = Table(cells, colWidths=[(6.6 / cols) * inch] * cols)
+            g.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
+            g.hAlign = "LEFT"
+            return g
+
+        out += [Spacer(1, 16),
+                Paragraph("What Google suggests while they type", S["h3"]),
+                Paragraph("These are Google's own auto-complete suggestions "
+                          "for your name. Anything in red pairs you with a "
+                          "complaint before the person has finished typing.",
+                          S["small"])]
+        # Each panel is one exhibit, so its label travels with its chips. A
+        # heading stranded at the foot of a page above somebody else's grid is
+        # worse than a page break in the right place.
+        for g in _panels[:2]:
+            out += [Spacer(1, 8),
+                    KeepTogether([
+                        Paragraph(f"<b>“{_p(g.get('keyword'))}”</b>",
+                                  S["cellsm"]),
+                        Spacer(1, 4), _grid(list(g["items"])[:10], cols=2)])]
+        if _pasf:
+            out += [Spacer(1, 10),
+                    KeepTogether([
+                        Paragraph("<b>People also search for</b>", S["cellsm"]),
+                        Spacer(1, 4), _grid(_pasf[:8], cols=2)])]
 
     # ---- brand searches carrying a complaint ---------------------------
     neg = sm.get("negative_terms") or []
@@ -1690,8 +1889,12 @@ def _strength(text, S, width=6.55 * inch):
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 13),
         ("RIGHTPADDING", (0, 0), (-1, -1), 14),
-        ("TOPPADDING", (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        # Two points off the top and one off the bottom of each card. Trivial
+        # on its own; there are two rows of them, and this is one of four
+        # small trims that together buy the ~15pt Biggest Opportunity needed to
+        # join Current Strengths on page 2 instead of opening page 3 alone.
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
     ]))
     return t
 
@@ -1720,7 +1923,7 @@ def _strength_grid(items, S):
         ("RIGHTPADDING", (0, 0), (0, -1), 10),
         ("RIGHTPADDING", (1, 0), (1, -1), 0),
         ("TOPPADDING", (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
     # RETURNED BARE, NOT WRAPPED.
     #
@@ -1895,7 +2098,7 @@ def _hero_shot(meta, S):
     full = w * ratio
     return [Spacer(1, 4),
             Shot(home["png"], w, min(full, 4.35 * inch), draw_h=full),
-            Spacer(1, 14)]
+            Spacer(1, 9)]
 
 
 def _evidence(meta, S, catalog=None):
@@ -2334,8 +2537,17 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             else:
                 # Short lists read better as prose than as bullets; a bulleted
                 # list of two items looks like a form that was filled in.
-                for it in items:
-                    story.append(Paragraph(_pl(it), S["body"]))
+                #
+                # AND THE HEADING TRAVELS WITH THE FIRST LINE. The trims above
+                # bought the space for this block to sit on page 2; binding it
+                # is what stops a future change re-separating "Biggest
+                # Opportunity" from the sentence that says what it is. Same
+                # rule the strength cards already follow.
+                head = story.pop()
+                for j, it in enumerate(items):
+                    para = Paragraph(_pl(it), S["body"])
+                    story.append(KeepTogether([head, para]) if j == 0 else para)
+                    head = Spacer(1, 0)
                     block.append(str(it))
             if block:
                 _define(" ".join(block))

@@ -145,7 +145,19 @@ def ana03(a, c):
                    # property — a working connection IS the verification. This
                    # branch is only reached when there is no connection at all.
                    "" if meta else "Confirmed either way once Search Console "
-                                   "access is connected.")
+                                   "access is connected.",
+                   # WHOSE PROBLEM AN UNANSWERED ANA-03 IS.
+                   #
+                   # Nobody's code. This check ran and answered: there is no
+                   # verification tag in the source, and DNS or file
+                   # verification leaves nothing visible from outside. What
+                   # closes the row is the client adding us to the property.
+                   # Without this the row inherited "we have a check for it,
+                   # so an empty row is ours" from engine/access and printed
+                   # under "a credential we have not set" - directly
+                   # contradicting its own recommendation line two lines
+                   # below. See CLIENT_DESPITE_REGISTRY.
+                   source="" if meta else "needs_gsc_grant")
 
 
 @check("ANA-05")

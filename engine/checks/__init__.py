@@ -27,10 +27,18 @@ def check(checkpoint_id: str):
 
 
 def finding(status, value=None, evidence="", pages=None, severity="Medium",
-            recommendation="", confidence=1.0):
-    return {"status": status, "value": value or {}, "evidence": evidence,
-            "affected_pages": pages or [], "severity": severity,
-            "recommendation": recommendation, "confidence": confidence}
+            recommendation="", confidence=1.0, source=""):
+    # `source` is how a row says WHOSE problem it is when it cannot be
+    # measured - engine/access reads it to route Need Access rows. Optional,
+    # because the overwhelming majority of checks answer from the crawl and
+    # the caller stamps that; a check only names one when its own answer
+    # contradicts where the default would file it. See ANA-03.
+    out = {"status": status, "value": value or {}, "evidence": evidence,
+           "affected_pages": pages or [], "severity": severity,
+           "recommendation": recommendation, "confidence": confidence}
+    if source:
+        out["source"] = source
+    return out
 
 
 def escalate(count, bands):

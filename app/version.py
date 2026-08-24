@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-86"
-BUILD_NOTES = ("A long phase says how long it has been long: a heartbeat "
-               "per screenshot and per reputation scan, a budget on the "
-               "browser, and the age of the last update on the page")
+BUILD = "2026.08.20-87"
+BUILD_NOTES = ("Reputation shows owned vs third party with a tactic each, "
+               "the star bands behind the average, a picture of page one and "
+               "Google's own suggestions. Run again stops un-ticking phases")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

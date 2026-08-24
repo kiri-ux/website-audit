@@ -141,6 +141,30 @@ OURS_DESPITE_PREFIX = {"gsc_ui_only", "ga4_admin_only",
 # genuinely-unautomatable checkpoint should land here rather than on the client.
 MANUAL_DESPITE_PREFIX: set = set()
 
+# THEIRS, DESPITE HAVING A CHECK OF OUR OWN.
+#
+# The mirror of OURS_DESPITE_PREFIX, and it exists because `_vendor_ids`
+# sweeps in every id with a registered check - correctly, since an empty row
+# for an automated check is usually our failed call. ANA-03 is the exception
+# that proves it. It HAS a check, the check RAN, and it answered honestly:
+# there is no google-site-verification tag in the source, and verification by
+# DNS or by an uploaded file leaves nothing we can see from outside. The row
+# even says what closes it - "confirmed either way once Search Console access
+# is connected" - which is a grant only the client can give.
+#
+# So it was printed under "a credential we have not set, or a call we have not
+# written", next to its own text saying the opposite. That contradiction is
+# the exact failure this panel has now hit four times: a fix list that fills
+# with things nobody can fix stops being read, and the real item hiding in it
+# goes too.
+#
+# `gsc` and `ga4` are the collectors' own "no login can see this property"
+# source. Under a GSC- or GA4- prefix they already route to the client; the two
+# rows that live under TECH- (sitemap submitted, index coverage) did not, and
+# landed back on the fix list by the same route. The SOURCE is the fact here,
+# not the prefix - that is the rule this function was written for.
+CLIENT_DESPITE_REGISTRY = {"needs_gsc_grant", "needs_ga4_grant", "gsc", "ga4"}
+
 
 def _owner_map() -> dict:
     """
@@ -277,6 +301,8 @@ def blocked_on(cid: str, finding: dict | None = None) -> str:
     src = (finding or {}).get("source") or ""
     if src in OURS_DESPITE_PREFIX:
         return "vendor"
+    if src in CLIENT_DESPITE_REGISTRY:
+        return "client"
     if src in MANUAL_DESPITE_PREFIX:
         return "manual"
     if cid.split("-")[0] in CLIENT_PREFIXES:

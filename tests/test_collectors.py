@@ -107,8 +107,20 @@ def main():
     a4 = collect_ga4(None, None)
     b = collect_backlinks("example.com")
 
+    # SEARCH CONSOLE OWES TWO ROWS UNDER ANOTHER PREFIX.
+    #
+    # TECH-29 (sitemap submitted) and TECH-35 (index coverage) are answered
+    # ONLY by this collector - they have no check of their own - so on a run
+    # with no Search Console connection nobody wrote them at all. A checkpoint
+    # with no row has no evidence to quote, so the internal panel fell back to
+    # its generic "produced no result for this run" and filed two rows under
+    # "ours to fix" on an audit whose operator had already connected Search
+    # Console successfully. Unanswered has to be SAID, not left blank.
+    from engine.collectors.analytics import _GSC_UNANSWERED_IDS
+    gsc_expected = list(GSC_IDS) + list(_GSC_UNANSWERED_IDS)
+
     for name, block, ids in (("judgment layer", j, CHECKPOINT_IDS),
-                             ("Search Console", g, GSC_IDS),
+                             ("Search Console", g, gsc_expected),
                              ("GA4", a4, GA4_IDS),
                              ("backlinks", b, OFF_IDS)):
         check(f"{name} returns all {len(ids)} checkpoints", len(block) == len(ids),
@@ -127,11 +139,13 @@ def main():
     F.update(j); F.update(g); F.update(a4); F.update(b)
     cat = scoring.load_catalog("seed/checkpoints.csv")
     print("\nCOVERAGE")
-    # 111 = 44 judgment (E-E-A-T, AI Search, on-page) + 22 GSC + 16 GA4 + 29
-    # backlinks. This is asserted exactly, and on purpose: the number only moves
-    # when a collector's row set changes, and that is precisely the change worth
-    # being made to look at.
-    check("coverage grew by 111 checkpoints", len(F) == base + 111,
+    # 113 = 44 judgment (E-E-A-T, AI Search, on-page) + 22 GSC + 2 GSC rows
+    # that live under TECH + 16 GA4 + 29 backlinks. This is asserted exactly,
+    # and on purpose: the number only moves when a collector's row set changes,
+    # and that is precisely the change worth being made to look at. It moved
+    # from 111 when the two TECH rows stopped being silently omitted - see the
+    # note on gsc_expected above.
+    check("coverage grew by 113 checkpoints", len(F) == base + 113,
           f"{base} -> {len(F)}")
     check("coverage is over 80% of the template", len(F) / len(cat) > 0.8,
           f"{len(F)}/{len(cat)} = {100*len(F)//len(cat)}%")

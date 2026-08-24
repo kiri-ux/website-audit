@@ -290,7 +290,10 @@ def main():
                "conversion_urls": ["https://o.com/thanks"],
                "implementation": "vici_gtm",
                "consent_industries": ["Legal - Defense"],
-               "consent_states": ["TN"]})}]
+               "consent_states": ["TN"],
+               # The phase this audit actually asked for. The point of the
+               # assertions below is that it comes back out again.
+               "run_aivis": True, "run_reputation": True})}]
     _h = _ui.dashboard_html(_a, _N(name="V", email="e"), 0,
                             caps={"consent": True, "aivis": True})
     check("no button posts to /rerun any more", "/rerun" not in _h)
@@ -307,6 +310,25 @@ def main():
     for k in ("consent_products", "conversion_urls", "implementation",
               "consent_states", "consent_industries", "primary_markets"):
         check(f"{k} is carried", f'\\"{k}\\"' in _h or f'&quot;{k}&quot;' in _h)
+
+    # AND THE PHASES. THE THIRD TIME THIS OMISSION SHIPPED.
+    #
+    # Same fault as the two above, on the boxes that decide what a run DOES.
+    # The operator ticked "Ask the AI assistants", pressed Run again weeks
+    # later, and got a report with no AI section and an internal panel saying
+    # the phase was "not requested" - a claim about their own choice that was
+    # not true. The button had un-ticked it in passing, because these keys
+    # were not in the payload and the restore loop only knew two checkboxes.
+    for k in ("run_aivis", "run_reputation", "run_consent", "run_judgment",
+              "run_collectors", "run_screenshots"):
+        check(f"{k} is carried", f'\\"{k}\\"' in _h or f'&quot;{k}&quot;' in _h)
+    check("the AI choice survives as TRUE, not just as a key",
+          '\\"run_aivis\\": true' in _h.lower()
+          or '&quot;run_aivis&quot;: true' in _h.lower(), "run_aivis")
+    check("and the restore loop actually assigns them",
+          "run_aivis', st.run_aivis" in _h.replace('"', "'")
+          or "['run_aivis', st.run_aivis]" in _h)
+    check("Settings used lists which phases ran", ">Phases<" in _h)
     check("and the two fields the form no longer has are not shown as used",
           ">Vertical<" not in _h and ">Primary conversion<" not in _h)
 

@@ -784,12 +784,27 @@ def _reputation(a, audit_id, extras, step):
         _SAYS = {"locations": "finding the Google listings",
                  "serp": f"reading page one for “{brand} reviews”",
                  "terms": "measuring brand searches",
-                 "autocomplete": "reading Google's own suggestions"}
+                 "autocomplete": "reading Google's own suggestions",
+                 "reviews": "counting the one and two-star reviews",
+                 "screenshot": "photographing page one"}
         rep = reputation.profile(
             brand, a.get("target_url") or "",
             progress=lambda name: step("checking",
                                        _SAYS.get(name, f"reputation: {name}")))
         rep["summary"] = reputation.summarize(rep)
+        # THE PICTURE GOES TO THE BLOB STORE, NOT INTO THE EXTRAS COLUMN.
+        #
+        # `extras` is json.dumps'd onto the audit row, and raw PNG bytes are
+        # not JSON - this would have raised TypeError at the final save, AFTER
+        # the whole scan, taking the audit down at the last step for the sake
+        # of a decorative image. Every other screenshot in this codebase
+        # already goes to object storage with the name kept in extras; this
+        # follows the same road, and the API re-attaches the bytes at render
+        # time (see _extras_for).
+        _png = (rep.get("shot") or {}).pop("png", None)
+        if _png:
+            put_artifact(audit_id, "reputation_serp.png", _png)
+            rep["shot"]["name"] = "reputation_serp.png"
         extras["reputation"] = rep
         s = rep["summary"]
         print(f"[worker] {audit_id} reputation: {s['locations']} listing(s), "
@@ -1026,14 +1041,27 @@ def _score_and_save(a, opts, audit_id, art, findings, extras, step):
             print(f"[worker] {audit_id} homepage shot failed: "
                   f"{type(exc).__name__}: {exc}", flush=True)
         cat_now = db.catalog()
-        targets = list(screenshots.pick_targets(
-            findings, cat_now, art.start_url, limit=3))
-        for i, (cid, url, sel, caption) in enumerate(targets, start=1):
-            if not _shot_room(f"evidence shot {i} of {len(targets)}"):
+        # THE CAP IS ON SUCCESSES, NOT ON ATTEMPTS.
+        #
+        # capture() fails closed - no red outline in the pixels, no picture -
+        # so three candidates could yield three Nones and an evidence section
+        # that omitted itself with nothing anywhere saying why. See
+        # screenshots.candidates. Take a deeper list, stop at three that
+        # actually carry a mark.
+        WANT = 3
+        targets = list(screenshots.candidates(
+            findings, cat_now, art.start_url, want=WANT))
+        tried, got, unmarked = 0, 0, []
+        for cid, url, sel, caption in targets:
+            if got >= WANT:
                 break
+            if not _shot_room(f"evidence shot after {tried} attempt(s)"):
+                break
+            tried += 1
             # Every capture is now a heartbeat AND a cancel checkpoint, which
             # is the same call because step() is both.
-            step("scoring", f"capturing evidence {i} of {len(targets)}")
+            step("scoring", f"capturing evidence {got + 1} of {WANT}"
+                            + (f" (attempt {tried})" if tried > got + 1 else ""))
             try:
                 png = screenshots.capture(url, sel)
             except Cancelled:
@@ -1041,17 +1069,44 @@ def _score_and_save(a, opts, audit_id, art, findings, extras, step):
             except Exception as exc:  # noqa: BLE001
                 print(f"[worker] {audit_id} evidence shot {cid} failed: "
                       f"{type(exc).__name__}: {exc}", flush=True)
+                unmarked.append(cid)
                 continue
             if not png:
+                # Not an error. The selector matched nothing visible, or the
+                # element scrolled out of frame, and the pixel check refused
+                # to hand back a picture with no mark on it.
+                unmarked.append(cid)
                 continue
             name = f"evidence_{cid.replace('/', '_')}.png"
             put_artifact(audit_id, name, png)
             shots.append({"checkpoint": cid, "name": name, "url": url,
                           "caption": caption, "boxed": bool(sel)})
+            got += 1
+        # WHY THERE ARE NO PICTURES, WRITTEN DOWN.
+        #
+        # A graceful degradation needs something loud somewhere else, or it is
+        # just a silent failure with good manners. The client PDF is right to
+        # omit an empty section; the INTERNAL panel is where this belongs, so
+        # the next person can see it was tried and how many times.
+        _ev = [s for s in shots if s.get("kind") != "homepage"]
+        if not _ev:
+            extras["screenshot_note"] = {
+                "tried": tried, "candidates": len(targets),
+                "unmarked": unmarked[:8],
+                "why": ("No candidate produced a visible outline. The check's "
+                        "selector matched nothing on the page, or the element "
+                        "was not in frame - the capture refuses to return a "
+                        "picture that promises a red outline and has none."
+                        if tried else
+                        "No checkpoint in this run has an element worth "
+                        "outlining - see SELECTORS in engine/screenshots.")}
+            print(f"[worker] {audit_id} NO evidence shots: {tried} of "
+                  f"{len(targets)} candidate(s) tried, none carried a mark "
+                  f"({', '.join(unmarked[:6]) or 'no candidates'})", flush=True)
         if shots:
             extras["screenshots"] = shots
-            print(f"[worker] {audit_id} captured {len(shots)} evidence shots",
-                  flush=True)
+            print(f"[worker] {audit_id} captured {len(shots)} shot(s), "
+                  f"{len(_ev)} with evidence marks", flush=True)
 
     # ---- consent and privacy ------------------------------------------
     if opts.get("run_consent"):

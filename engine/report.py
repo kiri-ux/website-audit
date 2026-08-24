@@ -390,7 +390,7 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
     # nothing else is outstanding — it is the reason a run looks thinner than
     # the last one, and the only place anyone would look for that reason.
     if not (b["client"] or b["vendor"] or b["manual"] or stale
-            or carried.get("count")):
+            or carried.get("count") or _ex.get("screenshot_note")):
         return []
 
     def reasons(ids):
@@ -658,6 +658,26 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             f"Optional phases that were switched off. Not a fault, and not "
             f"scored against the client &mdash; they are simply unmeasured."
             f"</div><ul style='margin:6px 0 0 18px'>{rows}</ul></div>")
+
+    # NO EVIDENCE PICTURES, AND THE REASON.
+    #
+    # The client PDF omits an empty evidence section, which is right - nobody
+    # wants a heading over nothing. But that omission was TOTAL: an audit came
+    # back with no red-outline shots at all and there was no way, from any
+    # screen, to tell whether the phase had been skipped, had failed, or had
+    # simply found nothing worth outlining. The worker knows which; this is
+    # where it gets said.
+    _sn = ((meta or {}).get("extras") or {}).get("screenshot_note") or {}
+    if _sn:
+        out.append(
+            f"<div style='margin-top:12px'>"
+            f"<b style='color:var(--ink2)'>No evidence screenshots</b>"
+            f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
+            f"{e(_sn.get('why') or '')} Tried {_sn.get('tried', 0)} of "
+            f"{_sn.get('candidates', 0)} candidate page(s)"
+            + (f": {e(', '.join(_sn.get('unmarked') or []))}."
+               if _sn.get("unmarked") else ".")
+            + f" The homepage shot on page 2 is unaffected.</div></div>")
 
     if b["client"]:
         out.append(

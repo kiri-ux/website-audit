@@ -390,3 +390,25 @@ def pick_targets(findings: dict, catalog: dict, start_url: str, limit: int = 3):
     scan(True)
     scan(False)
     return out
+
+
+def candidates(findings: dict, catalog: dict, start_url: str, want: int = 3,
+               depth: int = 4):
+    """
+    More targets than we need, because capture FAILS CLOSED.
+
+    `pick_targets` returns exactly `want` candidates and the caller captured
+    exactly those. But `capture()` verifies the red outline in the PNG's own
+    pixels and returns None when it cannot find one - by design, because a
+    shot promising a mark and carrying none is worse than no shot. Put those
+    two together and three unlucky candidates means ZERO evidence, an
+    "The Problems, On Your Pages" section that omits itself, and nothing
+    anywhere saying why. That is the whole section lost to a selector that did
+    not match, silently.
+    #
+    # An audit of ootenlawfirm.com came back with the homepage shot present and
+    # every evidence shot missing, which is exactly this: the cap belongs on
+    # SUCCESSES, not on attempts. So hand the caller a deeper list and let it
+    # stop when it has enough.
+    """
+    return pick_targets(findings, catalog, start_url, limit=want * depth)

@@ -111,7 +111,10 @@ ROUTES = {
 CALLS: list[str] = []
 
 
-def fake_post(path, payload, timeout=60):
+def fake_post(path, payload, timeout=60, method="POST"):
+    # `method` because DataForSEO's queued endpoints are POST task_post then
+    # GET task_get/{id}. A stub that omits it raises TypeError inside the
+    # module's own except-and-retry, which reads as "still pending" forever.
     CALLS.append(path)
     fn = ROUTES.get(path)
     if not fn:
@@ -139,7 +142,9 @@ def main():
     # 2 ------------------------------------------------ one panel down only
     rep.configured = lambda: True
     rep._post = fake_post
-    prof = rep.profile(BRAND, DOMAIN)
+    # stars and shot are exercised separately below; both are queued calls
+    # with their own poll loops and do not belong in the four-scan assertions.
+    prof = rep.profile(BRAND, DOMAIN, stars=False, shot=False)
     check("scan ok with autocomplete down", prof.get("ok") is True)
     check("failed panel is recorded, not swallowed",
           "autocomplete" not in prof or bool(
@@ -187,12 +192,75 @@ def main():
           == "ooten law firm")
     check("article is not a required title token",
           rep.brand_tokens("The Ooten Law Firm") == ["ooten", "law", "firm"])
-    withthe = rep.profile("The " + BRAND, DOMAIN)
+    withthe = rep.profile("The " + BRAND, DOMAIN, stars=False, shot=False)
     wsm = rep.summarize(withthe)
     check("listings still found for a 'The' brand", wsm["locations"] == 2,
           str(wsm["locations"]))
     check("negative term still classified for a 'The' brand",
           wsm["negative_volume"] == 140, str(wsm["negative_volume"]))
+
+    # 4c ------------------------------- the tactic is carried, not recomputed
+    #     Every page-one row already knows what we would do about it. The
+    #     table printed "Yours / Someone else's" and dropped that on the floor.
+    tac = {o["domain"]: o.get("tactic") for o in prof["serp"]["organic"]}
+    check("owned result routes to boost",
+          tac.get("ootenlawfirm.com") == "owned — boost", str(tac))
+    check("a weak third-party review site routes to suppression",
+          tac.get("avvo.com") == "suppression", str(tac))
+    check("a strong third-party rating is left alone",
+          rep.route_tactic("avvo.com", rating=4.6) == "positive — leave")
+    check("a forum thread routes to removal",
+          rep.route_tactic("reddit.com", forum=True) == "site removal")
+
+    # 4d ------------------------------------------- the queued review pull
+    #     Two things this has to get right. The GET half of DataForSEO's async
+    #     pattern (dfs_post had no `method`, so the vendored call raised
+    #     TypeError on its first line), and worst-listing-first ordering - the
+    #     4.9 with 400 reviews has nothing to add that the average has not.
+    posted = {}
+
+    def _reviews_post(payload):
+        posted["places"] = [p["place_id"] for p in payload]
+        posted["sort"] = payload[0].get("sort_by")
+        return {"tasks": [{"id": f"T-{p['place_id']}", "status_code": 20000,
+                           "data": {"tag": p["place_id"]}} for p in payload]}
+
+    def _reviews_get(_payload):
+        return {"tasks": [{"status_code": 20000, "data": {"tag": "P2"},
+                           "result": [{"title": "Ooten Law Firm - Farragut",
+                                       "rating": {"value": 2.0},
+                                       "reviews_count": 6,
+                                       "items": [{"rating": {"value": v}}
+                                                 for v in (1, 1, 1, 2, 3, 5)]}]}]}
+
+    ROUTES["/business_data/google/reviews/task_post"] = _reviews_post
+    ROUTES["/business_data/google/reviews/task_get/T-P2"] = _reviews_get
+    ROUTES["/business_data/google/reviews/task_get/T-P1"] = _reviews_get
+    rep.STAR_POLL_S = 0.01
+    rep.STAR_WAIT_S = 0.5
+    bands = rep._star_bands(prof["locations"]["locations"], limit=1)
+    check("the review pull asks for the WORST listing",
+          posted.get("places") == ["P2"], str(posted.get("places")))
+    check("and asks for the worst reviews first",
+          posted.get("sort") == "lowest_rating", str(posted.get("sort")))
+    L = (bands.get("listings") or [{}])[0]
+    check("one-star reviews counted", L.get("one") == 3, str(L.get("one")))
+    check("two-star reviews counted", L.get("two") == 1, str(L.get("two")))
+    check("three-star reviews counted", L.get("three") == 1, str(L.get("three")))
+
+    # A GET carries no body, and dfs_post has to actually send one.
+    import inspect
+    from engine.collectors import dataforseo as _dfs
+    check("dfs_post accepts the GET half of a queued task",
+          "method" in inspect.signature(_dfs.dfs_post).parameters)
+
+    # 4e -------------------------------------- "at least 0" is not a floor
+    #     The truncation flag qualifies counts we FOUND. Printed against an
+    #     empty band it reads as a number nobody can act on.
+    prof["stars"] = {"listings": [
+        {"title": "Ooten Law Firm", "rating": 4.8, "reviews": 227,
+         "one": 10, "two": 1, "three": 0, "at_least": True}]}
+    sm = rep.summarize(prof)          # re-derive, so the render sees the bands
 
     # 5 ----------------------------------------------------- it renders
     check("page one ownership counted",
@@ -227,6 +295,14 @@ def main():
               "Farragut" in text, text[:120].replace("\n", " "))
         check("competitor's name never reaches the page",
               "Morgan" not in text and "Wooten" not in text)
+        check("brand search volume is on the page",
+              "1,650" in text, text[:80].replace("\n", " "))
+        check("the tactic column prints",
+              "SUPPRESSION" in text.upper() and "OWNED" in text.upper())
+        check("star bands print", "10" in text and "1 star" in text.lower())
+        check("a truncated pull says 'at least' on a band it found",
+              "at least 10" in text)
+        check("and never on an empty one", "at least 0" not in text)
     except ImportError:
         print("  SKIP  pdfplumber not installed")
 
