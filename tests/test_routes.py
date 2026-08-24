@@ -399,6 +399,35 @@ def main():
           "removeChild" in _js)
     check("a page that is not running gets no script", _tabjs(None) == "")
 
+    print("\nTHE SNAPSHOT IS THE SAME REPORT, SHORTER")
+    # A three-page summary assembled from its own private copy of the score
+    # would disagree with the full audit in front of a client within two
+    # builds. It is built from the SAME findings by the SAME functions, and
+    # what it drops is the evidence - the appendix, the per-section tables,
+    # the methodology - not the arithmetic.
+    st_s, _ct_s, body_s = GET(f"/audits/{aid}.snapshot.pdf")
+    check("the snapshot route is registered before the .pdf one", st_s == 200,
+          str(st_s))
+    check("and returns a PDF", body_s[:4] == b"%PDF", str(body_s[:12]))
+    st_f, _ct_f, body_f = GET(f"/audits/{aid}.pdf")
+    check("the full report still works", st_f == 200 and body_f[:4] == b"%PDF")
+    check("and the snapshot is genuinely shorter",
+          len(body_s) < len(body_f),
+          f"{len(body_s)} vs {len(body_f)} bytes")
+    try:
+        import io as _io8, pdfplumber as _pp8
+        with _pp8.open(_io8.BytesIO(body_s)) as _d8:
+            _n8 = len(_d8.pages)
+            _t8 = "\n".join((_pg.extract_text() or "") for _pg in _d8.pages)
+        check("the snapshot is a handful of pages", _n8 <= 6, f"{_n8} pages")
+        check("it is the snapshot, and it names the client",
+              "Snapshot" in _t8 and "Junk Bee Gone" in _t8, _t8[:90])
+        check("it points the reader at the full audit",
+              "full audit" in _t8.lower(), _t8[-140:])
+        check("and drops the appendix", "Appendix" not in _t8)
+    except ImportError:
+        print("  SKIP  pdfplumber not installed")
+
     print("=" * 68 + "\n")
     return 1 if FAILURES else 0
 

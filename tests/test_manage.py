@@ -602,12 +602,28 @@ def main():
     check("nothing is carried for a phase that actually ran",
           not _ran, str(sorted(_ran)))
     # And the panel says so rather than moving the score in silence.
+    #
+    # It now says it as ONE dated list of areas rather than as a count of
+    # checkpoints beside an audit id - the count answered "how many rows are
+    # old" and the reader's question was always "which parts of this report
+    # are old". A checkpoint carried forward is stamped in its own value, so
+    # the area it belongs to is what gets dated.
+    import time as _t3
     from engine.report import _todo_panel as _tp3
-    _html3 = "".join(_tp3({}, {}, {"extras": {
+    _F3 = {"TECH-01": {"status": "Pass", "value": {"carried_at": _t3.time() - 8e4},
+                       "evidence": "", "affected_pages": [], "severity": "Low",
+                       "recommendation": "", "confidence": 1.0, "source": "x"},
+           "ONP-01": {"status": "Pass", "value": {}, "evidence": "",
+                      "affected_pages": [], "severity": "Low",
+                      "recommendation": "", "confidence": 1.0, "source": "x"}}
+    _html3 = "".join(_tp3(_F3, {"TECH-01": {}, "ONP-01": {}}, {"extras": {
         "phases_run": {"run_consent": True, "run_aivis": True},
         "carried_forward": {"count": 44, "from": [_old], "ids": []}}}))
-    check("the panel counts what was carried over",
-          "Carried over from an earlier run" in _html3 and "44" in _html3)
+    check("the panel dates every area of the report",
+          "Technical SEO" in _html3 and "On-Page SEO" in _html3, _html3[-200:])
+    check("and marks the ones that are not from today",
+          "carried forward" in _html3, _html3[-200:])
+    check("without printing an audit id at anybody", _old not in _html3)
 
     print("\n" + "=" * 68)
     print(f"  {len(FAILURES)} FAILED: {FAILURES}" if FAILURES

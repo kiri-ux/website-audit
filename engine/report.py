@@ -365,6 +365,11 @@ def _brand_head() -> str:
         return "<meta name='theme-color' content='#002D58'>"
 
 
+def _now() -> float:
+    import time as _t
+    return _t.time()
+
+
 def _fmt_when(ts) -> str:
     """A stored epoch or ISO string as a plain date. Local to this module:
     app/ui has its own, and the report must not import the web layer."""
@@ -591,24 +596,13 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             f"Nothing to ask anyone for.</div>"
             f"<ul style='margin:6px 0 0 18px'>{items}</ul></div>")
 
-    # ANSWERS BROUGHT FORWARD FROM AN EARLIER RUN.
+    # THE CARRIED-FORWARD GROUP AND THE "NOT MEASURED TODAY" GROUP HAVE
+    # BEEN MERGED INTO ONE DATED LIST - see the end of this function.
     #
-    # A quiet carry-forward would be worse than none: the score would move for
-    # a reason nobody could see, and a row dated last week would read as today.
-    # Loud, counted, and dated - the same rule as the reused crawl.
-    if carried.get("count"):
-        _carried = carried
-        _from = ", ".join(_carried.get("from") or []) or "an earlier run"
-        out.append(
-            f"<div style='margin-top:12px'>"
-            f"<b style='color:var(--seq)'>Carried over from an earlier run "
-            f"&middot; {_carried['count']}</b>"
-            f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
-            f"Phases this run did not repeat, answered from "
-            f"<code>{e(_from)}</code> instead of left blank. They are scored "
-            f"as measured, and they describe the site as of that run - "
-            f"re-tick the phase to refresh them."
-            f"</div></div>")
+    # They were two blocks answering the same question from opposite ends:
+    # one counted carried CHECKPOINTS and printed an audit id, the other
+    # listed the two extras SECTIONS and printed a different audit id. The
+    # reader had to assemble "which parts of this report are old" out of both.
 
     if unreadable:
         rows = bullets(reasons(unreadable))
@@ -680,46 +674,59 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
     # `skipped` is still computed above, because it is what keeps those rows
     # OUT of "ours to fix", which was the whole reason it exists.
 
-    # ---- WHAT IN THIS REPORT IS NOT FROM TODAY ------------------------
+    # ---- WHERE THIS REPORT'S DATA CAME FROM ----------------------------
     #
-    # Everything below used to be printed in the CLIENT's copy, dated, on the
-    # grounds that reprinting last month's numbers silently would be
-    # dishonest. The instinct was right and the placement was wrong: a client
-    # does not need a note about which of OUR phases we re-ran, and reading
-    # one mid-document is us narrating our own process in their report.
+    # Every area of the report and the date its data was pulled. Areas
+    # measured on this run say today; areas carried forward say when they
+    # were really measured, and are marked.
     #
-    # It belongs here, where every other note about how a run was assembled
-    # already lives, and where the person who has to decide whether to re-pull
-    # it will actually see it.
-    _ex2 = (meta or {}).get("extras") or {}
-    _aged = []
-    for _key, _label in (("reputation", "Reputation profile"),
-                         ("ai_visibility", "AI visibility panel")):
-        _blob = _ex2.get(_key) or {}
-        if isinstance(_blob, dict) and _blob.get("carried_at"):
-            _aged.append((_label, _blob.get("carried_at"),
-                          _blob.get("carried_from") or _blob.get("carried_from_run")))
-    if _aged or carried.get("count"):
-        _bits = []
-        for _label, _at, _from in _aged:
-            _bits.append(f"<li><b>{e(_label)}</b> &mdash; pulled "
-                         f"{e(_fmt_when(_at))}"
-                         + (f", from run <code>{e(str(_from)[:16])}</code>"
-                            if _from else "") + "</li>")
-        if carried.get("count"):
-            _bits.append(
-                f"<li><b>{carried['count']} checkpoint"
-                f"{'s' if carried['count'] != 1 else ''}</b> &mdash; answered "
-                f"on an earlier run of this site"
-                + (f", from <code>{e(str((carried.get('from') or ['?'])[0])[:16])}"
-                   f"</code>" if carried.get("from") else "") + "</li>")
+    # NO AUDIT IDS. Both of the blocks this replaces printed one, and nobody
+    # has ever needed to type a run id into anything - a hex string beside
+    # every row made the panel read like a log file rather than like an
+    # answer to a question somebody asked.
+    def _section_dates():
+        """[(label, when, is_carried)] for every area with data here."""
+        _run_at = (meta or {}).get("generated_at") or _now()
+        by_prefix = {}
+        for cid, f in (findings or {}).items():
+            pref = str(cid).split("-")[0]
+            val = f.get("value") if isinstance(f.get("value"), dict) else {}
+            when = (val or {}).get("carried_at")
+            if pref not in by_prefix:
+                by_prefix[pref] = None
+            if when:
+                by_prefix[pref] = when
+        rows = [(SECTION_NAMES.get(pref, pref), by_prefix[pref] or _run_at,
+                 bool(by_prefix[pref]))
+                for pref in ORDER if pref in by_prefix]
+        for key, label in (("reputation", "Reputation"),
+                           ("ai_visibility", "AI Search Visibility")):
+            blob = _ex.get(key)
+            if not isinstance(blob, dict) or not blob:
+                continue
+            at = blob.get("carried_at")
+            rows.append((label, at or _run_at, bool(at)))
+        return rows
+
+    _fresh_rows = _section_dates()
+    if _fresh_rows:
+        _stale_any = any(c for _l, _w, c in _fresh_rows)
+        _body = "".join(
+            f"<tr><td class='hw'>{e(label)}</td><td>{e(_fmt_when(when))}"
+            + ("<span class='sm' style='color:var(--warning)'> &middot; "
+               "carried forward</span>" if is_carried else "")
+            + "</td></tr>"
+            for label, when, is_carried in _fresh_rows)
         out.append(
             f"<div style='margin-top:12px'>"
-            f"<b style='color:var(--ink2)'>Not measured today</b>"
-            f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
-            f"Carried forward from an earlier run of this site and scored as "
-            f"measured. Re-tick the phase to refresh it.</div>"
-            f"<ul style='margin:6px 0 0 18px'>{''.join(_bits)}</ul></div>")
+            f"<b style='color:var(--ink2)'>Where this report's data came from"
+            f"</b><div class='sm' style='color:var(--ink2);margin-top:2px'>"
+            + ("Anything marked carried forward was measured on an earlier "
+               "run of this site and is scored as measured. Re-tick that "
+               "phase to refresh it." if _stale_any else
+               "Every area was measured on this run.")
+            + f"</div><table class='sub' style='margin-top:6px'>{_body}"
+              f"</table></div>")
 
     # NO EVIDENCE PICTURES, AND THE REASON.
     #

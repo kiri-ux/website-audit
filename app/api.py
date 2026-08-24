@@ -28,7 +28,7 @@ from engine.report import render_html
 from engine import checks as engine_checks
 from engine import scoring as engine_scoring
 from .capture import artifact_from_capture
-from engine.pdf_report import build_pdf
+from engine.pdf_report import build_pdf, build_snapshot
 from engine.summarise import build_summary, polish_with_llm
 
 app = FastAPI(title="Vici SEO/GEO Audit", version="1.0")
@@ -809,6 +809,45 @@ def prune_client(client_key: str, x_api_key: str | None = Header(None)):
 # audit_id="abc123.pdf" — which then 404s as "audit not found". That is exactly
 # what shipped: the PDF link on every report page returned a JSON error.
 # The specific route must be registered first. Guarded by tests/test_routes.py.
+# REGISTERED BEFORE THE .pdf ROUTE, for the same reason that one is
+# registered before /audits/{id}: FastAPI matches in declaration order, and
+# "{audit_id}.pdf" would happily swallow "abc123.snapshot.pdf".
+@app.get("/audits/{audit_id}.snapshot.pdf")
+def audit_snapshot(audit_id: str, x_api_key: str | None = Header(None)):
+    """
+    The short version - three pages, for the person who will not read the
+    full audit.
+
+    Built from the SAME findings and the SAME summary as the full report, by
+    the same functions. See engine.pdf_report.build_snapshot: a snapshot with
+    its own private copy of the score would disagree with the full audit in
+    front of a client within two builds.
+    """
+    p = principal(x_api_key)
+    a = db.get_audit(audit_id, p.scope)
+    if not a:
+        raise HTTPException(404, "audit not found")
+    if a["status"] not in ("ready",):
+        raise HTTPException(409, f"audit is {a['status']}, not ready")
+    findings, scores, cat = (db.get_findings(audit_id), db.get_scores(audit_id),
+                             db.catalog())
+    meta = _report_meta(a)
+    summary = build_summary(findings, scores, cat, meta)
+    pdf = build_snapshot(meta, scores, findings, cat, summary,
+                         logo_path=os.getenv("REPORT_LOGO_PATH") or None)
+    import re as _re
+    import time as _t
+    safe = _re.sub(r'[\\/:*?"<>|]+', "-", (a["client_name"] or "Audit")).strip()
+    when = _t.strftime("%m%d%Y", _t.localtime(a.get("completed_at")
+                                              or a.get("created_at")
+                                              or _t.time()))
+    fname = f"{safe}_Snapshot_{when}.pdf"
+    return Response(pdf, media_type="application/pdf", headers={
+        "Content-Disposition":
+            f'inline; filename="{fname}"; '
+            f"filename*=UTF-8''{_urlquote(fname)}"})
+
+
 @app.get("/audits/{audit_id}.pdf")
 def audit_pdf(audit_id: str, polish: bool = False,
               x_api_key: str | None = Header(None)):

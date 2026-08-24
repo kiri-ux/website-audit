@@ -942,6 +942,12 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
             f"<a class='btn' href='/audits/{a['id']}'>Open</a>"
             f"<a class='btn ghost' href='/audits/{a['id']}.pdf' target='_blank' "
             f"rel='noopener'>PDF</a>"
+            # The short one. Same findings, three pages - for the person who
+            # is never going to open the twenty-nine-page version.
+            f"<a class='btn ghost' href='/audits/{a['id']}.snapshot.pdf' "
+            f"target='_blank' rel='noopener' "
+            f"title='Three-page summary - same findings, no appendix'"
+            f">Snapshot</a>"
             f"{_del_form(a['id'], 'Delete', 'Delete the newest run for ' + g['client'].replace(chr(39), '') + '?')}"
             f"</div></div>")
 

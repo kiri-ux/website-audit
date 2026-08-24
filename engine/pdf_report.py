@@ -1267,14 +1267,18 @@ def _ai_examples(v, S, brand=""):
     GOOD = (colors.HexColor("#E4F1E8"), colors.HexColor("#1E7A45"))
     BAD = (colors.HexColor("#F7E4E7"), colors.HexColor("#A6192E"))
 
-    out = [Spacer(1, 12),
-           Paragraph("What was asked, and what came back", S["h3"]),
-           Paragraph(
-               "<b>Linked to you</b> means the answer used your website as one "
-               "of its sources, with a link a reader can follow. <b>Did not "
-               "link to you</b> means it answered from somewhere else. Only "
-               "the link sends anyone to you.", S["small"]),
-           Spacer(1, 8)]
+    # The heading, the definition and the FIRST card are one block. As three
+    # loose flowables the break landed between the definition of "linked to
+    # you" and the first card that uses it, stranding two paragraphs of setup
+    # at the foot of a page with nothing to set up.
+    _intro = [Paragraph("What was asked, and what came back", S["h3"]),
+              Paragraph(
+                  "<b>Linked to you</b> means the answer used your website as "
+                  "one of its sources, with a link a reader can follow. "
+                  "<b>Did not link to you</b> means it answered from somewhere "
+                  "else. Only the link sends anyone to you.", S["small"]),
+              Spacer(1, 8)]
+    out = [Spacer(1, 12)]
 
     def block(item, cited):
         q = item.get("question")
@@ -1364,8 +1368,13 @@ def _ai_examples(v, S, brand=""):
         ]))
         return KeepTogether([t])
 
+    _first = True
     for w in _spread(wins, 2):
-        out.append(block(w, True))
+        _b = block(w, True)
+        # The heading and the definition ride with whichever card comes first,
+        # so the setup can never end up on a page by itself.
+        out.append(KeepTogether(_intro + [_b]) if _first else _b)
+        _first = False
     # THE MISSES WORTH SHOWING ARE THE ONES THAT DID NOT NAME YOU.
     #
     # Three brand questions in the "did not link" half tells the reader that
@@ -1386,7 +1395,9 @@ def _ai_examples(v, S, brand=""):
     if len(picks) < 3 and shown_named < 2:
         picks += _spread(named, 3 - len(picks))
     for m in picks:
-        out.append(block(m, False))
+        _b = block(m, False)
+        out.append(KeepTogether(_intro + [_b]) if _first else _b)
+        _first = False
     return out
 
 
@@ -2121,7 +2132,8 @@ def _ai_gate(findings, S):
         return []
     blocked = list((f.get("value") or {}).get("blocked") or [])
     if blocked:
-        body = ("Your site is blocking " + _listy_pdf(blocked) + ". They "
+        body = ("We found a robots.txt file on your site, and it blocks "
+                + _listy_pdf(blocked) + " from crawling it. These tools "
                 "cannot quote a page they are not allowed to open, so the "
                 "numbers above measure that block rather than your content. "
                 "This is usually a security plugin or a firewall setting "
@@ -2133,8 +2145,9 @@ def _ai_gate(findings, S):
         # is the cheapest possible cause and it has been ruled out." A double
         # negative wrapped around a piece of our own reasoning. The client
         # needs one fact: they are allowed in.
-        body = ("Your site lets these tools read it. Nothing above is caused "
-                "by a setting that blocks them.")
+        body = ("We found a robots.txt file on your site, and it allows the "
+                "AI tools to crawl the site. Nothing above is caused by a "
+                "setting that blocks them.")
         tone = colors.HexColor("#1E7A45")
     return [Spacer(1, 12),
             KeepTogether([Paragraph("Can the AI tools read your site?",
@@ -2824,6 +2837,176 @@ def _coverage_counts(findings: dict, catalog: dict) -> tuple:
     from engine.access import counts
     c = counts(findings, catalog)
     return (c["measured"], c["client"], c["vendor"] + c["manual"], c["na"])
+
+
+def build_snapshot(meta: dict, scores: dict, findings: dict, catalog: dict,
+                   summary: dict | None = None,
+                   logo_path: str | None = None) -> bytes:
+    """
+    The short version. Three or four pages, for the people who will not read
+    twenty-nine.
+
+    NOT A DIFFERENT DOCUMENT - A SHORTER ONE.
+
+    Every block here is the same function the full report calls, given the
+    same findings. That is the whole design: a snapshot assembled from its own
+    private copies of the score, the top issues and the plan would drift from
+    the full audit within two builds, and the two would disagree in front of a
+    client. There is nothing in here that is not also in the full report, and
+    nothing is recomputed to get it.
+
+    What it leaves out is the evidence: the 322-row appendix, the per-section
+    detail tables, the methodology, the screenshots, the glossary. Those are
+    what make the full report defensible and what make it long. The snapshot
+    is the argument without the exhibits - the score, what is wrong, what the
+    single biggest opportunity is, and what the plan costs in effort.
+    """
+    S = _styles()
+    buf = io.BytesIO()
+    doc = _Doc(buf, meta)
+    story = []
+    o = scores.get("overall", {}) or {}
+
+    # ---- cover, compressed onto the first content page -------------------
+    if logo_path:
+        try:
+            from reportlab.platypus import Image
+            story.append(Image(logo_path, width=1.6 * inch, height=0.5 * inch,
+                               kind="proportional"))
+            story.append(Spacer(1, 10))
+        except Exception:  # noqa: BLE001
+            pass
+    story.append(Paragraph("SEO &amp; AI Search Snapshot", S["h1"]))
+    story.append(GradRule(width=6.6 * inch, height=4.0, space_after=2,
+                          space_before=8))
+    story.append(Paragraph(_p(meta.get("client", "")), S["h2"]))
+    story.append(Spacer(1, 6))
+    story.append(_kv_table([
+        [Paragraph("<b>Website</b>", S["cell"]),
+         Paragraph(_p(meta.get("url")), S["cell"])],
+        [Paragraph("<b>Audit date</b>", S["cell"]),
+         Paragraph(_us_date(meta.get("generated")), S["cell"])],
+        [Paragraph("<b>Pages analyzed</b>", S["cell"]),
+         Paragraph(_p(meta.get("pages_crawled")), S["cell"])],
+        [Paragraph("<b>Checks evaluated</b>", S["cell"]),
+         Paragraph(_p(meta.get("coverage")), S["cell"])],
+    ]))
+    story.append(Spacer(1, 12))
+
+    # ---- the number, and what it means -----------------------------------
+    _sev = _severity_counts(findings)
+    _open = sum(_sev.values())
+    _urgent = _sev.get("Critical", 0) + _sev.get("High", 0)
+    _hero = Table([[
+        ScoreGauge(o.get("score"), _p(o.get("rating", "Not Assessed"))),
+        Paragraph(
+            f"<font size=15 color='#0b0b0b'><b>{_open}</b></font>"
+            f"<font size=8.5 color='#52514e'> open issues, of which </font>"
+            f"<font size=15 color='#0b0b0b'><b>{_urgent}</b></font>"
+            f"<font size=8.5 color='#52514e'> are Critical or High and should "
+            f"be resolved within 30 days.</font>", S["small"])]],
+        colWidths=[2.0 * inch, 4.6 * inch])
+    _hero.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+    story.append(_hero)
+    story.append(Spacer(1, 12))
+
+    # ---- the summary, minus the strengths grid ---------------------------
+    #
+    # The overview and the headline are the two paragraphs that carry the
+    # argument. Current Strengths is the block that earns goodwill and it is
+    # the first thing to cut when the brief is "key info only" - a client
+    # skimming three pages is looking for what is wrong.
+    if summary:
+        if summary.get("overview"):
+            story.append(Paragraph(_pl(summary["overview"]), S["body"]))
+        if summary.get("headline"):
+            story.append(_banner("", summary["headline"], SEQ, S))
+            story.append(Spacer(1, 8))
+        opp = summary.get("opportunity")
+        if opp:
+            story.append(KeepTogether([
+                Paragraph("Biggest Opportunity", S["h3"]),
+                Paragraph(_pl(opp if isinstance(opp, str) else " ".join(opp)),
+                          S["body"])]))
+            story.append(Spacer(1, 10))
+
+    # ---- scores by area, as the bar chart --------------------------------
+    _secs = [(k, v) for k, v in (scores.get("sections") or {}).items()
+             if k in SECTION_NAMES]
+    _ranked = sorted(_secs, key=lambda kv: (kv[1].get("score") is None,
+                                            kv[1].get("score")
+                                            if kv[1].get("score") is not None
+                                            else 0))
+    if _ranked:
+        story.append(PageBreak())
+        story.append(KeepTogether([
+            Paragraph("Scores by Area", S["h2"]), _rule(),
+            Paragraph("Worst first. The full audit carries the "
+                      "checkpoint-by-checkpoint detail behind each one.",
+                      S["small"]),
+            Spacer(1, 8),
+            SectionBars([(SHORT_NAMES.get(k, SECTION_NAMES[k]), v.get("score"),
+                          v.get("rating")) for k, v in _ranked],
+                        width=6.55 * inch)]))
+        story.append(Spacer(1, 14))
+
+    # ---- the five things -------------------------------------------------
+    five = (summary or {}).get("five_things") or []
+    if five:
+        story.append(KeepTogether([Paragraph("Top Findings", S["h3"]),
+                                   Spacer(1, 4)]))
+        for i, t in enumerate(five, start=1):
+            block = [Paragraph(f"{i}. {_p(t.get('title'))}", S["cell"])]
+            sev = _p(t.get("severity"))
+            if sev:
+                block.append(_pill(sev, SEV_PILL, S, 0.62 * inch))
+            block.append(Spacer(1, 3))
+            block.append(Paragraph(
+                _pl(t.get("finding_short") or t.get("finding") or ""),
+                S["cellsm"]))
+            story.append(KeepTogether(block))
+            story.append(Spacer(1, 8))
+
+    # ---- the plan --------------------------------------------------------
+    roadmap = (summary or {}).get("roadmap") or []
+    if roadmap:
+        story.append(PageBreak())
+        story.append(Paragraph("Our Recommended Plan", S["h2"]))
+        story.append(_rule())
+        story.append(Paragraph(
+            "The order we would work in. Item counts come from the findings "
+            "in the full audit.", S["small"]))
+        story.append(Spacer(1, 10))
+        for i, phase in enumerate(roadmap, start=1):
+            title = _p(re.sub(r"^Phase\s*\d+\s*[—\-:]\s*", "",
+                              str(phase.get("phase", ""))))
+            actions = phase.get("actions", []) or []
+            block = [_pill(f"Phase {i}", {f"Phase {i}": (SURFACE, INK2)}, S,
+                           0.75 * inch),
+                     Spacer(1, 3),
+                     Paragraph(f"<b>{title}</b>", S["cell"])]
+            if actions:
+                block.append(Spacer(1, 3))
+                block.append(Paragraph(
+                    "<font color='#52514e'>"
+                    + _listy_pdf([_p(a) for a in actions[:4]]) + ".</font>",
+                    S["cellsm"]))
+            story.append(KeepTogether(block))
+            story.append(Spacer(1, 9))
+
+    story.append(Spacer(1, 14))
+    story.append(_banner(
+        "", "This is a summary. The full audit carries every checkpoint we "
+            "ran, the evidence behind each finding, and the methodology.",
+        SEQ, S))
+
+    doc.build(story)
+    return buf.getvalue()
 
 
 def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,

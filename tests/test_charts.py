@@ -523,10 +523,14 @@ def main():
         "ai_visibility": {"citation_rate": 9.0, "carried_at": _t.time() - 86400,
                           "carried_from": "abc123"}}}))
     check("carried sections are dated on the internal panel",
-          "Not measured today" in html4, html4[:120])
-    check("and both are named", "Reputation profile" in html4
-          and "AI visibility panel" in html4)
-    check("with the run they came from", "abc123" in html4)
+          "Where this report&#x27;s data came from" in html4
+          or "Where this report's data came from" in html4, html4[:120])
+    check("and both are named", "Reputation" in html4
+          and "AI Search Visibility" in html4)
+    # NO AUDIT IDS. Both blocks this replaced printed one, and nobody has
+    # ever needed to type a run id into anything.
+    check("and no audit id is printed at the reader", "abc123" not in html4)
+    check("carried areas are marked as such", "carried forward" in html4)
 
     # ...but there IS evidence, and it was there the whole time. Every audit
     # row stores the options it was submitted with, and run_consent /
