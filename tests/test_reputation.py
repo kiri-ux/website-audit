@@ -299,7 +299,15 @@ def main():
               "1,650" in text, text[:80].replace("\n", " "))
         check("the tactic column prints",
               "SUPPRESSION" in text.upper() and "OWNED" in text.upper())
-        check("star bands print", "10" in text and "1 star" in text.lower())
+        # The column headers are DRAWN stars, not the glyph - U+2605 is not in
+        # the embedded family and printed as nothing at all, which is how the
+        # header row came out blank. So assert the counts and the heading, and
+        # assert the drawing separately below rather than looking for a
+        # character that is deliberately no longer there.
+        check("star bands print",
+              "10" in text and "reviews behind the rating" in text.lower())
+        check("no star glyph is relied on for a font that lacks it",
+              "\u2605" not in text)
         check("a truncated pull says 'at least' on a band it found",
               "at least 10" in text)
         check("and never on an empty one", "at least 0" not in text)

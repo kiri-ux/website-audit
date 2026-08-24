@@ -57,6 +57,55 @@ VELOCITY   = colors.HexColor("#0066B3")
 PARCHMENT  = colors.HexColor("#FDFBF7")
 PLUM       = colors.HexColor("#78286E")
 GOLD       = colors.HexColor("#F1B434")
+# Star glyphs are colored by what the band MEANS, not by "stars are gold":
+# one and two stars are the complaint, three is the lukewarm middle, and the
+# profile average is the number that is working.
+_STAR_BAD  = "#A6192E"
+_STAR_MEH  = "#8A5A00"
+_STAR_GOOD = "#1E7A45"
+
+
+def _inline(*flowables, gap=3):
+    """Lay flowables out side by side inside one table cell."""
+    row = list(flowables)
+    t = Table([row], colWidths=[None] * len(row))
+    t.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (0, 0), 0),
+        ("LEFTPADDING", (1, 0), (-1, 0), gap),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+    t.hAlign = "LEFT"
+    return t
+
+
+def _star_row(n, color, size=7.0):
+    """
+    n stars, DRAWN.
+
+    U+2605 is not in the embedded family, so "★" printed as nothing at all -
+    the column headers came out blank and the profile figure lost its star.
+    Exactly the same trap as the magnifier emoji, and the same answer: draw
+    the shape rather than hoping a glyph exists. reportlab renders a Polygon
+    at any size in any font, which also means the stars stay the right weight
+    next to 7.5pt text.
+    """
+    from reportlab.graphics.shapes import Drawing, Polygon
+    import math
+    gap = size * 1.18
+    d = Drawing(max(1.0, gap * n), size + 1)
+    c = color if isinstance(color, colors.Color) else colors.HexColor(color)
+    r_out, r_in = size / 2.0, size / 4.6
+    for i in range(n):
+        cx, cy = gap * i + r_out, size / 2.0 + 0.5
+        pts = []
+        for k in range(10):
+            ang = math.pi / 2 + k * math.pi / 5
+            rad = r_out if k % 2 == 0 else r_in
+            pts += [cx + rad * math.cos(ang), cy + rad * math.sin(ang)]
+        d.add(Polygon(pts, fillColor=c, strokeColor=None))
+    return d
 CARDINAL   = colors.HexColor("#A6192E")
 TEAL       = colors.HexColor("#4FD4E0")
 
@@ -1132,6 +1181,40 @@ def _ai_examples(v, S, brand=""):
         return " ".join(sorted(w for w in t.split()
                                if w not in _STOP and len(w) > 2))
 
+    # AND NOT TWICE ABOUT THE SAME PRACTICE AREA EITHER.
+    #
+    # Intent dedupe caught "legit or a scam" beside "a reputable company". It
+    # did not catch "who is best for estate planning" beside "how much does
+    # estate planning cost", because those genuinely ARE two intents - and the
+    # report still spent two of its six slots on one practice area while
+    # criminal defense and DUI went unmentioned. A client reads that as the
+    # report having one idea about them.
+    #
+    # The SUBJECT is what is left after the brand, the intent words, the
+    # geography and the generic role nouns come out: "estate planning",
+    # "dui", "family law". One card per subject.
+    _ROLE_WORDS = {"attorney", "attorneys", "lawyer", "lawyers", "firm",
+                   "firms", "company", "companies", "business", "service",
+                   "services", "agency", "provider", "providers", "office",
+                   "practice", "near", "around", "area", "areas"}
+    _INTENT_WORDS = {w for _n, ws in _INTENT for w in ws for w in w.split()}
+
+    def _subject(q, brand):
+        t = " ".join(str(q or "").lower().split())
+        b = " ".join(str(brand or "").lower().split())
+        if b:
+            t = t.replace(b, " ")
+        t = re.sub(r"[^a-z0-9\s]", " ", t)
+        # "... in Knoxville, Tennessee" and "... near me" are the market, not
+        # the subject. Two questions about different places are still one
+        # question as far as this report's variety is concerned.
+        t = re.sub(r"\bin\s+.*$", " ", t)
+        t = re.sub(r"\bnear\s+me\b", " ", t)
+        words = [w for w in t.split()
+                 if len(w) > 2 and w not in _STOP and w not in _ROLE_WORDS
+                 and w not in _INTENT_WORDS]
+        return " ".join(sorted(words))
+
     seen_q = set()
 
     def _fresh(items):
@@ -1145,11 +1228,15 @@ def _ai_examples(v, S, brand=""):
             # once, and a question whose intent we cannot name is still deduped
             # on its own text.
             ik = _intent(q, brand)
-            if k in seen_q or (ik and ik in seen_q):
+            sk = _subject(q, brand)
+            sk = f"subj:{sk}" if sk else ""
+            if k in seen_q or (ik and ik in seen_q) or (sk and sk in seen_q):
                 continue
             seen_q.add(k)
             if ik:
                 seen_q.add(ik)
+            if sk:
+                seen_q.add(sk)
             out.append(it)
         return out
 
@@ -1291,12 +1378,20 @@ def _reputation(meta, S):
            # examined, and what was examined here is not the client's site at
            # all - it is what a stranger finds when they look the client up.
            Paragraph("What People Find When They Search You", S["h2"]), _rule(),
+           # THE CLIENT'S ACTUAL NAME, NOT "YOUR NAME".
+           #
+           # Every figure in this section was measured against a specific
+           # search - "ooten law firm reviews" - so printing the placeholder
+           # made the sentence vaguer than the data behind it, and left the
+           # reader guessing which phrase we had actually run.
            Paragraph(
                "Before anyone reads a word of your site, most of them search "
                "your name. This is what that search returns: the star rating "
                "on your listings, what else holds page one for "
-               "\u201cyour name reviews\u201d, and whether people are "
-               "searching your name alongside a complaint.", S["small"])]
+               "\u201c{} reviews\u201d, and whether people are searching your "
+               "name alongside a complaint.".format(
+                   _p(rep.get("brand") or meta.get("client") or "your name")),
+               S["small"])]
     # A CARRIED PROFILE SAYS SO.
     #
     # Reputation is the fastest-moving section in the report - one bad week
@@ -1441,11 +1536,17 @@ def _reputation(meta, S):
     # beside the profile figure they are invisible inside.
     _stars = (sm.get("stars") or {}).get("listings") or []
     if _stars:
+        # STARS DRAWN AS STARS.
+        #
+        # "1 star / 2 star / 3 star" as three word-headers made the reader
+        # translate a rating into a column position on every row. The glyphs
+        # are the thing being counted, so they are what the header shows, and
+        # the eye finds the one-star column without reading anything. Color
+        # is never the only signal: each column still carries its count.
         srows = [[Paragraph("<b>Listing</b>", S["cellsm"]),
                   Paragraph("<b>Profile</b>", S["cellsm"]),
-                  Paragraph("<b>1 star</b>", S["cellsm"]),
-                  Paragraph("<b>2 star</b>", S["cellsm"]),
-                  Paragraph("<b>3 star</b>", S["cellsm"])]]
+                  _star_row(1, _STAR_BAD), _star_row(2, _STAR_BAD),
+                  _star_row(3, _STAR_MEH)]]
         def _band(n, floor):
             # "at least 0" is not a floor, it is a typo with a reason. The
             # truncation flag says the pull ran out of room while still
@@ -1456,13 +1557,29 @@ def _reputation(meta, S):
 
         for L in _stars:
             _fl = bool(L.get("at_least"))
+            # A LINK TO THE LISTING ITSELF.
+            #
+            # The row names a Google Business Profile and the next thing
+            # anybody wants is to look at it - which meant copying the name
+            # into a search box. Google's place_id URL form resolves straight
+            # to the profile, and place_id is the one identifier the listings
+            # database already returns for every location we find.
+            _pid = L.get("place_id")
+            _nm = _p(L.get("title"))
+            _title = (f"<a href='https://www.google.com/maps/place/?q=place_id:"
+                      f"{_p(_pid)}' color='#1A56A8'><b>{_nm}</b></a>"
+                      if _pid else f"<b>{_nm}</b>")
             srows.append([
-                Paragraph(f"<b>{_p(L.get('title'))}</b>"
+                Paragraph(_title
                           + (f"<br/><font color='#8096AC'>"
                              f"{_p(L.get('address'))}</font>"
                              if L.get("address") else ""), S["cellsm"]),
-                Paragraph(f"{L.get('rating') or '—'}★ / "
-                          f"{L.get('reviews') or 0:,}", S["cellsm"]),
+                # Star BESIDE the figure, not above it. A list of two
+                # flowables in a cell stacks them, which put the star on its
+                # own line and made the column two rows deep for no reason.
+                _inline(_star_row(1, _STAR_GOOD),
+                        Paragraph(f"{L.get('rating') or '—'} / "
+                                  f"{L.get('reviews') or 0:,}", S["cellsm"])),
                 Paragraph(_band(L.get("one"), _fl), S["cellsm"]),
                 Paragraph(_band(L.get("two"), _fl), S["cellsm"]),
                 Paragraph(_band(L.get("three"), _fl), S["cellsm"]),
@@ -1504,7 +1621,13 @@ def _reputation(meta, S):
         _iw, _ih = _png_size(_shot["png"])
         _ratio = (_ih / _iw) if (_iw and _ih) else 1.2
         _full = _w * _ratio
-        out += [PageBreak(),
+        # THE HEADING, THE LINE UNDER IT AND THE PICTURE ARE ONE THING.
+        #
+        # They were three loose flowables, so the break landed between the
+        # description and the image it describes - leaving a heading and a
+        # sentence alone at the foot of a page promising a picture overleaf.
+        # A caption separated from what it captions is not a caption.
+        out += [PageBreak(), KeepTogether([
                 Paragraph("What that search actually looks like", S["h3"]),
                 Paragraph("Google, today, for “{}”. Nothing has been moved or "
                           "removed.".format(_p(_shot.get("keyword")
@@ -1516,7 +1639,7 @@ def _reputation(meta, S):
                 # becomes a thumbnail strip nobody can read, and the part that
                 # matters - who holds the first few results - is the part at
                 # the top. Same treatment as the homepage shot.
-                Shot(_shot["png"], _w, min(_full, 6.2 * inch), draw_h=_full)]
+                Shot(_shot["png"], _w, min(_full, 6.2 * inch), draw_h=_full)])]
 
     # ---- what Google suggests while they are typing ---------------------
     #
@@ -1536,57 +1659,114 @@ def _reputation(meta, S):
         _BAD = (colors.HexColor("#FBEAEC"), colors.HexColor("#A6192E"))
         _OK = (colors.HexColor("#F7F8FA"), colors.HexColor("#3A4552"))
 
-        def _chip(text, wide):
-            bg, fg = (_BAD if str(text).strip().lower() in _negset else _OK)
+        # STYLED THE WAY THE QUOTE BUILDER STYLES IT.
+        #
+        # That version is a facsimile of Google's own drop-down, and the
+        # facsimile is the persuasion: a client recognizes the shape of their
+        # own search box instantly and reads the red row as something they
+        # have seen rather than something we have calculated. Three details
+        # carry it, and all three were missing here - the magnifier down the
+        # left, the brand name set plain with only the MODIFIER in bold (so
+        # "complaints" is the word the eye lands on), and full-width rows
+        # rather than a grid of tiles.
+        _brandlow = " ".join(str(rep.get("brand") or "").lower().split())
+
+        def _boldmod(text):
+            """Brand plain, the words after it bold - as the quote tool does."""
+            t = str(text or "")
+            if _brandlow and t.lower().startswith(_brandlow):
+                return (f"{_p(t[:len(_brandlow)])}"
+                        f"<b>{_p(t[len(_brandlow):])}</b>")
+            return _p(t)
+
+        def _mag(fg):
+            """A magnifier, drawn. The emoji the web version uses is not in
+            any font we embed, and would print as a hollow box."""
+            from reportlab.graphics.shapes import Drawing, Circle, Line
+            d = Drawing(9, 9)
+            # The negative palette hands back a Color; the neutral case is a
+            # hex string. Accept both rather than making callers convert.
+            c = fg if isinstance(fg, colors.Color) else colors.HexColor(fg)
+            d.add(Circle(4, 5.2, 2.7, strokeColor=c, strokeWidth=0.9,
+                         fillColor=None))
+            d.add(Line(6, 3.3, 7.9, 1.4, strokeColor=c, strokeWidth=0.9))
+            return d
+
+        def _row(text, wide, icon_right=False):
+            neg = str(text).strip().lower() in _negset
+            bg, fg = (_BAD if neg else _OK)
             st_ = ParagraphStyle("sug", parent=S["cellsm"], textColor=fg,
-                                 fontSize=8, leading=10.5)
-            c = Table([[Paragraph(_p(text), st_)]], colWidths=[wide])
+                                 fontSize=8.5, leading=11)
+            para = Paragraph(_boldmod(text), st_)
+            icon = _mag(fg if neg else "#8B93A1")
+            # PADDING PER CELL, NOT ACROSS THE ROW.
+            #
+            # A blanket 8pt each side is wider than the icon column itself, and
+            # reportlab's answer to a negative available width is an exception
+            # from inside its own error formatter - so the whole report died
+            # rather than one magnifier being cramped. The icon cell gets the
+            # outer margin only; the text cell gets the gap and the far edge.
+            _ICON = 0.24 * inch
+            cells = ([[para, icon]] if icon_right else [[icon, para]])
+            widths = ([wide - _ICON, _ICON] if icon_right
+                      else [_ICON, wide - _ICON])
+            c = Table(cells, colWidths=widths)
+            _ic = 1 if icon_right else 0      # column holding the magnifier
+            _tc = 0 if icon_right else 1      # column holding the text
             c.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, -1), bg),
                 ("ROUNDEDCORNERS", [5, 5, 5, 5]),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("LEFTPADDING", (_ic, 0), (_ic, 0), 0 if icon_right else 9),
+                ("RIGHTPADDING", (_ic, 0), (_ic, 0), 9 if icon_right else 0),
+                ("LEFTPADDING", (_tc, 0), (_tc, 0), 9 if icon_right else 7),
+                ("RIGHTPADDING", (_tc, 0), (_tc, 0), 7 if icon_right else 9),
                 ("TOPPADDING", (0, 0), (-1, -1), 5),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
             c.hAlign = "LEFT"
             return c
 
-        def _grid(items, cols=2):
-            wide = (6.6 / cols) * inch - 6
+        def _grid(items, cols=1, icon_right=False):
+            wide = (6.6 / cols) * inch - (6 if cols > 1 else 0)
             rws = [items[i:i + cols] for i in range(0, len(items), cols)]
-            cells = [[_chip(x, wide) for x in r] + [""] * (cols - len(r))
-                     for r in rws]
+            cells = [[_row(x, wide, icon_right) for x in r]
+                     + [""] * (cols - len(r)) for r in rws]
             g = Table(cells, colWidths=[(6.6 / cols) * inch] * cols)
             g.setStyle(TableStyle([
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6 if cols > 1 else 0),
                 ("TOPPADDING", (0, 0), (-1, -1), 0),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
             g.hAlign = "LEFT"
             return g
 
-        out += [Spacer(1, 16),
-                Paragraph("What Google suggests while they type", S["h3"]),
-                Paragraph("These are Google's own auto-complete suggestions "
-                          "for your name. Anything in red pairs you with a "
-                          "complaint before the person has finished typing.",
-                          S["small"])]
-        # Each panel is one exhibit, so its label travels with its chips. A
-        # heading stranded at the foot of a page above somebody else's grid is
-        # worse than a page break in the right place.
-        for g in _panels[:2]:
-            out += [Spacer(1, 8),
-                    KeepTogether([
-                        Paragraph(f"<b>“{_p(g.get('keyword'))}”</b>",
-                                  S["cellsm"]),
-                        Spacer(1, 4), _grid(list(g["items"])[:10], cols=2)])]
+        # THE SECTION HEADING TRAVELS WITH THE FIRST PANEL TOO.
+        #
+        # Binding each panel to its own label fixed half of it and left the
+        # other half: the section heading and its explanation sat alone at the
+        # top of a page with the whole page empty underneath, and the chips
+        # they introduce started the page after. Two paragraphs of setup with
+        # nothing to set up reads as a rendering fault, which is what it was.
+        _intro = [Paragraph("What Google suggests while they type", S["h3"]),
+                  Paragraph("These are Google's own auto-complete suggestions "
+                            "for your name. Anything in red pairs you with a "
+                            "complaint before the person has finished typing.",
+                            S["small"])]
+        out.append(Spacer(1, 16))
+        for i, g in enumerate(_panels[:2]):
+            _panel = [Paragraph(f"<b>“{_p(g.get('keyword'))}”</b>",
+                                S["cellsm"]),
+                      Spacer(1, 4), _grid(list(g["items"])[:10], cols=1)]
+            out.append(KeepTogether((_intro + [Spacer(1, 8)] + _panel)
+                                    if i == 0 else _panel))
+            if i == 0:
+                out.append(Spacer(1, 10))
         if _pasf:
             out += [Spacer(1, 10),
                     KeepTogether([
                         Paragraph("<b>People also search for</b>", S["cellsm"]),
-                        Spacer(1, 4), _grid(_pasf[:8], cols=2)])]
+                        Spacer(1, 4), _grid(_pasf[:8], cols=2, icon_right=True)])]
 
     # ---- brand searches carrying a complaint ---------------------------
     neg = sm.get("negative_terms") or []
@@ -1644,7 +1824,49 @@ def _reputation(meta, S):
     return out
 
 
-def _ai_visibility(meta, S):
+def _ai_gate(findings, S):
+    """
+    Whether the assistants are allowed to read the site at all.
+
+    THE ONE ROW THAT SITS UNDERNEATH EVERY OTHER NUMBER IN THIS SECTION.
+
+    GEO-04 already reads robots.txt for GPTBot, ClaudeBot, PerplexityBot,
+    Google-Extended and the rest, and it was filed in the appendix among three
+    hundred other rows. That is the wrong place for it: if the site is
+    blocking the crawlers, the citation rate above is not a marketing result,
+    it is a consequence, and every recommendation in this section is moot
+    until one line of robots.txt changes. A security plugin or a CDN bot rule
+    turns this on by default on plenty of small-business sites, so it is a
+    real and common cause rather than a theoretical one.
+
+    Printed either way. A clean answer is worth saying too - it closes off the
+    cheapest explanation before anyone spends money on the expensive ones.
+    """
+    f = (findings or {}).get("GEO-04") or {}
+    st = f.get("status")
+    if st not in ("Pass", "Fail", "Warning"):
+        return []
+    blocked = list((f.get("value") or {}).get("blocked") or [])
+    if blocked:
+        body = ("Your robots.txt tells " + _listy_pdf(blocked) + " not to "
+                "read the site. Until that changes, the numbers above are a "
+                "consequence of a setting rather than a measure of your "
+                "content - an assistant cannot cite a page it is not allowed "
+                "to fetch. This is usually a security plugin or a CDN bot "
+                "rule rather than a decision anybody made.")
+        tone = colors.HexColor("#A6192E")
+    else:
+        body = ("Your robots.txt lets the AI crawlers read the site, so "
+                "nothing above is explained by access. That matters because "
+                "it is the cheapest possible cause and it has been ruled out.")
+        tone = colors.HexColor("#1E7A45")
+    return [Spacer(1, 12),
+            KeepTogether([Paragraph("Can the assistants read your site?",
+                                    S["h3"]),
+                          Spacer(1, 4), _banner("", body, tone, S)])]
+
+
+def _ai_visibility(meta, S, findings=None):
     """
     What AI assistants say when asked about this client.
 
@@ -1663,6 +1885,7 @@ def _ai_visibility(meta, S):
            Paragraph(_p(_ai_intro(v)).replace("\n", "<br/><br/>"),
                      S["small"]),
            Spacer(1, 8)]
+    _gate = _ai_gate(findings, S)
 
     cite = v.get("citation_rate") or 0
     ment = v.get("mention_rate") or 0
@@ -1719,6 +1942,10 @@ def _ai_visibility(meta, S):
         ("TOPPADDING", (0, 0), (-1, -1), 11), ("BOTTOMPADDING", (0, 0), (-1, -1), 11),
     ]))
     out.append(tiles)
+    # Straight after the numbers, before anything is recommended about them:
+    # the reader's first question about a low citation rate should be "are we
+    # even letting them in", and this answers it in one line.
+    out += _gate
     out += _ai_examples(v, S, brand=_brand)
 
     if ment > cite:
@@ -1834,7 +2061,12 @@ SECTION_MEANS = {
     "MOB": "how the site behaves on a phone, which is most of the traffic",
     "SCHEMA": "the machine-readable labels that produce rich search results",
     "INTL": "whether the right language and region version is served",
-    "HTML": "whether the code is clean enough not to get in its own way",
+    # WAS: "whether the code is clean enough not to get in its own way".
+    # A metaphor standing in for a fact. It says nothing about WHAT is
+    # checked, so a reader who wanted to know why this counts as a strength
+    # learned only that the code is not tripping over itself.
+    "HTML": "whether the page markup is valid, so browsers and search engines "
+            "read it the same way",
     "EEAT": "the signals that show a real, qualified business is behind the site",
     "GEO": "whether AI tools can read the site and link to it in an answer",
     "OFF": "who links to the site, and what that says about its authority",
@@ -1875,13 +2107,46 @@ def _strength(text, S, width=6.55 * inch):
     # "Canonicalization: 6 of 6 checks passed." - the area is the card's
     # subject, so it is set as one, and what follows is the measurement.
     head, _, rest = str(text or "").partition(": ")
-    body = (f"<b>{_p(head)}</b><br/>{_p(rest)}" if rest else _pl(text))
+
+    # THE COUNT GOES IN THE CORNER, NOT ON A LINE OF ITS OWN.
+    #
+    # "4 of 4 checks passed." was a full-width sentence saying a thing a badge
+    # says in five characters, and it cost every card a line - eight lines
+    # across the grid, which is most of the reason Biggest Opportunity kept
+    # landing on page 3 with half of page 2 empty. As a chip in the top right
+    # it also reads better: the score is a label on the card, not a claim
+    # competing with the area name for the reader's attention.
+    #
+    # Anything that is not a plain count stays in the body. "8 of 9 checks
+    # passed, scoring 94 out of 100" carries a second fact, and squeezing that
+    # into a corner chip would lose it.
+    _m = re.match(r"^\s*(\d+)\s+of\s+(\d+)\s+checks?\s+passed\.?\s*$",
+                  rest or "", re.I)
+    badge, body_rest = "", rest
+    if _m:
+        badge, body_rest = f"{_m.group(1)}/{_m.group(2)}", ""
+    body = f"<b>{_p(head)}</b>" + (f"<br/>{_p(body_rest)}" if body_rest
+                                   else "")
     inner = [Paragraph(body, S["cell"])]
     if gloss:
         inner.append(Spacer(1, 3))
         inner.append(Paragraph(
             f"<font color='#4A5461'>{_p(gloss)}</font>", S["cellsm"]))
-    t = Table([[inner]], colWidths=[width])
+    if badge:
+        # Wide enough that "10/12" cannot wrap. The first attempt was 0.52in
+        # and reportlab broke "4/4" across two lines, which is a worse version
+        # of the line this change removed.
+        _bst = ParagraphStyle("passbadge", parent=S["cellsm"],
+                              fontName=_fonts.BOLD, fontSize=8.5, leading=11,
+                              alignment=2, textColor=colors.HexColor("#1E7A45"))
+        _bw = 0.62 * inch
+        t = Table([[inner, Paragraph(badge, _bst)]],
+                  colWidths=[width - _bw, _bw])
+        _pad = [("LEFTPADDING", (1, 0), (1, 0), 0),
+                ("RIGHTPADDING", (0, 0), (0, 0), 4)]
+    else:
+        t = Table([[inner]], colWidths=[width])
+        _pad = []
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F2F7F4")),
         ("ROUNDEDCORNERS", [10, 10, 10, 10]),
@@ -1895,7 +2160,7 @@ def _strength(text, S, width=6.55 * inch):
         # join Current Strengths on page 2 instead of opening page 3 alone.
         ("TOPPADDING", (0, 0), (-1, -1), 8),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-    ]))
+    ] + _pad))
     return t
 
 
@@ -2789,7 +3054,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             f"Not collected — {_p(rk.get('reason'))}. This section is omitted rather "
             f"than estimated.", S["small"]))
 
-    ai_block = _ai_visibility(meta, S)
+    ai_block = _ai_visibility(meta, S, findings)
     if ai_block:
         story.append(PageBreak())
         for fl in ai_block:

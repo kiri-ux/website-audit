@@ -643,6 +643,9 @@ def _star_bands(locations, limit=3, progress=None):
             done[d.get("place_id") or d.get("id")] = {
                 "title": d.get("title") or loc.get("title"),
                 "address": loc.get("address"),
+                # Kept so the report can link the row straight to the Google
+                # profile rather than making the reader search for it.
+                "place_id": d.get("place_id") or loc.get("place_id"),
                 "rating": d.get("profile_rating") or loc.get("rating"),
                 "reviews": d.get("profile_reviews") or loc.get("reviews"),
                 "one": d.get("neg_1") or 0, "two": d.get("neg_2") or 0,

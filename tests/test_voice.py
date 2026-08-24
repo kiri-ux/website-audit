@@ -226,6 +226,17 @@ def main():
                 offenders.append(f"{f}:{b}")
     check("no British spellings in the report copy", not offenders,
           str(offenders[:6]))
+    # THE OPPORTUNITY HAS TO SAY WHAT WE WOULD DO ABOUT IT.
+    #
+    # It named the area, the score and the failing checks and stopped, so the
+    # single most-read paragraph in the document was all diagnosis and no
+    # offer - "this isn't the full picture" was exactly right. Every finding
+    # further down already carries its scope line; this one did not.
+    _opp = str(s.get("opportunity") or "")
+    if _opp:
+        check("the biggest opportunity says what we would do about it",
+              " we " in f" {_opp.lower()} ", _opp[-90:])
+
     prose = " ".join([s["overview"], s["opportunity"], *working, *titles,
                       *[t["why"] for t in five]]).lower()
     check("rendered prose is American too",

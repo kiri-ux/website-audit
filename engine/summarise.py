@@ -394,8 +394,18 @@ SERVICE_BY_SECTION = {
     # billing question nobody asked, under a heading that promises to say what
     # we DO. The work is in the tag container, and naming it is what makes the
     # line worth reading.
-    "CONS": "We make the container tag changes that hold the marketing "
-            "pixels until consent is given.",
+    # AND IT IS THREE PIECES OF WORK, NOT ONE.
+    #
+    # The container change is the last of them and the only one this line
+    # named, which undersold the engagement to the point of being wrong: a
+    # container cannot hold pixels back until somebody has chosen a consent
+    # platform and configured what each category is allowed to do. So the line
+    # now covers the review, the recommendation and the implementation, in the
+    # order they actually happen.
+    "CONS": "We review how the site collects and fires tracking today, "
+            "recommend a consent platform and the consent settings to run "
+            "with it, and make the container tag changes that hold the "
+            "marketing pixels until consent is given.",
 }
 
 
@@ -845,6 +855,17 @@ def build_summary(findings: dict, scores: dict, catalog: dict,
         note = VERTICAL_NOTE.get(meta.get("vertical") or "")
         if note and not WHY_BY_VERTICAL.get(meta.get("vertical") or "", {}).get(code):
             opp += " " + note
+        # AND WHAT WE WOULD DO ABOUT IT.
+        #
+        # The block named the area, the score, and the failing checks, then
+        # stopped - so the single most prominent paragraph in the document was
+        # all diagnosis and no offer. Every finding further down already
+        # carries its scope line; the one place a client actually reads in
+        # full did not. "This isn't the full picture" was exactly right: the
+        # picture was missing the half we get paid for.
+        act = service_action("", code)
+        if act:
+            opp += " " + act
 
     # ---------- the five things that matter ----------
     # A ranked shortlist with a stated reason, rather than 313 rows at equal

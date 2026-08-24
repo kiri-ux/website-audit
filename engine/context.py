@@ -231,13 +231,40 @@ def extract(art) -> BusinessContext:
     # Counting the FIRST path segment across internal links approximates the
     # primary nav without needing to identify a <nav> element, which every CMS
     # marks up differently.
+    # A CONTAINER IS NOT A SECTION - ITS CHILDREN ARE.
+    #
+    # This counted first path segments only, so a firm whose work lives under
+    # /practice-areas/family-law/, /practice-areas/criminal-defense/ and
+    # /practice-areas/dui/ contributed ONE section called "practice areas" -
+    # a nav label, thrown away downstream as not-a-service. The three things
+    # the firm actually does were never candidates at all, and the AI question
+    # panel fell back to whatever minor top-level page did survive. That is
+    # how a Knoxville trial firm ended up being asked about estate planning
+    # twice while criminal defense and DUI went unasked.
+    #
+    # When the first segment is a container, count the SECOND. Everything
+    # downstream is unchanged - most_common still orders by internal link
+    # count, so the practice area the site links to most is the one we lead
+    # with, which is exactly the ordering that was wanted.
+    _CONTAINERS = {"practice-areas", "practice_areas", "practiceareas",
+                   "practice-area", "services", "our-services", "service",
+                   "what-we-do", "areas-of-practice", "expertise",
+                   "solutions", "specialties", "specialities", "products",
+                   "product-category", "shop", "category", "categories"}
     seg_count, seg_label = Counter(), {}
     for p in pages:
         for link in (p.links_internal or []):
             href = (link.get("href") or "")
             path = href.split("//")[-1]
             path = path[path.find("/"):] if "/" in path else "/"
-            seg = path.strip("/").split("/")[0].split("?")[0].split("#")[0]
+            parts = [x for x in path.strip("/").split("/") if x]
+            if not parts:
+                continue
+            seg = parts[0].split("?")[0].split("#")[0]
+            if seg.lower() in _CONTAINERS and len(parts) > 1:
+                child = parts[1].split("?")[0].split("#")[0]
+                if child and "." not in child and not child.isdigit():
+                    seg = child
             if not seg or "." in seg or seg.lower() in NOT_A_CATEGORY:
                 continue
             if len(seg) > 40 or seg.isdigit():
@@ -255,9 +282,15 @@ def extract(art) -> BusinessContext:
             continue
         path = p.url.split("//")[-1]
         path = path[path.find("/"):] if "/" in path else "/"
-        seg = path.strip("/").split("/")[0].split("?")[0].split("#")[0].lower()
-        if seg:
-            healthy.add(seg)
+        parts = [x.split("?")[0].split("#")[0].lower()
+                 for x in path.strip("/").split("/") if x]
+        if not parts:
+            continue
+        healthy.add(parts[0])
+        # The child of a container has to be able to prove itself the same
+        # way its parent would: a real page we actually fetched.
+        if parts[0] in _CONTAINERS and len(parts) > 1 and parts[1]:
+            healthy.add(parts[1])
     ctx.sections = [seg_label[s] for s, n in seg_count.most_common(12)
                     if n > 1 and s in healthy][:6]
     if ctx.sections:

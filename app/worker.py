@@ -881,6 +881,27 @@ def _carry_forward(a, opts, audit_id, findings) -> dict:
                      if str(cid).split("-")[0] in prefixes]
         except Exception:  # noqa: BLE001
             pass
+    # AND THE ROWS A PHASE OWNS UNDER SOMEBODY ELSE'S PREFIX.
+    #
+    # The prefix rule above was written for exactly this problem and still
+    # missed these three, because they do not carry the phase's prefix:
+    # TECH-29 (sitemap submitted), TECH-35 (index coverage) and ANA-03
+    # (verification) are all answered by Search Console and all filed under
+    # TECH and ANA. So on a cheap re-run with the collectors unticked they
+    # were neither collected NOR carried, and the panel reported two rows the
+    # operator had already answered last week as missing.
+    #
+    # A list beats a prefix here. There is no pattern to infer - it is simply
+    # a fact about which subsystem owes which row, and the collector already
+    # publishes it.
+    _PHASE_EXTRA_IDS = {"run_collectors": ()}
+    try:
+        from engine.collectors.analytics import GSC_EXTRA_IDS
+        _PHASE_EXTRA_IDS["run_collectors"] = tuple(GSC_EXTRA_IDS)
+    except Exception:  # noqa: BLE001
+        pass
+    for k in off_keys:
+        want += list(_PHASE_EXTRA_IDS.get(k, ()))
     # A row that this run answered properly always wins.
     _ANSWERED = ("Pass", "Fail", "Warning", "Not Implemented", "Info", "N/A")
     need = [cid for cid in dict.fromkeys(want)

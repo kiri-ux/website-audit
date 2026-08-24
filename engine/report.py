@@ -406,6 +406,15 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
         """
         from engine.access import owner
         c, detail, longest = Counter(), {}, {}
+        # WHICH CHECKS. THE ONE THING THE PANEL NEVER SAID.
+        #
+        # "2 - Search Console produced no result for this run" is a count and
+        # a subsystem, and the reader's next question is always the same one:
+        # WHICH two? Without the ids there is nothing to look up, nothing to
+        # grep the appendix for, and no way to tell a real regression from the
+        # same two rows that have been unanswerable for a month. The ids cost
+        # a few characters and turn every bullet into something checkable.
+        who = {}
         for cid in ids:
             f = findings.get(cid) or {}
             # A checkpoint with NO finding has no evidence to quote, and the
@@ -428,6 +437,7 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             ev = full[:110]
             c[ev] += 1
             longest[ev] = max(longest.get(ev, ""), full, key=len)
+            who.setdefault(ev, []).append(cid)
             rec = " ".join(str(f.get("recommendation") or "").split())
             if rec and ev not in detail:
                 # NOT TRUNCATED, for the same reason the evidence is not.
@@ -436,8 +446,8 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
                 # that says what to change. Three separate caps in this file
                 # have each removed the end of the only useful sentence.
                 detail[ev] = rec
-        return [(longest.get(why, why), n, detail.get(why, ""))
-                for why, n in c.most_common()]
+        return [(longest.get(why, why), n, detail.get(why, ""),
+                 sorted(who.get(why, []))) for why, n in c.most_common()]
 
     def bullets(rows, limit=6, fix=True):
         """
@@ -453,16 +463,27 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
         one-off reasons is not one. What was wrong is that it was silent.
         """
         shown, rest = rows[:limit], rows[limit:]
+
+        def _ids(cids):
+            """The checkpoints behind the count, so the bullet is checkable."""
+            if not cids:
+                return ""
+            shown_ids = ", ".join(cids[:8])
+            if len(cids) > 8:
+                shown_ids += f" and {len(cids) - 8} more"
+            return (f"<div class='sm' style='color:var(--muted)'>"
+                    f"<code>{e(shown_ids)}</code></div>")
+
         out = "".join(
-            f"<li><b>{n}</b> — {e(why)}"
+            f"<li><b>{n}</b> — {e(why)}" + _ids(cids)
             + (f"<div class='sm' style='color:var(--muted)'>{e(f_)}</div>"
                if fix and f_ else "") + "</li>"
-            for why, n, f_ in shown)
+            for why, n, f_, cids in shown)
         if rest:
             out += (f"<li style='color:var(--muted)'>and {len(rest)} more "
                     f"{'reason' if len(rest) == 1 else 'reasons'} covering "
-                    f"{sum(n for _w, n, _f in rest)} "
-                    f"{'checkpoint' if sum(n for _w, n, _f in rest) == 1 else 'checkpoints'}"
+                    f"{sum(n for _w, n, _f, _c in rest)} "
+                    f"{'checkpoint' if sum(n for _w, n, _f, _c in rest) == 1 else 'checkpoints'}"
                     f" — every one is in the findings table below.</li>")
         return out
 
@@ -680,13 +701,23 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             + f" The homepage shot on page 2 is unaffected.</div></div>")
 
     if b["client"]:
+        # NAMED, LIKE EVERY OTHER GROUP.
+        #
+        # This printed a bare count with a generic sentence, and when a row
+        # MOVED into it - ANA-03, which had been misfiled under "ours to fix"
+        # - the only visible change was the number going from 0 to 1. The
+        # reasonable reaction was "why is there something that needs access
+        # now?", and the panel had no answer on it anywhere. A group that can
+        # gain members has to say which.
         out.append(
             f"<div style='margin-top:12px'>"
             f"<b style='color:var(--warning)'>Ask the client &middot; "
             f"{len(b['client'])}</b>"
             f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
             f"Search Console or Analytics rows we could not read. Ask them to "
-            f"add the Vici login as a user on the property.</div></div>")
+            f"add the Vici login as a user on the property.</div>"
+            f"<ul style='margin:6px 0 0 18px'>"
+            + bullets(reasons(b["client"]), fix=False) + "</ul></div>")
 
     if b["manual"]:
         # WHAT AN ANALYST ACTUALLY DOES.

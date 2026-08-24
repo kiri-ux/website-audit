@@ -329,6 +329,26 @@ def main():
           "run_aivis', st.run_aivis" in _h.replace('"', "'")
           or "['run_aivis', st.run_aivis]" in _h)
     check("Settings used lists which phases ran", ">Phases<" in _h)
+
+    print("\nA COUNT WITHOUT IDS IS NOT CHECKABLE")
+    # "2 - Search Console produced no result for this run" is a count and a
+    # subsystem, and the reader's next question is always "WHICH two?" Without
+    # the ids there is nothing to look up in the appendix and no way to tell a
+    # new regression from the same two rows that have been unanswerable for a
+    # month.
+    from engine.report import _todo_panel as _panel
+    _cat = {"TECH-29": {"prefix": "TECH", "checkpoint": "Sitemap submitted"},
+            "TECH-35": {"prefix": "TECH", "checkpoint": "Index coverage"},
+            "ANA-03": {"prefix": "ANA", "checkpoint": "GSC verification"}}
+    _find = {"ANA-03": {"status": "Need Access", "source": "needs_gsc_grant",
+                        "evidence": "No verification tag in the page source.",
+                        "value": {}, "severity": "Medium",
+                        "recommendation": "", "confidence": 0.0}}
+    _html = "".join(_panel(_find, _cat, {"extras": {}}))
+    check("the panel names the checkpoints behind each count",
+          "TECH-29" in _html and "TECH-35" in _html, _html[:160])
+    check("and names the rows under Ask the client",
+          "ANA-03" in _html, _html[:160])
     check("and the two fields the form no longer has are not shown as used",
           ">Vertical<" not in _h and ">Primary conversion<" not in _h)
 
