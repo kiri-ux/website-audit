@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-88"
-BUILD_NOTES = ("Strength cards carry their score as a badge, the panel names "
-               "the checkpoints behind every count, reputation gets drawn "
-               "stars and profile links, and questions vary by practice area")
+BUILD = "2026.08.20-89"
+BUILD_NOTES = ("AI visibility reads market by market, names the sources the "
+               "answers came from and whether you are on them, and quotes a "
+               "range instead of a number it cannot support")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

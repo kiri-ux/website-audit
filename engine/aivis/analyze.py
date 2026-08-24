@@ -18,6 +18,7 @@ avoiding that, because an inflated mention rate is worse than no metric: it tell
 the client they're fine when they aren't.
 """
 from __future__ import annotations
+import math
 import re
 from collections import Counter, defaultdict
 from urllib.parse import urlparse
@@ -153,6 +154,37 @@ def aggregate(results: list[dict], queries_by_id: dict, profile) -> dict:
     def rate(rows, key):
         return round(100 * sum(1 for r in rows if r[key]) / len(rows), 1) if rows else None
 
+    # ---- HOW MUCH OF THAT NUMBER IS REAL --------------------------------
+    #
+    # THE RATE WITHOUT AN INTERVAL IS THE MOST MISLEADING FIGURE WE PRINT.
+    #
+    # These are stochastic systems answering a small panel. Ask the same forty
+    # questions twice and the mention rate moves several points on its own,
+    # with nothing about the client having changed. Reported as a bare "12%"
+    # it invites exactly the reading it cannot support: that next month's 18%
+    # is progress. Most of the market ships the bare number; Evertune samples
+    # each prompt up to a hundred times precisely because of this.
+    #
+    # A Wilson score interval is the right tool for a proportion on a small n:
+    # unlike the textbook normal approximation it stays inside 0-100 and does
+    # not collapse to zero width when the count is 0 or n, which is exactly
+    # where a local panel spends most of its time. What it buys us is the
+    # honest sentence - "12%, give or take 6 points" - and the ability to
+    # refuse a comparison that sits inside the noise.
+    def interval(rows, key, z=1.96):
+        n = len(rows)
+        if not n:
+            return None
+        k = sum(1 for r in rows if r[key])
+        ph = k / n
+        d = 1 + z * z / n
+        centre = (ph + z * z / (2 * n)) / d
+        half = (z * math.sqrt(ph * (1 - ph) / n + z * z / (4 * n * n))) / d
+        return {"n": n, "hits": k,
+                "low": round(100 * max(0.0, centre - half), 1),
+                "high": round(100 * min(1.0, centre + half), 1),
+                "plus_minus": round(100 * half, 1)}
+
     by_platform = {}
     for p in sorted({r["platform"] for r in ok}):
         rows = [r for r in ok if r["platform"] == p]
@@ -191,6 +223,32 @@ def aggregate(results: list[dict], queries_by_id: dict, profile) -> dict:
             "errors": sum(1 for r in errs if r["platform"] == p),
             "successes": sum(1 for r in ok if r["platform"] == p),
             "messages": msgs[:3],
+        }
+
+    # ---- PER MARKET, NEVER BLENDED --------------------------------------
+    #
+    # The single biggest measurement problem with a local business: one number
+    # across Knoxville, Clinton and Farragut is an average of three different
+    # answers, and the average is true of none of them. A firm invisible in
+    # one county and fine in another reads as "moderately visible everywhere",
+    # which is both wrong and unactionable - there is no campaign you can run
+    # against an average.
+    #
+    # Questions that name no place (brand questions, generic open questions)
+    # are deliberately excluded rather than pooled into a market they never
+    # mentioned. `n` travels with every row so the reader can see which
+    # markets have enough answers behind them to be worth reading.
+    by_market = {}
+    _mkts = {getattr(queries_by_id.get(r["query_id"]), "market", "")
+             for r in ok}
+    for mkt in sorted(m for m in _mkts if m):
+        rows = [r for r in ok
+                if getattr(queries_by_id.get(r["query_id"]), "market", "") == mkt]
+        by_market[mkt] = {
+            "answers": len(rows),
+            "questions": len({r["query_id"] for r in rows}),
+            "mention_rate": rate(rows, "mentioned"),
+            "citation_rate": rate(rows, "cited"),
         }
 
     by_intent = {}
@@ -235,9 +293,16 @@ def aggregate(results: list[dict], queries_by_id: dict, profile) -> dict:
         "citation_rate": rate(ok, "cited"),
         "unprompted_mention_rate": rate(unp, "mentioned"),
         "unprompted_citation_rate": rate(unp, "cited"),
+        # Printed beside the rates they belong to. A rate with no interval
+        # reads as a measurement; with one it reads as an estimate, which is
+        # what it is.
+        "mention_ci": interval(ok, "mentioned"),
+        "citation_ci": interval(ok, "cited"),
+        "unprompted_citation_ci": interval(unp, "cited"),
         "by_platform": by_platform,
         "platform_errors": platform_errors,
         "by_intent": by_intent,
+        "by_market": by_market,
         "share_of_voice": sov,
         "competitor_mention_counts": dict(comp.most_common(15)),
         "client_citations": client_cites,

@@ -795,6 +795,133 @@ def main():
     check("both halves still shown", any("cost" in q.lower() for q in _qs)
           and any("known for" in q.lower() for q in _qs), str(_qs))
 
+    # ---------- the three gaps a bare visibility report leaves ----------
+    #
+    # A report that prints mention rate, citation rate and a domain ranking is
+    # a PRESENCE report: it says whether the client shows up. It cannot say
+    # WHERE, WHY, or whether the number is real - and those three omissions
+    # are what the market's own tooling has converged on covering.
+    print("\nMARKET, SOURCES, ERROR BARS")
+    from engine.aivis.panel import build_panel as _bp, ClientProfile as _CP
+    from engine.aivis.analyze import aggregate as _agg
+
+    _prof = _CP(brand="Ooten Law Firm", domain="ootenlawfirm.com",
+                category="defense attorney",
+                locations=["Knoxville, Tennessee", "Clinton, Tennessee",
+                           "Farragut, Tennessee"],
+                services=["criminal defense", "family law", "dui",
+                          "personal injury"])
+    _qs = _bp(_prof)
+    _mkts = {q.market for q in _qs if q.market}
+    # A BLENDED RATE IS TRUE OF NONE OF THE MARKETS IT AVERAGES.
+    # Services used to be asked about locations[0] only, so a three-office
+    # firm got one city measured and a number that looked like all three.
+    check("questions are tagged with the market they name", len(_mkts) >= 3,
+          str(sorted(_mkts)))
+    check("service questions spread across markets, not all in the first",
+          len({q.market for q in _qs
+               if q.intent == "category" and q.market}) >= 2,
+          str(sorted({q.market for q in _qs if q.intent == "category"})))
+    check("questions that name no place are not given one",
+          any(q.market == "" for q in _qs))
+
+    # Aggregate a synthetic result set: visible in one market, invisible in
+    # another. The whole point is that these must not average together.
+    _qmap = {q.id: q for q in _qs}
+    _rows = []
+    for q in _qs:
+        hit = q.market.startswith("Knoxville")
+        for i in range(3):
+            _rows.append({"ok": True, "platform": "chatgpt", "query_id": q.id,
+                          "mentioned": hit, "cited": hit, "prominence": 0.5,
+                          "citation_count": 1 if hit else 0,
+                          "cited_domains": ["ootenlawfirm.com"] if hit
+                                           else ["avvo.com"],
+                          "competitor_mentions": {}, "repeat": i})
+    _a = _agg(_rows, _qmap, _prof)
+    _bm = _a.get("by_market") or {}
+    check("the aggregate splits by market", len(_bm) >= 3, str(sorted(_bm)))
+    _kx = next((v for k, v in _bm.items() if k.startswith("Knoxville")), {})
+    _cl = next((v for k, v in _bm.items() if k.startswith("Clinton")), {})
+    check("a market where we are visible reads high",
+          (_kx.get("citation_rate") or 0) > 90, str(_kx.get("citation_rate")))
+    # `or 100` would treat a real 0.0 as "missing" - which is exactly the
+    # value this assertion exists to see.
+    check("and one where we are not reads low",
+          _cl.get("citation_rate") is not None and _cl["citation_rate"] < 10,
+          str(_cl.get("citation_rate")))
+    check("no market is pooled into another",
+          _kx.get("citation_rate") != _cl.get("citation_rate"))
+
+    # ERROR BARS. A rate with no interval invites a precision it cannot
+    # support - that next month's 18% is progress rather than variance.
+    _ci = _a.get("citation_ci") or {}
+    check("the headline rate carries an interval", bool(_ci.get("n")), str(_ci))
+    check("the interval is a real width, not zero",
+          (_ci.get("plus_minus") or 0) > 0, str(_ci.get("plus_minus")))
+    check("the interval stays inside 0-100",
+          0 <= (_ci.get("low") or -1) and (_ci.get("high") or 101) <= 100,
+          f"{_ci.get('low')}-{_ci.get('high')}")
+    # Wilson, not the normal approximation, precisely so an all-hit or no-hit
+    # panel still reports a width instead of collapsing to a false certainty.
+    _allhit = [dict(r, mentioned=True, cited=True) for r in _rows]
+    _ci2 = (_agg(_allhit, _qmap, _prof).get("citation_ci") or {})
+    check("a 100% panel still admits uncertainty",
+          (_ci2.get("plus_minus") or 0) > 0, str(_ci2))
+    check("and does not report above 100",
+          (_ci2.get("high") or 0) <= 100, str(_ci2.get("high")))
+
+    # SOURCES. A ranked domain list says who is winning; it does not say what
+    # to do. The directory split plus the presence check does.
+    from engine import pdf_report as _P
+    _S2 = _P._styles()
+    _v = {"questions": 40, "citation_gap": 24,
+          "top_competitor_domain": "avvo.com",
+          "share_of_voice": [
+              {"domain": "avvo.com", "citations": 31, "share": 18.2,
+               "is_client": False},
+              {"domain": "justia.com", "citations": 22, "share": 12.9,
+               "is_client": False},
+              {"domain": "ootenlawfirm.com", "citations": 7, "share": 4.1,
+               "is_client": True},
+              {"domain": "vertexaisearch.cloud.google.com", "citations": 40,
+               "share": 24.0, "is_client": False}]}
+    _rep = {"ok": True, "serp": {"organic": [{"domain": "avvo.com"},
+                                             {"domain": "ootenlawfirm.com"}]}}
+
+    def _flat(flowables):
+        acc = []
+
+        def _w(f):
+            t = getattr(f, "text", None)
+            if isinstance(t, str):
+                acc.append(t)
+            for k in (getattr(f, "_content", None) or []):
+                _w(k)
+            for row in (getattr(f, "_cellvalues", None) or []):
+                for c in row:
+                    for x in (c if isinstance(c, list) else [c]):
+                        _w(x)
+        for f in flowables:
+            _w(f)
+        return " ".join(acc)
+
+    _joined = _flat(_P._ai_sources(_v, _S2, rep=_rep))
+    check("a directory the client can join is labelled as one",
+          "DIRECTORY" in _joined, _joined[:120])
+    check("a directory they ARE on says so", "Yes" in _joined)
+    check("one they are NOT on is called out by name",
+          "justia.com" in _joined and "No sign of you" in _joined)
+    # Gemini's citation wrapper is Google's plumbing, not a source anybody can
+    # get listed on - it outranked the client on their own chart once already.
+    check("Google's own citation wrapper is not printed as a source",
+          "vertexaisearch" not in _joined)
+    # Without the reputation scan we have not looked, and saying "not listed"
+    # would send someone to claim a profile they already own.
+    _unchecked = _flat(_P._ai_sources(_v, _S2, rep=None))
+    check("with no reputation scan it says unchecked, not 'not listed'",
+          "Not checked" in _unchecked, _unchecked[:120])
+
     print("\n" + "=" * 68)
     if FAILURES:
         print(f"  {len(FAILURES)} FAILED: {', '.join(FAILURES)}")

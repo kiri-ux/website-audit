@@ -50,6 +50,18 @@ class Query:
     # Whether the brand name appears in the prompt. Unprompted queries are the
     # ones that carry real signal — see module docstring.
     prompted: bool
+    # WHICH MARKET THIS QUESTION IS ABOUT.
+    #
+    # A blended visibility number is the single biggest problem with measuring
+    # a local business this way: "12% of answers mention you" across Knoxville,
+    # Clinton and Farragut tells a firm nothing they can act on, because the
+    # answer is almost never uniform. Being invisible in one county and fine in
+    # another is the finding, and averaging destroys it.
+    #
+    # Empty string means the question names no place — brand questions and the
+    # generic open questions — and those are reported on their own rather than
+    # attributed to a market they never mentioned.
+    market: str = ""
 
     def to_dict(self):
         return asdict(self)
@@ -262,7 +274,7 @@ def build_panel(p: ClientProfile, target_size: int = 40) -> list[Query]:
     qs: list[Query] = []
     seen: set[str] = set()
 
-    def add(intent, text, prompted):
+    def add(intent, text, prompted, market=""):
         text = " ".join(text.split())
         # THE LAST LINE OF DEFENCE AGAINST AN EMPTY SLOT.
         #
@@ -278,7 +290,7 @@ def build_panel(p: ClientProfile, target_size: int = 40) -> list[Query]:
         if k in seen:
             return
         seen.add(k)
-        qs.append(Query(_qid(text), intent, text, prompted))
+        qs.append(Query(_qid(text), intent, text, prompted, market))
 
     # NO LOCATION MEANS NO LOCATION QUESTIONS.
     #
@@ -304,12 +316,13 @@ def build_panel(p: ClientProfile, target_size: int = 40) -> list[Query]:
         for loc in locations[:4]:
             for t in CATEGORY_TEMPLATES:
                 add("category", t.format(category=p.category, location=loc),
-                    False)
+                    False, market=loc)
 
     for prod in products[:4]:
+        _pl = locations[0] if locations else ""
         for t in PRODUCT_TEMPLATES:
-            add("product", t.format(product=prod,
-                                    location=locations[0] if locations else "me"), False)
+            add("product", t.format(product=prod, location=_pl or "me"),
+                False, market=_pl)
 
 
     for comp in competitors[:3]:
@@ -332,8 +345,21 @@ def build_panel(p: ClientProfile, target_size: int = 40) -> list[Query]:
     # searches rather than as "the best company for family law". The crawl
     # reads them off the URL paths, which is the closest thing to a list of
     # what this business actually does.
-    where = locations[0] if locations else ""
-    for svc in p.services[:4]:
+    # SERVICES ACROSS MARKETS, NOT ALL IN THE FIRST ONE.
+    #
+    # `where = locations[0]` asked every service question about one city, so a
+    # firm with three offices got a reading for one of them and a blended
+    # number that looked like all three. Pairing each service with a different
+    # market costs nothing - the panel is the same size - and turns a single
+    # blended figure into a per-market one, which is the whole point of
+    # measuring a local business.
+    #
+    # Round-robin rather than a full cross-product: services x markets would
+    # multiply the panel (and the spend) by the number of offices, and the
+    # target size would truncate it back down arbitrarily anyway.
+    _svcs = p.services[:4]
+    for _i, svc in enumerate(_svcs):
+        where = locations[_i % len(locations)] if locations else ""
         if not where:
             # Without a place, ask the service question without one rather
             # than inventing a place.
@@ -352,7 +378,7 @@ def build_panel(p: ClientProfile, target_size: int = 40) -> list[Query]:
             # word it precedes, not the template author's assumption.
             an = ("an " if phrase[:1].lower() in "aeiou" else "a ") + phrase
             add("category", t.format(service=phrase, an_service=an,
-                                     location=where), False)
+                                     location=where), False, market=where)
 
     return qs[:target_size]
 

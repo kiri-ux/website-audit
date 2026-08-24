@@ -650,12 +650,22 @@ def _ai_visibility(a, audit_id, findings, extras, step):
               + (f" (skipped: {', '.join(skipped)})" if skipped else ""),
               flush=True)
 
-        # One repeat, not three. Three is right for a trend line, where
-        # run-to-run variance has to be averaged out; for a first reading it
-        # triples the spend to sharpen a number the report rounds anyway.
+        # THREE REPEATS, NOT ONE - AND THE REASON CHANGED.
+        #
+        # This said one repeat was enough because the report rounds the number
+        # anyway. That was wrong in a way rounding does not fix: a single pass
+        # over forty questions gives an interval so wide that the rate cannot
+        # support any of the readings a client takes from it, and the report
+        # was printing a bare percentage with no way to see that. Ask the same
+        # panel twice and it moves several points on its own.
+        #
+        # Three is the smallest n that narrows the interval enough to be worth
+        # printing. It triples the spend on this phase, which is why it is an
+        # environment variable and why the section now states the interval out
+        # loud rather than quietly benefiting from it.
         run = run_panel(profile, queries=queries, providers=providers,
                         skipped=skipped,
-                        repeats=int(os.getenv("AIVIS_AUDIT_REPEATS", "1")),
+                        repeats=int(os.getenv("AIVIS_AUDIT_REPEATS", "3")),
                         progress=lambda d, t: db.update_audit(
                             audit_id, progress=f"AI visibility {d}/{t}",
                             heartbeat_at=time.time()))
@@ -747,7 +757,18 @@ def _ai_visibility(a, audit_id, findings, extras, step):
             "share_of_voice": (agg.get("share_of_voice") or [])[:8],
             "cited_examples": wins, "missed_examples": losses,
             "platforms": names, "skipped": skipped,
-            "questions": len(queries), "from_audit": True}
+            "questions": len(queries), "from_audit": True,
+            # The three things the report was missing, all computed from the
+            # run we already paid for: which market each answer was about,
+            # how wide the interval on the headline rates is, and how many
+            # times each question was asked.
+            "by_market": agg.get("by_market") or {},
+            "by_platform": agg.get("by_platform") or {},
+            "mention_ci": agg.get("mention_ci"),
+            "citation_ci": agg.get("citation_ci"),
+            "unprompted_citation_ci": agg.get("unprompted_citation_ci"),
+            "repeats": agg.get("repeats"),
+            "answers_ok": agg.get("answers_ok")}
         print(f"[worker] {audit_id} AI visibility answered {answered}/"
               f"{len(rows)} GEO rows", flush=True)
     except Cancelled:

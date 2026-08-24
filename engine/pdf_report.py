@@ -1824,6 +1824,142 @@ def _reputation(meta, S):
     return out
 
 
+# DOMAINS ANYONE CAN GET A PROFILE ON, BY CATEGORY.
+#
+# The distinction that makes the sources block actionable rather than
+# informational. When an assistant answers "who is the best DUI attorney in
+# Knoxville" by citing Avvo and Justia, the recommendation is not "write more
+# content" - it is "you are not on Avvo, and Avvo is what it reads". That is a
+# week of work with a known finish line, and it is invisible unless the report
+# separates the sources you can join from the ones you cannot.
+#
+# Deliberately a list rather than a heuristic: "is this a directory" has no
+# reliable signal in the domain string, and a wrong guess here recommends
+# buying a profile on a competitor's website.
+_LISTABLE = {
+    # legal
+    "avvo.com", "justia.com", "lawyers.com", "martindale.com", "nolo.com",
+    "findlaw.com", "superlawyers.com", "bestlawyers.com", "lawinfo.com",
+    "attorneyatlaw.com", "chambers.com", "legalmatch.com",
+    # local / general
+    "yelp.com", "bbb.org", "angi.com", "thumbtack.com", "houzz.com",
+    "expertise.com", "threebestrated.com", "manta.com", "yellowpages.com",
+    "birdeye.com", "trustpilot.com", "clutch.co", "g2.com", "capterra.com",
+    # health
+    "healthgrades.com", "zocdoc.com", "vitals.com", "webmd.com",
+    "ratemds.com", "sharecare.com",
+    # home services / trades
+    "homeadvisor.com", "porch.com", "buildzoom.com", "nextdoor.com",
+}
+
+# Somebody else's plumbing, not a source. See the share-of-voice note.
+_NOT_A_SOURCE = {"vertexaisearch.cloud.google.com", "google.com",
+                 "webcache.googleusercontent.com", "bing.com",
+                 "duckduckgo.com", "search.yahoo.com"}
+
+
+def _ai_sources(v, S, rep=None):
+    """
+    Where the answers actually came from, and whether the client is on them.
+
+    THE QUESTION THE SHARE-OF-VOICE CHART DOES NOT ANSWER.
+
+    A ranked list of domains says who is winning. It does not say what to DO,
+    and for a local service business the answer is usually not "publish more"
+    - it is "the assistants are reading Avvo and Justia, and you have no
+    profile on either". That is the difference between a report that describes
+    a problem and one that names a week of work.
+
+    The presence half is free: the reputation scan already fetched page one
+    for "<brand> reviews", and a directory that ranks for the client's own
+    name is a directory the client is on. Where reputation was not run the
+    column honestly says so rather than guessing - an unchecked box printed as
+    "not listed" would send someone to claim a profile they already own.
+    """
+    sov = [d for d in (v.get("share_of_voice") or [])
+           if d.get("domain") and d["domain"] not in _NOT_A_SOURCE]
+    if not sov:
+        return []
+
+    # Domains that rank for the brand's own name = domains the brand is on.
+    known, checked = set(), False
+    if rep and rep.get("ok"):
+        checked = True
+        for o in ((rep.get("serp") or {}).get("organic") or []):
+            if o.get("domain"):
+                known.add(str(o["domain"]).lower().replace("www.", ""))
+
+    rows = [[Paragraph("<b>Source</b>", S["cellsm"]), "",
+             Paragraph("<b>Cited</b>", S["cellsm"]),
+             Paragraph("<b>What it is</b>", S["cellsm"]),
+             Paragraph("<b>You on it?</b>", S["cellsm"])]]
+    _OWN = (colors.HexColor("#E4F1E8"), colors.HexColor("#1E7A45"))
+    _DIR = (colors.HexColor("#FDF3E2"), colors.HexColor("#8A5A00"))
+    _OTH = (colors.HexColor("#EEF2F6"), colors.HexColor("#4A5461"))
+    listable = 0
+    for d in sov[:8]:
+        dom = str(d["domain"]).lower().replace("www.", "")
+        if d.get("is_client"):
+            kind, pal = "YOURS", _OWN
+            on = "—"
+        elif dom in _LISTABLE:
+            kind, pal = "DIRECTORY", _DIR
+            listable += 1
+            on = ("Yes" if dom in known else "No sign of you") if checked \
+                else "Not checked"
+        else:
+            kind, pal = "SOMEONE ELSE", _OTH
+            on = "—"
+        _share = d.get("share") or 0
+        rows.append([
+            Paragraph(f"<b>{_p(dom)}</b>", S["cellsm"]),
+            # The meter is the one thing the old share-of-voice grid did well:
+            # the ORDER is the finding, and a bar shows order faster than a
+            # column of near-identical small percentages.
+            MiniMeter(round(_share * 100) if _share <= 1 else _share,
+                      width=1.25 * inch, height=7),
+            Paragraph(str(d.get("citations") or 0), S["cellsm"]),
+            _pill(kind, {kind: pal}, S, 1.15 * inch),
+            Paragraph(_p(on), S["cellsm"]),
+        ])
+    t = Table(rows, colWidths=[1.85 * inch, 1.35 * inch, 0.55 * inch,
+                               1.3 * inch, 1.15 * inch])
+    t.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.6, LINE),
+        ("LINEBELOW", (0, 1), (-1, -1), 0.35, colors.HexColor("#F1F4F7")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
+
+    lead = ("These are the pages the assistants read before answering. The "
+            "ones marked DIRECTORY are the ones you can do something about "
+            "this month: a profile there is a form, not a campaign.")
+    if checked and listable:
+        _missing = [str(d["domain"]).lower().replace("www.", "")
+                    for d in sov[:8]
+                    if not d.get("is_client")
+                    and str(d["domain"]).lower().replace("www.", "") in _LISTABLE
+                    and str(d["domain"]).lower().replace("www.", "") not in known]
+        if _missing:
+            lead += (" We found no sign of you on " + _listy_pdf(_missing)
+                     + ", and the assistants are citing them.")
+    out = [Spacer(1, 14),
+           KeepTogether([Paragraph("Where those answers came from", S["h3"]),
+                         Paragraph(lead, S["small"]), Spacer(1, 6), t])]
+    # The gap sentence came off the old grid. It is the one comparison in the
+    # section a client repeats out loud.
+    gap = v.get("citation_gap")
+    if gap and gap > 0 and v.get("top_competitor_domain"):
+        out.append(Spacer(1, 6))
+        out.append(Paragraph(
+            f"<font color='#52514e'>{_p(v['top_competitor_domain'])} is cited "
+            f"{gap} more times than you across the same questions.</font>",
+            S["small"]))
+    return out
+
+
 def _ai_gate(findings, S):
     """
     Whether the assistants are allowed to read the site at all.
@@ -1946,6 +2082,74 @@ def _ai_visibility(meta, S, findings=None):
     # the reader's first question about a low citation rate should be "are we
     # even letting them in", and this answers it in one line.
     out += _gate
+
+    # ---- HOW SOLID THE NUMBERS ABOVE ARE ---------------------------------
+    #
+    # Straight under the tiles, because it changes how they should be read.
+    # Reported as a bare "12%" a rate invites a precision it does not have,
+    # and the reading it invites - that next month's 18% is progress - is the
+    # one it cannot support. Saying the width out loud is the difference
+    # between an estimate and a claim.
+    _ci = v.get("citation_ci") or {}
+    if _ci.get("n"):
+        _pm = _ci.get("plus_minus")
+        _rep = v.get("repeats") or 1
+        _asked = ("each question asked "
+                  f"{_rep} time{'s' if _rep != 1 else ''}")
+        out += [Spacer(1, 10), Paragraph(
+            f"<b>How firm are these numbers?</b> They come from "
+            f"{_ci['n']:,} answers, {_asked}. These systems do not answer "
+            f"identically twice, so the linked-to figure is "
+            f"<b>{cite}%, give or take {_pm} points</b> "
+            f"({_ci['low']}–{_ci['high']}%). A change smaller than that "
+            f"between one month and the next is the tools varying, not your "
+            f"visibility moving - which is why we quote a range rather than "
+            f"a single number.", S["small"])]
+
+    # ---- MARKET BY MARKET ------------------------------------------------
+    #
+    # A blended rate across three counties is true of none of them. This is
+    # the most consequential thing missing from a local AI-visibility reading:
+    # the campaign you would run for a firm invisible in Clinton and fine in
+    # Knoxville is not the campaign you would run for one that is middling
+    # everywhere, and the blended number cannot tell those apart.
+    _mkt = v.get("by_market") or {}
+    if len(_mkt) > 1:
+        _mrows = [[Paragraph("<b>Market</b>", S["cellsm"]),
+                   Paragraph("<b>Questions</b>", S["cellsm"]),
+                   Paragraph("<b>Named you</b>", S["cellsm"]),
+                   Paragraph("<b>Linked to you</b>", S["cellsm"])]]
+        for name, m in sorted(_mkt.items(),
+                              key=lambda kv: -(kv[1].get("citation_rate") or 0)):
+            _mrows.append([
+                Paragraph(f"<b>{_p(name)}</b>", S["cellsm"]),
+                Paragraph(str(m.get("questions") or 0), S["cellsm"]),
+                Paragraph(f"{m.get('mention_rate') or 0}%", S["cellsm"]),
+                Paragraph(f"{m.get('citation_rate') or 0}%", S["cellsm"]),
+            ])
+        _mt = Table(_mrows, colWidths=[3.0 * inch, 1.0 * inch, 1.3 * inch,
+                                       1.3 * inch])
+        _mt.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.6, LINE),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.35, colors.HexColor("#F1F4F7")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
+        _best = max(_mkt.items(), key=lambda kv: kv[1].get("citation_rate") or 0)
+        _worst = min(_mkt.items(), key=lambda kv: kv[1].get("citation_rate") or 0)
+        _lead = ("The figures above are an average across your markets, and "
+                 "an average is true of none of them.")
+        if (_best[1].get("citation_rate") or 0) > (_worst[1].get("citation_rate") or 0):
+            _lead += (f" You are strongest in {_p(_best[0])} and weakest in "
+                      f"{_p(_worst[0])}.")
+        out += [Spacer(1, 14),
+                KeepTogether([Paragraph("Market by market", S["h3"]),
+                              Paragraph(_lead, S["small"]),
+                              Spacer(1, 6), _mt])]
+
+    out += _ai_sources(v, S, rep=(meta.get("extras") or {}).get("reputation"))
     out += _ai_examples(v, S, brand=_brand)
 
     if ment > cite:
@@ -1965,70 +2169,16 @@ def _ai_visibility(meta, S, findings=None):
     # and the first question anyone sensible asks is "what is that?".
     #
     # Filtered at render, so reports already produced are fixed on reload.
-    _NOT_A_SOURCE = ("vertexaisearch.cloud.google.com", "googleusercontent.com",
-                     "google.com/url", "gstatic.com", "bing.com/ck",
-                     "duckduckgo.com/l", "r.jina.ai", "webcache.googleusercontent")
-    sov = [d for d in (v.get("share_of_voice") or [])
-           if not any(x in str(d.get("domain") or "").lower()
-                      for x in _NOT_A_SOURCE)]
-    if sov:
-        out.append(Spacer(1, 12))
-        out.append(Paragraph("Sources these answers used", S["h3"]))
-        # WHAT THE NUMBERS MEAN, BEFORE THE NUMBERS.
-        #
-        # A column headed "Share" showing 7.4%, 4.3%, 4.3% invites the reading
-        # "nobody has much" - when what it actually says is that citations are
-        # spread across dozens of sources and these are the largest slices.
-        # WHAT THE GRID IS, IN ONE READING.
-        #
-        # "Every source these assistants linked to, counted. Share is that
-        # source's portion of ALL citations given…" - two abstractions and a
-        # capitalised ALL, explaining a table nobody had been told the purpose
-        # of. The purpose is the point: these are the sites the answers are
-        # BUILT from, and being on the list is what being cited means.
-        out.append(Paragraph(
-            f"When these tools answered the {v.get('questions') or 0} "
-            f"questions, they built their answers out of these websites. "
-            f"Being linked to means being on this list, so it is worth "
-            f"knowing who is on it and where you sit. The share is small for "
-            f"everyone because the answers pull from dozens of sites; the "
-            f"order is what matters.", S["small"]))
-        out.append(Spacer(1, 6))
-        rows = [[Paragraph("<b>Source cited</b>", S["cellsm"]), "",
-                 Paragraph("<b>Share of all</b>", S["cellsm"]),
-                 Paragraph("<b>Citations</b>", S["cellsm"])]]
-        for d in sov:
-            is_client = bool(d.get("is_client"))
-            name = _p(d.get("domain"))
-            rows.append([
-                Paragraph(f"<b>{name}</b>" if is_client else name, S["cell"]),
-                MiniMeter(round((d.get("share") or 0) * 100)
-                          if (d.get("share") or 0) <= 1 else d.get("share"),
-                          width=1.9 * inch, height=7),
-                Paragraph(f"{round((d.get('share') or 0) * 100)}%"
-                          if (d.get("share") or 0) <= 1
-                          else f"{d.get('share')}%", S["cellsm"]),
-                Paragraph(str(d.get("citations") or 0), S["cellsm"]),
-            ])
-        t = Table(rows, colWidths=[2.3 * inch, 2.1 * inch, 0.9 * inch,
-                                   1.25 * inch])
-        t.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("LINEBELOW", (0, 0), (-1, -1), 0.4, LINE),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ("LEFTPADDING", (0, 0), (-1, -1), 3)]))
-        # ONE PAGE, OR THE NEXT ONE - never a header here and one row there.
-        # This table split with a single domain stranded on the following
-        # page under nothing at all.
-        out.append(KeepTogether([t]))
-        gap = v.get("citation_gap")
-        if gap and v.get("top_competitor_domain"):
-            out.append(Spacer(1, 6))
-            out.append(Paragraph(
-                f"<font color='#52514e'>{_p(v['top_competitor_domain'])} is cited "
-                f"{gap} more times than you across the same questions.</font>",
-                S["small"]))
+
+    # THE OLD SHARE-OF-VOICE GRID LIVED HERE AND HAS BEEN MERGED UPWARDS.
+    #
+    # It listed the same domains as "Where those answers came from" with a
+    # share meter and nothing else, so the section printed two tables of the
+    # same eight websites a page apart - and the second one, which the reader
+    # met last, was the one that said the least. The meter was worth keeping
+    # and moved into the merged table; the ranked list, the gap sentence and
+    # everything else it did are up there now, next to the columns that say
+    # what to do about each row.
 
     # WHICH PLATFORMS WE DO NOT PAY FOR IS NOT THE CLIENT'S BUSINESS.
     #

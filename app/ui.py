@@ -932,8 +932,16 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
         # The number says the same thing in four characters, and the report
         # names them where naming them matters.
         AIVIS_ATTR = ""
+        # THE TIME ESTIMATE HAD TO MOVE WITH THE SAMPLING.
+        #
+        # Each question is now asked three times rather than once, because a
+        # single pass gives an interval too wide for the rate to support any
+        # reading a client takes from it. That is three times the calls and
+        # three times the spend, and a note still promising "~2 min" would be
+        # the form quietly lying about what the box costs.
         AIVIS_NOTE = (f"{len(plats)} assistant"
-                      f"{'s' if len(plats) != 1 else ''} &middot; ~2 min")
+                      f"{'s' if len(plats) != 1 else ''} &middot; asked 3&times; "
+                      f"each &middot; ~5 min")
     else:
         # Disabled rather than merely discouraged. A ticked box that cannot do
         # anything is worse than one that explains why it is greyed out.
