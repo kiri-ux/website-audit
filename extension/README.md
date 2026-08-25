@@ -74,6 +74,43 @@ Default dwell is 2500ms + up to 900ms of jitter.
 - Jitter matters: 150 tabs at an exact 1s cadence looks scripted even from real
   Chrome. Advanced bot management watches timing, not just fingerprints.
 
+## The consent scan
+
+Same trick, applied to consent. Bot protection means the server's Playwright
+falls back to raw HTML, which cannot see the banner, Consent Mode, what fired
+before consent, or what happens on Reject — three and a half of the four
+questions the scan exists to answer.
+
+The capture opens the page **four** times:
+
+| Pass | What it measures |
+|---|---|
+| Untouched | Every request made before anyone agreed to anything, plus the rendered DOM, whether a banner is actually visible on screen, and the Consent Mode defaults the dataLayer was given |
+| After Accept | Which vendors waited for a choice — the "is the pixel actually working" half |
+| After Reject, fresh load | What still fires once somebody declines. Fresh matters: after an Accept the CMP has written a cookie, and a Reject click then tests a different state from the one a first-time visitor sees |
+| With GPC on, fresh load | What fires despite Global Privacy Control. Twelve states require it to be honoured |
+
+The GPC pass sends **both** halves of the signal — the `Sec-GPC: 1` request
+header, which is what a server-side implementation checks, and
+`navigator.globalPrivacyControl`, which is what a client-side CMP reads. Sending
+one and not the other produces a site that looks like it ignored GPC when it
+never saw the half it was listening for, and that is a false accusation in the
+section about legal obligations.
+
+If the signal cannot be set, the pass sends **no** `gpc_requests` field at all
+rather than an empty one — the server reads "field present" as "tested", so an
+empty array would report a clean GPC result on a site that was never sent the
+signal.
+
+Start it from the **Consent scan** page of an audit: the button there wires
+itself to the audit id, so nothing is retyped. The states and the bought
+products come off the audit server-side — the extension never sees them.
+
+**The extension classifies nothing.** It records what happened and posts it;
+the server runs the same CMP signatures, `gcs=` parsing and endpoint tables the
+Playwright path uses. Two classifiers would eventually disagree about the same
+site and there would be no way to know which was right.
+
 ## What it captures vs what the server still does
 
 | Browser (this extension) | Server |
@@ -82,6 +119,7 @@ Default dwell is 2500ms + up to 900ms of jitter.
 | Schema (JSON-LD + microdata) | HTTP→HTTPS redirect behaviour |
 | All scripts + inline JS (the 12 analytics rows) | PageSpeed Insights / Core Web Vitals |
 | robots.txt, sitemap.xml, llms.txt | Host resolution (www vs non-www) |
+| The consent passes above, GPC included | State-law rules applied to what came back |
 
 The split is deliberate: the server-side items do not go through the site's HTTP
 layer, so they were working even when the crawl was fully blocked.

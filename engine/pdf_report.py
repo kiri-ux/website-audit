@@ -106,6 +106,102 @@ def _star_row(n, color, size=7.0):
             pts += [cx + rad * math.cos(ang), cy + rad * math.sin(ang)]
         d.add(Polygon(pts, fillColor=c, strokeColor=None))
     return d
+
+
+def _star_band_blocks(listings, S, name_w=3.6, count_w=1.0):
+    """
+    The 1-3 star bands as the drawn chart, for whichever document asks.
+
+    This lived inside the full audit's reputation section and the snapshot got
+    a sentence instead - which is exactly how two renderers of one finding
+    drift apart. Same rule as the roadmap cards and the opportunity box: one
+    renderer, two callers, so a fix to the chart cannot land in one document
+    and miss the other.
+
+    Returns [] when there are no listings, so a caller can splice it into a
+    story without checking twice.
+    """
+    if not listings:
+        return []
+    # STARS DRAWN AS STARS.
+    #
+    # "1 star / 2 star / 3 star" as three word-headers made the reader
+    # translate a rating into a column position on every row. The glyphs are
+    # the thing being counted, so they are what the header shows, and the eye
+    # finds the one-star column without reading anything. Color is never the
+    # only signal: each column still carries its count.
+    #
+    # NO PROFILE COLUMN. The rating and the review count are already the first
+    # tile at the top of the section, and the two numbers disagreed by three
+    # reviews - the tile sums the listings database, the column came from the
+    # review pull, which is fetched a few days later. A reader who spots that
+    # has no way to tell which is right and stops trusting both.
+    srows = [[Paragraph("<b>Listing</b>", S["cellsm"]),
+              _star_row(1, _STAR_BAD), _star_row(2, _STAR_BAD),
+              _star_row(3, _STAR_MEH)]]
+
+    def _band(n, floor):
+        # "at least 0" is not a floor, it is a typo with a reason. The
+        # truncation flag says the pull ran out of room while still returning
+        # bad reviews, so it qualifies a count we DID find - it says nothing
+        # about a band that came back empty.
+        n = int(n or 0)
+        return f"at least {n}" if (floor and n) else str(n)
+
+    for L in listings:
+        _fl = bool(L.get("at_least"))
+        # A LINK TO THE LISTING ITSELF.
+        #
+        # The row names a Google Business Profile and the next thing anybody
+        # wants is to look at it - which meant copying the name into a search
+        # box. Google's place_id URL form resolves straight to the profile,
+        # and place_id is the one identifier the listings database already
+        # returns for every location we find.
+        _pid = L.get("place_id")
+        _nm = _p(L.get("title"))
+        _title = (f"<a href='https://www.google.com/maps/place/?q=place_id:"
+                  f"{_p(_pid)}' color='#1A56A8'><b>{_nm}</b></a>"
+                  if _pid else f"<b>{_nm}</b>")
+        srows.append([
+            Paragraph(_title
+                      + (f"<br/><font color='#8096AC'>"
+                         f"{_p(L.get('address'))}</font>"
+                         if L.get("address") else ""), S["cellsm"]),
+            Paragraph(_band(L.get("one"), _fl), S["cellsm"]),
+            Paragraph(_band(L.get("two"), _fl), S["cellsm"]),
+            Paragraph(_band(L.get("three"), _fl), S["cellsm"]),
+        ])
+    st_ = Table(srows, colWidths=[name_w * inch, count_w * inch,
+                                  count_w * inch, count_w * inch])
+    st_.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.6, LINE),
+        ("LINEBELOW", (0, 1), (-1, -1), 0.35, colors.HexColor("#F1F4F7")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
+    # ONE TO THREE, NOT ONE TO TWO.
+    #
+    # The table shows three bands and the sentence counted two of them, so the
+    # headline number never matched the row underneath it. Three stars is not
+    # a happy customer either - it is the review a person reads as "adequate",
+    # and on a page about what a stranger finds it belongs on the same side of
+    # the line as the other two.
+    _low = sum((L.get("one") or 0) + (L.get("two") or 0)
+               + (L.get("three") or 0) for L in listings)
+    _sub = ("These are the reviews a person reads first when they sort "
+            "by lowest.")
+    if _low:
+        _sub = (f"<b>{_low} review{'s' if _low != 1 else ''} at three "
+                f"stars or below.</b> " + _sub)
+    out = [Paragraph(_sub, S["small"]), Spacer(1, 6), st_]
+    if any(L.get("at_least") for L in listings):
+        out.append(Paragraph(
+            "“At least” means the pull reached its limit while still "
+            "returning bad reviews — there are more below the ones "
+            "counted here.", S["small"]))
+    return out
 CARDINAL   = colors.HexColor("#A6192E")
 TEAL       = colors.HexColor("#4FD4E0")
 
@@ -1584,87 +1680,9 @@ def _reputation(meta, S):
     # beside the profile figure they are invisible inside.
     _stars = (sm.get("stars") or {}).get("listings") or []
     if _stars:
-        # STARS DRAWN AS STARS.
-        #
-        # "1 star / 2 star / 3 star" as three word-headers made the reader
-        # translate a rating into a column position on every row. The glyphs
-        # are the thing being counted, so they are what the header shows, and
-        # the eye finds the one-star column without reading anything. Color
-        # is never the only signal: each column still carries its count.
-        # NO PROFILE COLUMN.
-        #
-        # The rating and the review count are already the first tile at the
-        # top of the section, and the two numbers disagreed by three reviews -
-        # the tile sums the listings database, the column came from the review
-        # pull, which is fetched a few days later and is the fresher of the
-        # two. A reader who spots that has no way to tell which is right and
-        # stops trusting both. One number, one place.
-        srows = [[Paragraph("<b>Listing</b>", S["cellsm"]),
-                  _star_row(1, _STAR_BAD), _star_row(2, _STAR_BAD),
-                  _star_row(3, _STAR_MEH)]]
-        def _band(n, floor):
-            # "at least 0" is not a floor, it is a typo with a reason. The
-            # truncation flag says the pull ran out of room while still
-            # returning bad reviews, so it qualifies a count we DID find - it
-            # says nothing about a band that came back empty.
-            n = int(n or 0)
-            return f"at least {n}" if (floor and n) else str(n)
-
-        for L in _stars:
-            _fl = bool(L.get("at_least"))
-            # A LINK TO THE LISTING ITSELF.
-            #
-            # The row names a Google Business Profile and the next thing
-            # anybody wants is to look at it - which meant copying the name
-            # into a search box. Google's place_id URL form resolves straight
-            # to the profile, and place_id is the one identifier the listings
-            # database already returns for every location we find.
-            _pid = L.get("place_id")
-            _nm = _p(L.get("title"))
-            _title = (f"<a href='https://www.google.com/maps/place/?q=place_id:"
-                      f"{_p(_pid)}' color='#1A56A8'><b>{_nm}</b></a>"
-                      if _pid else f"<b>{_nm}</b>")
-            srows.append([
-                Paragraph(_title
-                          + (f"<br/><font color='#8096AC'>"
-                             f"{_p(L.get('address'))}</font>"
-                             if L.get("address") else ""), S["cellsm"]),
-                Paragraph(_band(L.get("one"), _fl), S["cellsm"]),
-                Paragraph(_band(L.get("two"), _fl), S["cellsm"]),
-                Paragraph(_band(L.get("three"), _fl), S["cellsm"]),
-            ])
-        st_ = Table(srows, colWidths=[3.6 * inch, 1.0 * inch, 1.0 * inch,
-                                      1.0 * inch])
-        st_.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LINEBELOW", (0, 0), (-1, 0), 0.6, LINE),
-            ("LINEBELOW", (0, 1), (-1, -1), 0.35, colors.HexColor("#F1F4F7")),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
-        # ONE TO THREE, NOT ONE TO TWO.
-        #
-        # The table shows three bands and the sentence counted two of them,
-        # so the headline number never matched the row underneath it. Three
-        # stars is not a happy customer either - it is the review a person
-        # reads as "adequate", and on a page about what a stranger finds it
-        # belongs on the same side of the line as the other two.
-        _low = sum((L.get("one") or 0) + (L.get("two") or 0)
-                   + (L.get("three") or 0) for L in _stars)
-        _sub = ("These are the reviews a person reads first when they sort "
-                "by lowest.")
-        if _low:
-            _sub = (f"<b>{_low} review{'s' if _low != 1 else ''} at three "
-                    f"stars or below.</b> " + _sub)
         out += [Spacer(1, 14),
-                Paragraph("The reviews behind the rating", S["h3"]),
-                Paragraph(_sub, S["small"]), Spacer(1, 6), st_]
-        if any(L.get("at_least") for L in _stars):
-            out.append(Paragraph(
-                "“At least” means the pull reached its limit while still "
-                "returning bad reviews — there are more below the ones "
-                "counted here.", S["small"]))
+                Paragraph("The reviews behind the rating", S["h3"])]
+        out += _star_band_blocks(_stars, S)
 
     # ---- a picture of that page ----------------------------------------
     #
@@ -3245,21 +3263,15 @@ def build_snapshot(meta: dict, scores: dict, findings: dict, catalog: dict,
         #
         # A 4.86 across 400 reviews is the figure the client is comfortable
         # with, and ten one-star reviews move it by about a tenth of a point.
-        # The full audit gives this a table with the bands broken out; the
-        # snapshot gets the one sentence, because it is the sentence that
-        # starts the conversation.
+        # This started as a sentence here and the chart in the full audit -
+        # but a sentence saying "12 reviews" is a claim, and the chart showing
+        # which listing they are sitting on is the evidence. Same renderer as
+        # the full audit now, so the two documents cannot disagree.
         _bands = (_rs.get("stars") or {}).get("listings") or []
-        _low = sum((L.get("one") or 0) + (L.get("two") or 0)
-                   + (L.get("three") or 0) for L in _bands)
-        if _low:
-            _floor = any(L.get("at_least") for L in _bands)
-            story.append(Spacer(1, 8))
-            story.append(Paragraph(
-                f"<b>{'At least ' if _floor else ''}{_low} review"
-                f"{'s' if _low != 1 else ''} sit at three stars or below.</b> "
-                f"Those are the ones a person reads first when they sort by "
-                f"lowest, and an average this size barely moves when they "
-                f"arrive.", S["small"]))
+        _sb = _star_band_blocks(_bands, S)
+        if _sb:
+            story.append(Spacer(1, 10))
+            story.extend(_sb)
         if _worst and _rs.get("rating") and \
                 float(_worst.get("rating") or 5) < float(_rs["rating"]) - 0.3:
             story.append(Spacer(1, 8))

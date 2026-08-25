@@ -226,6 +226,66 @@ def main():
           str({c: ext[c]["status"] for c in ("CONS-02", "CONS-03", "CONS-04",
                                              "CONS-05")}))
 
+    from app.ui_consent import consent_html as _ch
+    print("\nAN ABSENT GPC PASS IS UNTESTED, NEVER CLEAN")
+    # "Field present" is what marks GPC as tested, so an extension that could
+    # not set the signal must send NO field rather than an empty list. An empty
+    # list would report a clean GPC result on a site that was never sent the
+    # signal — a false clean bill in the section about legal obligations.
+    _nogpc = result_from_capture({k: v for k, v in cap.items()
+                                  if k != "gpc_requests"})
+    check("no gpc_requests field means the pass never ran",
+          _nogpc["gpc_tested"] is False)
+    check("and an empty one means it ran and nothing fired",
+          result_from_capture({**cap, "gpc_requests": []})["gpc_tested"] is True)
+
+    # The extension is the only thing that can fill that field, and it has to
+    # send BOTH halves of the signal: the Sec-GPC header a server-side
+    # implementation checks, and navigator.globalPrivacyControl a client-side
+    # CMP reads. One without the other makes a site look like it ignored GPC
+    # when it never saw the half it was listening for.
+    _bg = open("extension/background.js", encoding="utf-8").read()
+    _mf = open("extension/manifest.json", encoding="utf-8").read()
+    check("the extension sends the Sec-GPC header", "Sec-GPC" in _bg)
+    check("and defines navigator.globalPrivacyControl",
+          "globalPrivacyControl" in
+          open("extension/gpc.js", encoding="utf-8").read())
+    check("declaring the permission the header needs",
+          "declarativeNetRequest" in _mf)
+    check("and it only sends gpc_requests when the signal was set",
+          "if (gp.header || gp.prop)" in _bg)
+    check("the consent page is wired to launch it",
+          "VICI_CONSENT_FOR" in _bg
+          and "VICI_CONSENT_FOR" in open("extension/content.js",
+                                         encoding="utf-8").read())
+
+    print("\nTHE PAGE OFFERS THE CAPTURE WHERE THE BROWSER HALF IS MISSING")
+    # A graceful degradation needs something loud somewhere else, or it is just
+    # a silent failure with good manners. "Not tested" was the end of the page.
+    _basic_page = _ch({"id": "zz9", "client_name": "C",
+                       "target_url": "https://x.com"},
+                      {"scan": {"mode": "basic", "cmps": [], "gtm": {},
+                                "pre_consent": [], "post_reject": [],
+                                "gpc_fires": [], "products": [],
+                                "state_checks": []},
+                       "pages": [], "requested": {}})
+    check("a basic scan offers the browser capture", "vici-consent" in _basic_page)
+    check("with the audit id ready to paste", "zz9" in _basic_page)
+    check("an audit with no stored detail offers it too",
+          "vici-consent" in _ch({"id": "zz9", "client_name": "C",
+                                 "target_url": "https://x.com"}, None))
+    _full_page = _ch({"id": "zz9", "client_name": "C",
+                      "target_url": "https://x.com"},
+                     {"scan": {"mode": "full", "cmps": [{"name": "OneTrust"}],
+                               "gtm": {}, "banner_visible": True,
+                               "reject_tested": True, "gpc_tested": True,
+                               "pre_consent": [], "post_reject": [],
+                               "gpc_fires": [], "products": [],
+                               "state_checks": []},
+                      "pages": [], "requested": {}})
+    check("but a scan that tested everything is not nagged",
+          "vici-consent" not in _full_page)
+
     print("\nA CAPTURE THAT COULD NOT READ THE DATALAYER SAYS SO")
     # "No Consent Mode defaults" and "we could not look" are opposite findings.
     blind = result_from_capture(dict(cap, consent_defaults={},
@@ -236,6 +296,7 @@ def main():
           findings_from_scan(blind)["CONS-03"]["status"] == "Need Access")
 
     print("\nTHE ENDPOINT WORKS OVER HTTP, NOT ONLY IN CODE")
+    from app.ui_consent import consent_html as _ch
     import json as _json
     import tempfile
     import threading
@@ -271,6 +332,33 @@ def main():
         check("and the score was recomputed to include them",
               "CONS" in (_db.get_scores(aid) or {}).get("sections", {}),
               str(list((_db.get_scores(aid) or {}).get("sections", {}))[-3:]))
+
+        # THE CAPTURE IS THE ONLY SOURCE OF THE DETAIL ON A BLOCKED SITE.
+        #
+        # The endpoint saved nine findings and nothing else, so the consent
+        # page an operator opened after going to the trouble of running the
+        # capture said "no consent detail was stored for this run" — about the
+        # run that had just answered everything.
+        from app.artifacts import get_artifact as _ga
+        _blob = _ga(aid, "consent_scan.json")
+        check("the full scan record is stored, not just the nine rows",
+              bool(_blob))
+        _rec = _json.loads(_blob.decode()) if _blob else {}
+        check("and the page can read a scan out of it",
+              bool((_rec.get("scan") or {}).get("cmps")))
+        check("the endpoint says where to look",
+              body.get("consent", "").endswith("/consent"), str(body))
+        _ex = _json.loads(_db.get_audit(aid)["extras"] or "{}")
+        check("the audit stops claiming the scan ran without a browser",
+              (_ex.get("consent") or {}).get("mode") == "full",
+              str(_ex.get("consent")))
+        check("and records that it came from the extension",
+              (_ex.get("consent") or {}).get("source") == "extension")
+
+        # The page renders from the stored record, end to end.
+        _pg = _ch(_db.get_audit(aid), _rec)
+        check("and the stored record renders as a page",
+              "Consent platform" in _pg and "OneTrust" in _pg)
     finally:
         srv.should_exit = True
         t.join(timeout=5)
@@ -615,7 +703,11 @@ def main():
     check("and attributed to the page it fired on",
           "thank-you" in _html and "Page" in _html)
     check("a bought product that never fires is called out",
-          "PMax" in _html and "not seen" in _html)
+          "PMax" in _html and "no pixels seen" in _html)
+    # The evidence column ran str() over a dict of pixel state and printed
+    # Python at the client. It must never come back.
+    check("and the evidence column never prints a Python dict",
+          "'fired_pre'" not in _html and "{'name'" not in _html)
     check("the state result carries its statute detail",
           "Opt-out link" in _html)
 

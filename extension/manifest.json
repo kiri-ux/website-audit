@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Site Scanner",
-  "version": "1.4.4",
-  "description": "Runs the audit, the consent scan and the Search Console capture from your own signed-in browser.",
+  "version": "1.5.0",
+  "description": "Runs the audit, the consent scan (including the Global Privacy Control pass) and the Search Console capture from your own signed-in browser.",
   "permissions": [
     "activeTab",
     "scripting",
     "storage",
     "tabs",
+    "declarativeNetRequest",
     "webRequest",
     "alarms"
   ],
@@ -44,6 +45,16 @@
       ],
       "run_at": "document_idle",
       "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "gpc.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

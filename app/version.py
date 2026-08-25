@@ -12,10 +12,14 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-98"
-BUILD_NOTES = ("A spacer before a page break was leaving a blank page, the "
-               "polish button only appears when it can do something, and the "
-               "snapshot counts the reviews at three stars or below")
+BUILD = "2026.08.20-99"
+BUILD_NOTES = ("The snapshot draws the star bands instead of describing them, "
+               "an extension consent capture is now stored and rendered "
+               "rather than reduced to nine rows, the capture path gained the "
+               "verdict, the product pixels and the state checks it always "
+               "had the inputs for, the extension runs a real GPC pass, and "
+               "the consent page leads with the four answers and offers the "
+               "capture wherever the browser half is missing")
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

@@ -50,7 +50,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from .scanner import (_empty_result, _match_domains, _cmp_by_name,
-                      _classify_tracker, _gcs_denied, _gtm_info, normalize_url)
+                      _classify_tracker, _gcs_denied, _gtm_info, normalize_url,
+                      _apply_verdict, _dedupe_product_pixels,
+                      products_and_containers, state_checks_for,
+                      _category_checks)
 from .state_checks import OPTOUT_LINK_PHRASES
 
 
@@ -85,8 +88,17 @@ def _optout(html: str):
     return None
 
 
-def result_from_capture(cap: dict) -> dict:
-    """Build the standard scan result dict from an extension capture."""
+def result_from_capture(cap: dict, states=None, products=None,
+                        industries=None) -> dict:
+    """
+    Build the standard scan result dict from an extension capture.
+
+    `states`, `products` and `industries` come from the AUDIT, not from the
+    capture. The extension has no business knowing which statutes a client
+    sells under or which pixels they pay for, and asking the operator to
+    retype them into a popup is how the two drift apart. The API reads them
+    off the stored options and passes them in.
+    """
     url = normalize_url(cap.get("url") or "") or (cap.get("url") or "")
     r = _empty_result(url)
     r["scanned_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -98,6 +110,7 @@ def result_from_capture(cap: dict) -> dict:
     r["source"] = "extension"
 
     html = cap.get("html") or ""
+    r["html_len"] = len(html)
     corpus = html + "\n" + "\n".join(cap.get("scripts") or [])
 
     # ---- which CMP -------------------------------------------------------
@@ -143,4 +156,32 @@ def result_from_capture(cap: dict) -> dict:
                           if f["severity"] != "info"]
 
     r["optout_link"] = _optout(html)
+    # The universal FTC-baseline input. Same four phrases the Playwright path
+    # looks for, in the same rendered HTML.
+    low = (html or "").lower()
+    r["privacy_policy_link"] = next(
+        (p for p in ("privacy policy", "privacy notice", "privacy statement",
+                     "privacy center") if p in low), None)
+    if not r["privacy_policy_link"] and 'href="/privacy' in low:
+        r["privacy_policy_link"] = "/privacy (href)"
+
+    # ---- everything below is the browser-free half of the scanner ---------
+    #
+    # It was Playwright-only for no reason other than where the code happened
+    # to sit. A capture arrives BECAUSE the server scan could not run, so the
+    # capture path is the one that most needs these rows, not the one that can
+    # do without them.
+    pre_urls = list(cap.get("pre_requests") or [])
+    post_urls = [u for u in (cap.get("post_requests") or [])
+                 if u not in set(pre_urls)]
+    products_and_containers(r, html, low, pre_urls, post_urls, products)
+    _dedupe_product_pixels(r)
+    state_checks_for(r, [str(s).upper() for s in (states or [])])
+    for cat in (industries or []):
+        _category_checks(r, cat)
+
+    # A verdict, so the page header says something. Without this the record
+    # came back with an empty verdict and the consent page printed "not
+    # recorded" above a scan that had answered every question it was asked.
+    _apply_verdict(r)
     return r

@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from .config import cfg
 from . import db, tenancy, version
 from .queue import get_queue
-from .artifacts import get_artifact, delete_artifacts
+from .artifacts import get_artifact, put_artifact, delete_artifacts
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from engine.report import render_html
@@ -1229,10 +1229,83 @@ def ingest_consent_capture(audit_id: str, payload: dict,
 
     from engine.consent.from_capture import result_from_capture
     from engine.consent.checks import findings_from_scan
+
+    # WHAT WAS ASKED OF THE SCAN, NOT JUST WHAT CAME BACK.
+    #
+    # The states and the bought products are on the audit, not in the capture -
+    # the extension has no business knowing which statutes a client sells
+    # under. Passing them in is what lets the per-state rows and the
+    # "product bought, pixel never fires" table exist on this path at all;
+    # without them the browser did all the work and the page showed half of it.
+    try:
+        _opt = json.loads(a.get("options") or "{}") or {}
+    except Exception:  # noqa: BLE001
+        _opt = {}
+    requested = {"states": _opt.get("consent_states") or [],
+                 "industries": _opt.get("consent_industries") or [],
+                 "products": _opt.get("consent_products") or [],
+                 "conversion_urls": _opt.get("conversion_urls") or [],
+                 "implementation": _opt.get("implementation") or ""}
+
     scan = result_from_capture({**payload, "url": payload.get("url")
-                                or a["target_url"]})
+                                or a["target_url"]},
+                               states=requested["states"],
+                               products=requested["products"],
+                               industries=requested["industries"])
     rows = findings_from_scan(scan)
     db.save_findings(audit_id, rows)
+
+    # THE SCAN IS THE PRODUCT; NINE CHECKPOINTS ARE A SUMMARY OF IT.
+    #
+    # The worker learned this and wrote consent_scan.json. This endpoint did
+    # not, so an operator who went to the trouble of running the capture -
+    # precisely because the server crawl could not - got the nine findings and
+    # a consent page that said "no consent detail was stored for this run".
+    # The capture is the only source of that detail on a blocked site, so it
+    # is the one that most needed storing.
+    #
+    # A capture merges over whatever the server scan managed: the pages list
+    # from a partial server run is still true, and the extension only scans
+    # the one URL.
+    prior = {}
+    try:
+        _blob = get_artifact(audit_id, "consent_scan.json")
+        if _blob:
+            prior = json.loads(_blob.decode()) or {}
+    except Exception:  # noqa: BLE001
+        prior = {}
+    detail_ok = True
+    try:
+        put_artifact(audit_id, "consent_scan.json", json.dumps(
+            {"scan": scan,
+             "pages": prior.get("pages") or [],
+             "requested": {**(prior.get("requested") or {}), **requested},
+             "server_scan": (prior.get("scan") or None)},
+            default=str).encode())
+    except Exception as exc:  # noqa: BLE001
+        detail_ok = False
+        print(f"[api] {audit_id} consent detail not stored: "
+              f"{type(exc).__name__}: {exc}", flush=True)
+
+    # And the summary the audit page reads. Leaving this saying "basic" after a
+    # full browser capture is the same staleness bug as leaving the score
+    # alone: the page would carry the browser's answers under a banner saying
+    # no browser ran.
+    try:
+        _ex = json.loads(a.get("extras") or "{}") or {}
+    except Exception:  # noqa: BLE001
+        _ex = {}
+    _ex["consent"] = {
+        "mode": scan.get("mode"),
+        "source": "extension",
+        "cmps": [c.get("name") for c in (scan.get("cmps") or [])],
+        "verdict": scan.get("verdict"),
+        "verdict_detail": scan.get("verdict_detail"),
+        "scanned_at": scan.get("scanned_at"),
+        "pages_scanned": 1,
+        "has_detail": detail_ok,
+    }
+    db.update_audit(audit_id, extras=json.dumps(_ex, default=str))
 
     # Rescore, because nine new rows change the coverage and the Consent
     # section's score. An ingest that leaves the stored score describing the
@@ -1247,6 +1320,8 @@ def ingest_consent_capture(audit_id: str, payload: dict,
           f"rows answered from the browser", flush=True)
     return {"ok": True, "answered": answered, "total": len(rows),
             "cmps": [c.get("name") for c in (scan.get("cmps") or [])],
+            "detail_stored": detail_ok,
+            "consent": f"/audits/{audit_id}/consent",
             "report": f"/audits/{audit_id}"}
 
 

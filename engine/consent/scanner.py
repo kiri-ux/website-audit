@@ -800,82 +800,7 @@ def _full_scan_impl(browser, url, products=None, states=None,
             except Exception:
                 pass
 
-    # --- per-state check results
-    # --- universal baseline check (every US site): privacy policy link.
-    # FTC Act §5 applies nationwide - a site tracking visitors with no
-    # accessible privacy policy is the baseline failure. Presence-only:
-    # content accuracy needs human/counsel review.
-    if site_checks and result.get("mode") == "full" and result.get("ok"):
-        pp = result.get("privacy_policy_link")
-        result["state_checks"].append(
-            {"state": "US", "check": "Privacy policy link",
-             "status": "pass" if pp else "fail",
-             "detail": (f'Found "{pp}" on the page. Presence check only - '
-                        "whether the policy accurately describes this "
-                        "site's tracking needs human review."
-                        if pp else
-                        "No privacy policy link found on this page. Every "
-                        "US site that tracks visitors is expected to have "
-                        "an accessible, accurate privacy policy (FTC Act "
-                        "\u00a75 + state laws).")})
-
-    for s in (states if site_checks else []):
-        cfg = STATE_CHECKS[s]
-        if cfg.get("gpc"):
-            if not result["gpc_tested"]:
-                result["state_checks"].append(
-                    {"state": s, "check": "GPC signal", "status": "unknown",
-                     "detail": "GPC page load did not complete."})
-            elif result["gpc_fires"]:
-                names = ", ".join(f["vendor"] for f in result["gpc_fires"])
-                result["state_checks"].append(
-                    {"state": s, "check": "GPC signal", "status": "fail",
-                     "detail": f"Ad trackers contacted despite the GPC "
-                               f"signal: {names}. Honoring universal opt-out "
-                               f"signals is required for {cfg['name']} "
-                               f"targeting."})
-            else:
-                result["state_checks"].append(
-                    {"state": s, "check": "GPC signal", "status": "pass",
-                     "detail": "No ad trackers contacted on a GPC page "
-                               "load."})
-        # Synthesized check: no CMP + no opt-out link + GPC not honored
-        # means NO mechanism for residents to opt out at all - the
-        # pattern state enforcement actually targets (e.g. Sephora).
-        # A banner itself isn't required under these opt-out laws, so
-        # "no CMP" alone is never flagged as a state failure.
-        gpc_ignored = result["gpc_tested"] and result["gpc_fires"]
-        # A notice-only bar is not a mechanism - it cannot decline - so
-        # it must not suppress this check the way a real CMP does.
-        # "Unrecognized consent banner" DOES have choices and still does.
-        real_cmp = [c for c in result["cmps"]
-                    if c["name"] != NOTICE_ONLY_CMP]
-        notice_only_seen = len(real_cmp) < len(result["cmps"])
-        if (not real_cmp and not result["optout_link"]
-                and (gpc_ignored or not cfg.get("gpc"))):
-            bits = ["a notice-only banner with no reject option"
-                    if notice_only_seen else "no consent banner/CMP",
-                    "no opt-out link"]
-            if gpc_ignored:
-                bits.append("ad trackers contacted despite the GPC signal")
-            result["state_checks"].append(
-                {"state": s, "check": "Opt-out mechanism", "status": "fail",
-                 "detail": "No mechanism for residents to opt out was "
-                           "detected: " + ", ".join(bits) + ". Some "
-                           f"accessible opt-out method is expected for "
-                           f"{cfg['name']} targeting."})
-        if cfg.get("optout_link"):
-            if result["optout_link"]:
-                result["state_checks"].append(
-                    {"state": s, "check": "Opt-out link", "status": "pass",
-                     "detail": f'Found "{result["optout_link"]}" on the '
-                               f"page."})
-            else:
-                result["state_checks"].append(
-                    {"state": s, "check": "Opt-out link", "status": "fail",
-                     "detail": "No recognizable opt-out link text found on "
-                               "this page. An accessible opt-out method is "
-                               f"expected for {cfg['name']} targeting."})
+    state_checks_for(result, states, site_checks)
 
     # --- phase split: everything before the Accept click is pre-consent;
     #     everything after is post-consent. No click => all pre-consent.
@@ -929,91 +854,8 @@ def _full_scan_impl(browser, url, products=None, states=None,
         {"vendor": v, "url": u[:220]}
         for v, u in sorted(post_vendors.items()) if v not in seen_vendors]
 
-    # Product pixels: per selected product (or ALL products in detect-any
-    # mode), which expected sub-pixels fired, pre vs post consent.
-    # For pixels with NO observed request, check the page source and the
-    # (publicly fetchable) GTM container JS for the vendor's fingerprints
-    # to split "not seen" into "configured but silent" (firing problem)
-    # vs "not found anywhere" (likely never installed).
-    page_corpus = html.lower()
-    _gtm = result.get("gtm", {}) or {}
-    _cids = _gtm.get("container_ids") or []
-    corpora = _container_corpora(_cids)
-    _gtm["containers_read"] = sorted(corpora)
-    _gtm["containers_unread"] = [c for c in _cids[:3] if c not in corpora]
-    result["gtm"] = _gtm
-
-    # Same container attribution for non-product trackers. These hit
-    # records are built before the containers are fetched, so annotate
-    # them here rather than duplicating the fetch upstream.
-    _vh = {}
-    for _key in ("pre_consent", "post_reject"):
-        for _h in result.get(_key) or []:
-            _v = _h.get("vendor")
-            if _v not in _vh:
-                _vh[_v] = _containers_with(_vendor_hints(_v), corpora)
-            _h["containers"] = _vh[_v]
-
-    _ALIASES = {"Performance Max": "PMax"}  # saved clients / old payloads
-    products = [_ALIASES.get(p, p) for p in products] if products else products
-    selected = products if products else list(PRODUCT_PIXELS.keys())
-    detect_any = not products
-    for prod in selected:
-        pixels = []
-        for px in PRODUCT_PIXELS.get(prod, []):
-            pre_hit = next((u for u in pre_urls
-                            if any(p in u for p in px["patterns"])), None)
-            post_hit = next((u for u in post_urls
-                             if any(p in u for p in px["patterns"])), None)
-            hit_url = (post_hit or pre_hit) or ""
-            hints = list(px["patterns"]) + CODE_HINTS.get(px["name"], [])
-            in_containers = _containers_with(hints, corpora)
-            # Link this pixel to its pre-consent record by URL, not by
-            # name: the two lists name the same pixel differently
-            # (Floodlight vs DoubleClick / Floodlight). Carries the
-            # severity onto the pixel and stamps the product onto the
-            # hit so the report groups it instead of listing it twice.
-            severity = severity_note = None
-            if pre_hit:
-                for _h in result.get("pre_consent") or []:
-                    if _h.get("url") == pre_hit[:220]:
-                        severity = _h.get("severity")
-                        severity_note = _h.get("note")
-                        _h["product"] = prod
-                        break
-            configured = None
-            if not pre_hit and not post_hit:
-                configured = bool(in_containers) or any(
-                    h.lower() in page_corpus for h in hints)
-            pixels.append({
-                "name": px["name"],
-                "fired_pre": bool(pre_hit),
-                "fired_post": bool(post_hit),
-                "configured": configured,
-                "sample_url": hit_url[:220],
-                "src": (_pixel_source(px["name"], hit_url, raw_low)
-                        if hit_url else None),
-                # Containers whose published JS carries this pixel's
-                # fingerprint. Evidence of configuration, not proof of
-                # which one fired - see _containers_with.
-                "containers": in_containers,
-                "severity": severity,
-                "severity_note": severity_note,
-                # Unreplaced trafficking macros like [ORDER] or {orderid}
-                # mean the template was pasted without filling values.
-                "macro_warning": bool(re.search(
-                    r"(\[[A-Za-z_][A-Za-z0-9_ -]+\]|"
-                    r"(?<!\$)\{[A-Za-z_][A-Za-z0-9_ -]+\})", hit_url)),
-            })
-        fired = sum(1 for p in pixels if p["fired_pre"] or p["fired_post"])
-        if detect_any and fired == 0:
-            continue  # unselected + nothing fired = not this client's product
-        result["products"].append({
-            "product": prod,
-            "expected": len(pixels),
-            "fired": fired,
-            "pixels": pixels,
-        })
+    products_and_containers(result, html, raw_low, pre_urls, post_urls,
+                            products)
     return result
 
 
@@ -1180,7 +1022,17 @@ def _inconclusive_reason(r):
     status = r.get("http_status")
     if status and status >= 400:
         return f"The page returned HTTP {status}."
-    if (r.get("html_len") or 0) < 2000:
+    # THE LENGTH PROXY IS CALIBRATED FOR A SERVER FETCH.
+    #
+    # "Under 2000 characters" means a shell or a challenge page when Playwright
+    # went and got it. An extension capture is the post-JavaScript DOM read in
+    # a real browser on a real profile, and it is run precisely BECAUSE the
+    # fetch was blocked - throwing it away for being short would discard the
+    # one source that got through. The net that matters on that path is
+    # `found_anything` below, and it catches a challenge screen just as well:
+    # a challenge screen carries no tag manager, no trackers, no consent
+    # configuration and no privacy policy link.
+    if r.get("source") != "extension" and (r.get("html_len") or 0) < 2000:
         return "The page returned almost no HTML."
     found_anything = (r.get("gtm", {}).get("found")
                       or r.get("cmps")
@@ -1276,6 +1128,195 @@ def _apply_verdict(r):
 # ---------------------------------------------------------------- entry
 
 CATEGORIES = ("Healthcare", "Financial services", "Children-directed")
+
+
+def products_and_containers(result, html, raw_low, pre_urls, post_urls,
+                            products=None):
+    """
+    Which bought pixels fired, and which container each tracker lives in.
+
+    ALSO BROWSER-FREE, ALSO WAS ONLY ON ONE PATH. Everything here reads a
+    list of request URLs and some HTML - both of which the extension capture
+    has, and neither of which needs Playwright. "The client pays for this
+    product and its pixel never fires" is the single row on the consent page
+    that costs somebody money, and on a bot-protected site the capture is
+    the ONLY way to see it. It had no business being Playwright-only.
+    """
+    # Product pixels: per selected product (or ALL products in detect-any
+    # mode), which expected sub-pixels fired, pre vs post consent.
+    # For pixels with NO observed request, check the page source and the
+    # (publicly fetchable) GTM container JS for the vendor's fingerprints
+    # to split "not seen" into "configured but silent" (firing problem)
+    # vs "not found anywhere" (likely never installed).
+    page_corpus = html.lower()
+    _gtm = result.get("gtm", {}) or {}
+    _cids = _gtm.get("container_ids") or []
+    corpora = _container_corpora(_cids)
+    _gtm["containers_read"] = sorted(corpora)
+    _gtm["containers_unread"] = [c for c in _cids[:3] if c not in corpora]
+    result["gtm"] = _gtm
+
+    # Same container attribution for non-product trackers. These hit
+    # records are built before the containers are fetched, so annotate
+    # them here rather than duplicating the fetch upstream.
+    _vh = {}
+    for _key in ("pre_consent", "post_reject"):
+        for _h in result.get(_key) or []:
+            _v = _h.get("vendor")
+            if _v not in _vh:
+                _vh[_v] = _containers_with(_vendor_hints(_v), corpora)
+            _h["containers"] = _vh[_v]
+
+    _ALIASES = {"Performance Max": "PMax"}  # saved clients / old payloads
+    products = [_ALIASES.get(p, p) for p in products] if products else products
+    selected = products if products else list(PRODUCT_PIXELS.keys())
+    detect_any = not products
+    for prod in selected:
+        pixels = []
+        for px in PRODUCT_PIXELS.get(prod, []):
+            pre_hit = next((u for u in pre_urls
+                            if any(p in u for p in px["patterns"])), None)
+            post_hit = next((u for u in post_urls
+                             if any(p in u for p in px["patterns"])), None)
+            hit_url = (post_hit or pre_hit) or ""
+            hints = list(px["patterns"]) + CODE_HINTS.get(px["name"], [])
+            in_containers = _containers_with(hints, corpora)
+            # Link this pixel to its pre-consent record by URL, not by
+            # name: the two lists name the same pixel differently
+            # (Floodlight vs DoubleClick / Floodlight). Carries the
+            # severity onto the pixel and stamps the product onto the
+            # hit so the report groups it instead of listing it twice.
+            severity = severity_note = None
+            if pre_hit:
+                for _h in result.get("pre_consent") or []:
+                    if _h.get("url") == pre_hit[:220]:
+                        severity = _h.get("severity")
+                        severity_note = _h.get("note")
+                        _h["product"] = prod
+                        break
+            configured = None
+            if not pre_hit and not post_hit:
+                configured = bool(in_containers) or any(
+                    h.lower() in page_corpus for h in hints)
+            pixels.append({
+                "name": px["name"],
+                "fired_pre": bool(pre_hit),
+                "fired_post": bool(post_hit),
+                "configured": configured,
+                "sample_url": hit_url[:220],
+                "src": (_pixel_source(px["name"], hit_url, raw_low)
+                        if hit_url else None),
+                # Containers whose published JS carries this pixel's
+                # fingerprint. Evidence of configuration, not proof of
+                # which one fired - see _containers_with.
+                "containers": in_containers,
+                "severity": severity,
+                "severity_note": severity_note,
+                # Unreplaced trafficking macros like [ORDER] or {orderid}
+                # mean the template was pasted without filling values.
+                "macro_warning": bool(re.search(
+                    r"(\[[A-Za-z_][A-Za-z0-9_ -]+\]|"
+                    r"(?<!\$)\{[A-Za-z_][A-Za-z0-9_ -]+\})", hit_url)),
+            })
+        fired = sum(1 for p in pixels if p["fired_pre"] or p["fired_post"])
+        if detect_any and fired == 0:
+            continue  # unselected + nothing fired = not this client's product
+        result["products"].append({
+            "product": prod,
+            "expected": len(pixels),
+            "fired": fired,
+            "pixels": pixels,
+        })
+    return result
+
+
+def state_checks_for(result, states, site_checks=True):
+    """
+    The per-state statute rows, computed from a finished result.
+
+    BROWSER-FREE ON PURPOSE, and now called from both paths. Every line here
+    reads `result` and nothing else - which meant the extension path, whose
+    whole reason for existing is that the browser half failed, was throwing
+    away rows it had all the inputs for. Same rule as one classifier for two
+    sources: one statute table, or the two paths eventually disagree about
+    what California asks for.
+    """
+    # --- per-state check results
+    # --- universal baseline check (every US site): privacy policy link.
+    # FTC Act §5 applies nationwide - a site tracking visitors with no
+    # accessible privacy policy is the baseline failure. Presence-only:
+    # content accuracy needs human/counsel review.
+    if site_checks and result.get("mode") == "full" and result.get("ok"):
+        pp = result.get("privacy_policy_link")
+        result["state_checks"].append(
+            {"state": "US", "check": "Privacy policy link",
+             "status": "pass" if pp else "fail",
+             "detail": (f'Found "{pp}" on the page. Presence check only - '
+                        "whether the policy accurately describes this "
+                        "site's tracking needs human review."
+                        if pp else
+                        "No privacy policy link found on this page. Every "
+                        "US site that tracks visitors is expected to have "
+                        "an accessible, accurate privacy policy (FTC Act "
+                        "\u00a75 + state laws).")})
+
+    for s in (states if site_checks else []):
+        cfg = STATE_CHECKS[s]
+        if cfg.get("gpc"):
+            if not result["gpc_tested"]:
+                result["state_checks"].append(
+                    {"state": s, "check": "GPC signal", "status": "unknown",
+                     "detail": "GPC page load did not complete."})
+            elif result["gpc_fires"]:
+                names = ", ".join(f["vendor"] for f in result["gpc_fires"])
+                result["state_checks"].append(
+                    {"state": s, "check": "GPC signal", "status": "fail",
+                     "detail": f"Ad trackers contacted despite the GPC "
+                               f"signal: {names}. Honoring universal opt-out "
+                               f"signals is required for {cfg['name']} "
+                               f"targeting."})
+            else:
+                result["state_checks"].append(
+                    {"state": s, "check": "GPC signal", "status": "pass",
+                     "detail": "No ad trackers contacted on a GPC page "
+                               "load."})
+        # Synthesized check: no CMP + no opt-out link + GPC not honored
+        # means NO mechanism for residents to opt out at all - the
+        # pattern state enforcement actually targets (e.g. Sephora).
+        # A banner itself isn't required under these opt-out laws, so
+        # "no CMP" alone is never flagged as a state failure.
+        gpc_ignored = result["gpc_tested"] and result["gpc_fires"]
+        # A notice-only bar is not a mechanism - it cannot decline - so
+        # it must not suppress this check the way a real CMP does.
+        # "Unrecognized consent banner" DOES have choices and still does.
+        real_cmp = [c for c in result["cmps"]
+                    if c["name"] != NOTICE_ONLY_CMP]
+        notice_only_seen = len(real_cmp) < len(result["cmps"])
+        if (not real_cmp and not result["optout_link"]
+                and (gpc_ignored or not cfg.get("gpc"))):
+            bits = ["a notice-only banner with no reject option"
+                    if notice_only_seen else "no consent banner/CMP",
+                    "no opt-out link"]
+            if gpc_ignored:
+                bits.append("ad trackers contacted despite the GPC signal")
+            result["state_checks"].append(
+                {"state": s, "check": "Opt-out mechanism", "status": "fail",
+                 "detail": "No mechanism for residents to opt out was "
+                           "detected: " + ", ".join(bits) + ". Some "
+                           f"accessible opt-out method is expected for "
+                           f"{cfg['name']} targeting."})
+        if cfg.get("optout_link"):
+            if result["optout_link"]:
+                result["state_checks"].append(
+                    {"state": s, "check": "Opt-out link", "status": "pass",
+                     "detail": f'Found "{result["optout_link"]}" on the '
+                               f"page."})
+            else:
+                result["state_checks"].append(
+                    {"state": s, "check": "Opt-out link", "status": "fail",
+                     "detail": "No recognizable opt-out link text found on "
+                               "this page. An accessible opt-out method is "
+                               f"expected for {cfg['name']} targeting."})
 
 
 def _category_checks(result, category):

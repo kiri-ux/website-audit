@@ -1912,7 +1912,7 @@ def audit_html(a):
             f"copy</button> — Chrome will not let a page link there.</li>"
             f"<li>Turn on <b>Developer mode</b>, top right.</li>"
             f"<li><b>Load unpacked</b>, and choose the folder you unzipped. "
-            f"You should see <b>Site Scanner 1.2.0</b>.</li>"
+            f"You should see <b>Site Scanner 1.5.0</b>.</li>"
             f"<li>Reload this page — the Start capture button appears once "
             f"the extension is detected.</li></ol>"
             f"<p class='sub' style='margin-top:10px'>Or drive it by hand: open "

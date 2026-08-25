@@ -269,6 +269,14 @@ chrome.runtime.onMessage.addListener((msg, _s, respond) => {
       .then(() => run(msg.url));
     respond({ ok: true });
   }
+  // The consent equivalent of VICI_START_FOR, and for the same reason: the
+  // operator was moving an audit id between two tabs by hand, which is a step
+  // that exists only because nothing wired the two pages together.
+  if (msg?.type === "VICI_CONSENT_FOR") {
+    chrome.storage.local.set({ auditId: msg.auditId, apiBase: API_BASE })
+      .then(() => consentRun(msg.url));
+    respond({ ok: true });
+  }
   if (msg?.type === "VICI_STOP") {
     state.running = false; keepAlive(false); respond({ ok: true });
   }
@@ -384,10 +392,72 @@ function _click(patternSource) {
 
 async function settle(ms) { await new Promise(r => setTimeout(r, ms)); }
 
+// ---------------------------------------------------------------------------
+// THE GPC PASS.
+//
+// Twelve states require Global Privacy Control to be honoured as an opt-out,
+// and the consent page has a whole section for what fires despite it. On this
+// path that section read "not tested — that is ours to fix, not the client's"
+// forever, because the capture never sent a gpc_requests list at all. The
+// server contract has documented the field since the adapter was written; the
+// extension simply never filled it, so the honest label was permanent.
+//
+// GPC IS TWO SIGNALS AND A SITE MAY READ EITHER. The `Sec-GPC: 1` request
+// header is what a server-side implementation checks; `navigator
+// .globalPrivacyControl` is what a client-side CMP reads. Sending one and not
+// the other produces a site that looks like it ignored GPC when it never saw
+// the half it was listening for — which is a false accusation, in a section
+// about legal obligations. Both, or neither.
+//
+// The property has to be defined BEFORE the page's own scripts run, which is
+// what `document_start` in the MAIN world buys. Registering it dynamically and
+// tearing it down afterwards keeps it scoped to this one tab and this one
+// pass: leaving GPC on globally would silently change every later capture.
+// ---------------------------------------------------------------------------
+const GPC_RULE_ID = 8801;
+const GPC_SCRIPT_ID = "vici-gpc";
+
+async function gpcOn(url) {
+  let header = false, prop = false;
+  try {
+    await chrome.declarativeNetRequest.updateSessionRules({
+      removeRuleIds: [GPC_RULE_ID],
+      addRules: [{
+        id: GPC_RULE_ID, priority: 1,
+        action: { type: "modifyHeaders",
+                  requestHeaders: [{ header: "Sec-GPC", operation: "set",
+                                     value: "1" }] },
+        condition: { urlFilter: "*", resourceTypes: [
+          "main_frame", "sub_frame", "script", "xmlhttprequest", "image",
+          "ping", "media", "other"] }
+      }]
+    });
+    header = true;
+  } catch (e) { /* reported below */ }
+  try {
+    await chrome.scripting.registerContentScripts([{
+      id: GPC_SCRIPT_ID, matches: ["<all_urls>"], runAt: "document_start",
+      world: "MAIN", js: ["gpc.js"], allFrames: true
+    }]);
+    prop = true;
+  } catch (e) { /* reported below */ }
+  return { header, prop };
+}
+
+async function gpcOff() {
+  try {
+    await chrome.declarativeNetRequest.updateSessionRules(
+      { removeRuleIds: [GPC_RULE_ID] });
+  } catch (e) { /* nothing to remove */ }
+  try {
+    await chrome.scripting.unregisterContentScripts({ ids: [GPC_SCRIPT_ID] });
+  } catch (e) { /* nothing to remove */ }
+}
+
 async function consentRun(startUrl) {
   const c = await cfg();
   if (!c.apiBase || !c.auditId) { say("ERROR: set API URL and audit ID first"); return; }
-  state = { running: true, done: 0, total: 4, log: state.log, pages: [], extras: {} };
+  state = { running: true, done: 0, total: 5, log: state.log, pages: [], extras: {} };
   keepAlive(true);
   say(`consent capture of ${startUrl}`);
 
@@ -439,10 +509,45 @@ async function consentRun(startUrl) {
       say("no Reject control found");
     }
     state.done = 3;
+
+    // ---- 4. the GPC pass, on another fresh load --------------------------
+    //
+    // Fresh again for the same reason the Reject pass is: this must be what a
+    // first-time visitor with GPC on sees, not what a visitor sees after a
+    // CMP has already written a cookie recording a choice.
+    //
+    // `gpc_requests` stays UNDEFINED if the signal could not be set. The
+    // server reads "field present" as "tested", so sending an empty array
+    // after a failed setup would report a clean GPC pass on a site that was
+    // never sent the signal — a false clean bill in the section about legal
+    // obligations.
+    recStop();
+    const gp = await gpcOn(startUrl);
+    if (gp.header || gp.prop) {
+      try {
+        bucket = recStart(tab.id);
+        await chrome.tabs.update(tab.id, {
+          url: startUrl + (startUrl.includes("?") ? "&" : "?") + "vici=2" });
+        await settle(6000);
+        cap.gpc_requests = [...bucket];
+        cap.gpc_signals = { header: gp.header, property: gp.prop };
+        say(`GPC pass (${gp.header ? "Sec-GPC" : ""}`
+            + `${gp.header && gp.prop ? " + " : ""}`
+            + `${gp.prop ? "navigator" : ""}): `
+            + `${cap.gpc_requests.length} requests`);
+      } finally {
+        await gpcOff();
+      }
+    } else {
+      say("GPC could not be set — leaving that section untested rather than "
+          + "reporting a pass");
+    }
+    state.done = 4;
   } catch (e) {
     say("ERROR: " + (e?.message || e));
   } finally {
     recStop();
+    await gpcOff();
     chrome.tabs.remove(tab.id).catch(() => {});
   }
 
@@ -457,7 +562,7 @@ async function consentRun(startUrl) {
   } catch (e) {
     say("upload failed: " + (e?.message || e));
   }
-  state.done = 4; state.running = false;
+  state.done = 5; state.running = false;
   keepAlive(false);
   chrome.runtime.sendMessage({ type: "VICI_STATE", state }).catch(() => {});
 }

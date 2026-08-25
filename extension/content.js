@@ -210,6 +210,27 @@ chrome.runtime.onMessage.addListener((msg, _s, respond) => {
   });
 })();
 
+(function wireConsentPage() {
+  // Same hook, different run. The consent page is where somebody is looking
+  // at a scan that says "not tested: this ran without a browser" — which is
+  // exactly the moment the capture is worth offering, and exactly the moment
+  // it was not.
+  const el = document.getElementById("vici-consent");
+  if (!el) return;
+  el.dataset.extension = "present";
+  const btn = document.getElementById("vici-consent-go");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    btn.disabled = true;
+    btn.textContent = "Consent capture started — watch the extension popup";
+    chrome.runtime.sendMessage({
+      type: "VICI_CONSENT_FOR",
+      auditId: el.dataset.auditId,
+      url: el.dataset.target
+    });
+  });
+})();
+
 (function wireAuditPage() {
   const el = document.getElementById("vici-capture");
   if (!el) return;
