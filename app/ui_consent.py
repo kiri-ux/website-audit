@@ -161,11 +161,17 @@ def _sec(title, body, note="", tip=None):
     """
     if not body:
         return ""
-    return (f"<h2 style='margin-top:34px'>{e(title)}"
+    # THE HEADING AND ITS LINE ARE ONE THING.
+    #
+    # A 34px gap above the heading, 10px below it, then another 8px below the
+    # note put three separate gaps between the reader and the table — down a
+    # page of nine sections that is most of the scrolling. They are one block
+    # now, with the air on the OUTSIDE of it where it does the job headings
+    # need air to do.
+    return (f"<div class='csec'><h2>{e(title)}"
             + (_t(tip) if tip else "") + "</h2>"
-            + (f"<div class='sm' style='color:var(--ink2);margin-bottom:8px'>"
-               f"{note}</div>" if note else "")
-            + body)
+            + (f"<div class='csec-note'>{note}</div>" if note else "")
+            + "</div>" + body)
 
 
 def _rows(headers, rows, widths=None):
@@ -235,19 +241,88 @@ def _tag(items, page):
 # tile's own edge — the hover worked and showed four words of it. Rounding the
 # bar directly means the clip is not needed here.
 _PAGE_CSS = ("<style>"
-             ".stat{overflow:visible}"
-             ".stat::before{border-radius:10px 0 0 10px}"
-             # And the tile being hovered has to paint ABOVE the one beside
-             # it. Positioned siblings paint in DOM order, so the fourth tile
-             # was drawing over the third tile's bubble — the fix for the clip
-             # only revealed the overlap underneath it.
-             ".stat:hover{z-index:5}"
-             ".stat .k{display:flex;align-items:center;gap:4px}"
-             "h2 .tip{text-transform:none;letter-spacing:0}"
-             "th .tip{border-color:rgba(255,255,255,.45);color:#fff;"
+             # ---- density -------------------------------------------------
+             #
+             # THE OG QUOTE TOOL WAS SHARPER, AND THIS IS WHY.
+             #
+             # Every surface here was inheriting the dashboard's spacing, and
+             # the dashboard is six cards on a screen where air IS the design.
+             # This page is nine tables of evidence: 22px card padding, 15px
+             # table cells and three stacked gaps per heading turned a dense
+             # document into two and a half screens of mostly nothing, and
+             # scrolling past white space is how you lose the row that
+             # mattered. Tighter throughout, and only on this page.
+             ".wrap{padding-top:12px}"
+             ".card{padding:13px 16px}"
+             "table{margin-top:0;font-size:13.5px}"
+             "th{padding:9px 12px;font-size:12.5px}"
+             "td{padding:9px 12px}"
+             ".csec{margin:20px 0 7px}"
+             ".csec h2{margin:0;font-size:12px}"
+             ".csec-note{font-size:12.5px;color:var(--ink2);margin-top:3px;"
+             "line-height:1.5}"
+             ".stats{gap:10px;margin-top:10px}"
+             ".stat{padding:11px 13px}"
+             ".stat .n{font-size:22px}"
+             # ---- the definition marker -----------------------------------
+             #
+             # It sat a full 6px off the word, at the same size as the body
+             # text it followed, on a line of 12px uppercase — so it read as a
+             # stray character rather than a control. Smaller, closer, and
+             # lifted to the cap height of the text it belongs to.
+             ".tip{width:13px;height:13px;font-size:9px;margin-left:4px;"
+             "vertical-align:2px}"
+             ".csec h2 .tip{text-transform:none;letter-spacing:0;"
+             "vertical-align:1px}"
+             "th .tip{border-color:rgba(255,255,255,.4);color:#fff;"
              "background:transparent}"
              "th .tip:hover{border-color:#fff;color:#fff}"
+             # A TOOLTIP INSIDE A CLIPPED BOX IS HALF A TOOLTIP.
+             #
+             # `.stat` carries overflow:hidden so its accent bar cannot poke
+             # out of the rounded corner, which also clipped every definition
+             # bubble at the tile's own edge. Rounding the bar directly means
+             # the clip is not needed — and the hovered tile has to paint
+             # above the one beside it, or the next tile draws over the
+             # bubble that just escaped.
+             ".stat{overflow:visible}"
+             ".stat::before{border-radius:10px 0 0 10px}"
+             ".stat:hover{z-index:5}"
+             ".stat .k{display:flex;align-items:center;gap:4px}"
+             # ---- the steps row -------------------------------------------
+             #
+             # "Accept clicked: no" as a washed amber pill, three times, said
+             # something true in the visual language of a warning — and two of
+             # the three were not warnings, they were the correct result on a
+             # site with no banner to click. Pills are for states that differ
+             # from each other; these differ only by yes and no, so they get a
+             # tick or a cross and no fill at all.
+             ".vstep{display:inline-flex;align-items:center;gap:6px;"
+             "font-size:12.5px;color:var(--ink2);margin-right:18px;"
+             "white-space:nowrap}"
+             ".vstep i{width:15px;height:15px;border-radius:50%;flex:none;"
+             "display:inline-flex;align-items:center;justify-content:center;"
+             "font-style:normal;font-size:9px;font-weight:700;color:#fff}"
+             ".vstep--y i{background:var(--good)}"
+             ".vstep--n i{background:#b9c4d2}"
+             # A PRODUCT ROW IS A GROUP HEADER, NOT A ROW WITH EMPTY CELLS.
+             #
+             # It carried a name and a count and left State and Evidence
+             # blank, so two thirds of every product row was white — and with
+             # four products that is a lot of the section. Tinting it says
+             # "heading", and the emptiness stops reading as missing data.
+             "tr:has(.vprod) td{background:#f4f7fb;font-size:13px}"
+             "tr:has(.vprod):hover td{background:#eef3f9}"
              "</style>")
+
+
+def _steps(pairs):
+    """A tick or a cross per step, on one line, with no pill anywhere."""
+    out = []
+    for label, ok in pairs:
+        out.append(f"<span class='vstep vstep--{'y' if ok else 'n'}'>"
+                   f"<i>{'&#10003;' if ok else '&#10005;'}</i>{e(label)}</span>")
+    return "".join(out)
 
 
 def _listy(items):
@@ -293,16 +368,13 @@ def _capture_panel(aid, url, why, heading="This scan ran without a browser"):
         f"<div class='card' id='vici-consent' data-audit-id='{e(aid)}' "
         f"data-target='{e(url)}' style='border-left:3px solid var(--gold);"
         f"margin-top:16px'>"
-        f"<b style='font-size:15px'>{e(heading)}</b>"
-        f"<p class='sm' style='color:var(--ink2);margin:8px 0 0;"
-        f"line-height:1.65'>{why}</p>"
-        f"<p class='sm' style='color:var(--ink2);margin:8px 0 0;"
-        f"line-height:1.65'>The Site Scanner extension runs the same scan from "
-        f"your own Chrome — your IP, your profile, which is what challenge "
-        f"pages let through. It records; the server classifies it with the "
-        f"same tables, so the result is the same scan from a different way "
-        f"in.</p>"
-        f"<p style='margin:12px 0 0'><button id='vici-consent-go' "
+        f"<b style='font-size:14.5px'>{e(heading)}</b>"
+        f"<p class='sm' style='color:var(--ink2);margin:5px 0 0;"
+        f"line-height:1.6'>{why} Site Scanner runs the same scan from your own "
+        f"Chrome — your IP, your profile, which is what challenge pages let "
+        f"through. It records; the server classifies it with the same tables."
+        f"</p>"
+        f"<p style='margin:10px 0 0'><button id='vici-consent-go' "
         f"class='btn' type='button'>Run the consent capture in this "
         f"browser</button></p>"
         f"<div id='vici-consent-manual'>"
@@ -324,10 +396,10 @@ def _capture_panel(aid, url, why, heading="This scan ran without a browser"):
         f"Not installed at all? <a href='/extension.zip'>Download it</a>, "
         f"unzip it somewhere permanent, and load it unpacked with Developer "
         f"mode on. Audit id <code>{e(aid)}</code> {_copy(aid)}</p></div>"
-        f"<p class='sm' style='color:var(--muted);margin:12px 0 0'>It opens "
-        f"the page four times — once untouched, once after Accept, once after "
-        f"Reject, once with Global Privacy Control on — and uploads what "
-        f"fired each time. About a minute.</p>"
+        f"<p class='sm' style='color:var(--muted);margin:8px 0 0'>Four loads "
+        f"— untouched, after Accept, after Reject, and with Global Privacy "
+        f"Control on. About a minute, and this page reloads itself when it "
+        f"finishes.</p>"
         f"</div>"
         f"<script>(function(){{"
         f"var el=document.getElementById('vici-consent');"
@@ -387,7 +459,7 @@ def consent_html(audit: dict, detail: dict | None) -> str:
     scanned = scan.get("scanned_at")
     head = [
         f"<div class='card'>"
-        f"<div style='display:flex;gap:12px;align-items:baseline;"
+        f"<div style='display:flex;gap:9px;align-items:baseline;"
         f"flex-wrap:wrap'>"
         f"<b style='font-size:18px'>{e(client)}</b>"
         f"<span class='sm' style='color:var(--ink2)'>{e(url)}</span>"
@@ -397,19 +469,20 @@ def consent_html(audit: dict, detail: dict | None) -> str:
         + f"{_t('mode')}"
         f"</div>"]
     if scan.get("verdict_detail"):
-        head.append(f"<div class='sm' style='color:var(--ink2);margin-top:10px;"
-                    f"line-height:1.6'>{e(scan['verdict_detail'])}</div>")
+        head.append(f"<div class='sm' style='color:var(--ink2);margin-top:7px;"
+                    f"line-height:1.55'>{e(scan['verdict_detail'])}</div>")
     if basic:
         # A BASIC SCAN CANNOT PASS WHAT IT NEVER SAW, and the empty tables
         # below look exactly like clean ones.
         head.append(
             "<div class='sm' style='color:#8a5d05;background:#fdf6ec;"
-            "border-left:3px solid var(--gold);border-radius:10px;"
-            "padding:9px 12px;margin-top:12px'>"
+            "border-left:3px solid var(--gold);border-radius:8px;"
+            "padding:8px 11px;margin-top:9px;line-height:1.5'>"
             "This ran without a browser, so nothing below about banners, "
             "Consent Mode or what fired before consent was tested. The empty "
             "tables mean untested, not clean.</div>")
-    head.append(f"<div class='sm' style='color:var(--muted);margin-top:10px'>"
+    head.append(f"<div class='sm' style='color:var(--muted);margin-top:7px;"
+                f"font-size:12.5px'>"
                 f"Scanned {e(scanned) if scanned else _fmt_when(audit.get('completed_at'))}"
                 f" &middot; {len(pages) or 1} "
                 f"{'page' if (len(pages) or 1) == 1 else 'pages'}"
@@ -427,9 +500,21 @@ def consent_html(audit: dict, detail: dict | None) -> str:
     # UNTESTED where it was untested, because a tile reading "0" and a tile
     # reading "not tested" mean opposite things and looked the same.
     _cmps = scan.get("cmps") or []
+    _no_cmp = not _cmps
+    # THE TILE MUST COUNT THE ROWS THE TABLE PRINTS.
+    #
+    # This added the scan-level list to every page's list and got three where
+    # the table below showed one, because the table shows one OR the other:
+    # the per-page list when there is one, the merged list when there is not.
+    # A headline number that disagrees with the rows under it is worse than no
+    # headline number, so both now come from the same list, built once.
     _pre_all = list(scan.get("pre_consent") or [])
+    _tagged = []
     for pg in pages:
-        _pre_all += list((pg.get("scan") or {}).get("pre_consent") or [])
+        _tagged += list(_tag((pg.get("scan") or {}).get("pre_consent") or [],
+                             pg.get("url")))
+    if _tagged:
+        _pre_all = _tagged
     _pre_real = [t for t in _pre_all
                  if str(t.get("severity") or "").lower() not in ("info",
                                                                  "informational")]
@@ -458,7 +543,15 @@ def consent_html(audit: dict, detail: dict | None) -> str:
         _tile(_untested() if basic else e(len(_pre_real)),
               "fired before consent", _t("pre_consent"),
               _GREY if basic else (_RED if _pre_real else _GREEN)),
-        _tile(e(len(_rej)) if scan.get("reject_tested") else _untested(),
+        # NO BANNER IS NOT "NOT TESTED".
+        #
+        # On a site with no CMP there is no Reject button, and there never
+        # will be one — "not tested" reads as a gap somebody could go and
+        # close, which is how the re-run panel ended up being offered on a
+        # scan that had nothing left to find. Name the reason instead.
+        _tile(e(len(_rej)) if scan.get("reject_tested")
+              else ("<span style='font-size:19px;color:var(--muted)'>"
+                    "no reject button</span>" if _no_cmp else _untested()),
               "fired after Reject", _t("reject"),
               (_RED if _rej else _GREEN) if scan.get("reject_tested")
               else _GREY),
@@ -467,19 +560,30 @@ def consent_html(audit: dict, detail: dict | None) -> str:
 
     parts = [_PAGE_CSS, "".join(head)]
 
-    # The offer, wherever the browser half is missing. Not only on a basic
-    # scan: a full scan that never found a Reject control or never got a GPC
-    # load through has the same gap, and the same answer.
-    if basic or not scan.get("reject_tested") or not scan.get("gpc_tested"):
+    # ONLY OFFER A RE-RUN THAT COULD CHANGE THE ANSWER.
+    #
+    # This shipped offering the capture whenever Reject was untested — and on
+    # a site with NO consent banner at all, Reject can never be tested, by any
+    # browser, ever. So a run that worked perfectly, from the operator's own
+    # Chrome, still ended with a gold panel telling them to run it again, and
+    # running it again produced the identical page. That is worse than a
+    # missing button: it is a button that pretends there is more to get.
+    #
+    # "No Reject control on a site with no CMP" is a FINDING. It belongs in
+    # the Reject section, which already says it, not in a panel headed "some
+    # of this was never tested".
+    _reject_gap = (not scan.get("reject_tested")) and not _no_cmp
+    _gpc_gap = not scan.get("gpc_tested")
+    if basic or _reject_gap or _gpc_gap:
         _gaps = []
         if basic:
             # No "and" inside a list item — _listy adds its own, and two in
             # one sentence made the list unreadable.
             _gaps.append("the banner, Consent Mode, everything that fired "
                          "before consent")
-        if not basic and not scan.get("reject_tested"):
+        if _reject_gap:
             _gaps.append("what fires after Reject")
-        if not scan.get("gpc_tested"):
+        if _gpc_gap:
             _gaps.append("what fires despite Global Privacy Control")
         _why = ("Untested on this run: " + _listy(_gaps) + ". "
                 + ("Bot protection turns the server's browser away on a lot "
@@ -554,35 +658,24 @@ def consent_html(audit: dict, detail: dict | None) -> str:
     # three things that decide whether the empty tables further down mean
     # "clean" or "never looked". A chip row says that in one line instead of
     # three rows of nothing.
-    steps = []
-    for label, key in (("Accept clicked", "accept_clicked"),
-                       ("Reject clicked", "reject_tested"),
-                       ("GPC signal sent", "gpc_tested")):
-        steps.append(_chip(f"{label}: {'yes' if scan.get(key) else 'no'}",
-                           "ok" if scan.get(key) else "hold"))
+    steps = _steps([("Accept clicked", scan.get("accept_clicked")),
+                    ("Reject clicked", scan.get("reject_tested")),
+                    ("GPC signal sent", scan.get("gpc_tested"))])
     parts.append(_sec(
         "Container and configuration",
         _rows(["", "State", "Detail"], cfg_rows, ["30%", "16%", "54%"])
-        + f"<div class='card' style='margin-top:12px'>"
-          f"<div class='sm' style='color:var(--ink2)'><b>Steps this run "
-          f"completed.</b> This is about the scan, not the site — it is what "
-          f"decides whether an empty table below means clean or means never "
-          f"looked.</div>"
-          f"<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'>"
-        + "".join(steps) + "</div></div>",
+        + f"<div class='card' style='margin-top:10px;display:flex;"
+          f"align-items:center;flex-wrap:wrap;gap:6px 0'>"
+          f"<span class='sm' style='color:var(--muted);margin-right:16px'>"
+          f"Steps this run completed</span>"
+        + steps + "</div>",
         "", tip="gtm"))
 
     # ----------------------------------------------------------- the trackers
-    pre = list(scan.get("pre_consent") or [])
-    if pages:
-        # Per page, because "which page was this on" is the first question
-        # anyone asks about an ungated pixel, and the merged list cannot say.
-        tagged = []
-        for pg in pages:
-            sc = pg.get("scan") or {}
-            tagged += list(_tag(sc.get("pre_consent") or [], pg.get("url")))
-        if tagged:
-            pre = tagged
+    # Built once, at the top, so the tile and this table cannot disagree.
+    # Per page where we have pages, because "which page was this on" is the
+    # first question anyone asks about an ungated pixel.
+    pre = _pre_all
     # AN EMPTY TABLE AND A CLEAN ONE LOOK IDENTICAL.
     #
     # "No trackers listed under Fired after Reject" reads as a pass. It is a
@@ -683,9 +776,9 @@ def consent_html(audit: dict, detail: dict | None) -> str:
             head_txt = (f"{n_fired} of {n_total} firing" if pix
                         else "no pixels seen")
             rows.append([
-                f"<b>{e(name)}</b>"
-                + (f"<div class='sm' style='color:var(--muted)'>"
-                   f"on the account</div>" if name in bought else ""),
+                f"<span class='vprod'><b>{e(name)}</b>"
+                + (f"<span class='sm' style='color:var(--muted)'> &middot; on "
+                   f"the account</span>" if name in bought else "") + "</span>",
                 _chip(head_txt, head_kind),
                 "", ""])
             for px in pix:
@@ -725,7 +818,9 @@ def consent_html(audit: dict, detail: dict | None) -> str:
         # unknown, never off — but a bought product with no record at all is
         # the one case where the absence IS the finding.
         for name in sorted(bought - {p.get("product") for p in prods}):
-            rows.append([f"<b>{e(name)}</b>",
+            rows.append([f"<span class='vprod'><b>{e(name)}</b>"
+                         f"<span class='sm' style='color:var(--muted)'> "
+                         f"&middot; on the account</span></span>",
                          _chip("no pixels seen", "bad"), "",
                          "<span class='sm' style='color:var(--ink2)'>"
                          "Nothing matching this product fired, and nothing "

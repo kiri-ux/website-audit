@@ -332,6 +332,65 @@ def main():
                       "pages": [], "requested": {}})
     check("but a scan that tested everything is not nagged",
           "vici-consent" not in _full_page)
+    # A SITE WITH NO BANNER HAS NO REJECT BUTTON, EVER.
+    #
+    # This offered the capture whenever Reject was untested — so a capture
+    # that had just run perfectly from the operator's own Chrome ended with a
+    # panel telling them to run it again, and running it again produced the
+    # identical page. "No Reject control on a site with no CMP" is a finding,
+    # not a gap.
+    _nocmp = _ch({"id": "zz9", "client_name": "C", "target_url": "https://x.com"},
+                 {"scan": {"mode": "full", "source": "extension", "cmps": [],
+                           "gtm": {}, "banner_visible": False,
+                           "reject_tested": False, "gpc_tested": True,
+                           "pre_consent": [], "post_reject": [],
+                           "gpc_fires": [], "products": [],
+                           "state_checks": []},
+                  "pages": [], "requested": {}})
+    check("no CMP means no re-run is offered for the Reject test",
+          "vici-consent" not in _nocmp)
+    check("and the tile says why rather than saying not tested",
+          "no reject button" in _nocmp)
+
+    # THE TILE AND THE TABLE MUST COUNT THE SAME ROWS.
+    _two_pages = _ch({"id": "zz9", "client_name": "C", "target_url": "https://x.com"},
+                     {"scan": {"mode": "full", "cmps": [{"name": "OneTrust"}],
+                               "gtm": {}, "banner_visible": True,
+                               "reject_tested": True, "gpc_tested": True,
+                               "pre_consent": [{"vendor": "Meta Pixel",
+                                                "severity": "high",
+                                                "url": "https://facebook.com/tr"}],
+                               "post_reject": [], "gpc_fires": [],
+                               "products": [], "state_checks": []},
+                      "pages": [{"url": "https://x.com/", "role": "homepage",
+                                 "scan": {"mode": "full", "pre_consent": [
+                                     {"vendor": "Meta Pixel", "severity": "high",
+                                      "url": "https://facebook.com/tr"}]}},
+                                {"url": "https://x.com/thanks/", "role": "conversion",
+                                 "scan": {"mode": "full", "pre_consent": []}}],
+                      "requested": {}})
+    import re as _re
+    _tilenum = _re.search(r"<div class='n'>(\d+)</div>\s*<div class='k'>"
+                          r"[^<]*<b[^>]*></b>fired before consent", _two_pages)
+    _tilenum = _tilenum or _re.search(
+        r"<div class='n'>(\d+)</div>(?:(?!</div>).)*?fired before consent",
+        _two_pages, _re.S)
+    _rowcount = _two_pages.count("facebook.com/tr")
+    check("the headline count is the number of rows printed under it",
+          _tilenum and int(_tilenum.group(1)) == 1,
+          f"tile={_tilenum.group(1) if _tilenum else '?'} rows={_rowcount}")
+
+    # The button must not promise a popup a web page cannot open.
+    _cs = open("extension/content.js", encoding="utf-8").read()
+    # The comment explaining the old behaviour is allowed to mention it; a
+    # line that SETS button text is not.
+    check("no button claims a popup will open",
+          not [l for l in _cs.splitlines()
+               if "textContent" in l and "popup" in l])
+    check("progress is polled onto the page instead",
+          "VICI_GET_STATE" in _cs and "vici-log" in _cs)
+    check("and the page reloads itself when the run finishes",
+          "location.reload()" in _cs)
 
     print("\nA CAPTURE THAT COULD NOT READ THE DATALAYER SAYS SO")
     # "No Consent Mode defaults" and "we could not look" are opposite findings.

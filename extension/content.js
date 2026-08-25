@@ -203,68 +203,85 @@ chrome.runtime.onMessage.addListener((msg, _s, respond) => {
       if (!prop) return;
     }
     btn.disabled = true;
-    btn.textContent = "Reading Search Console — watch the extension popup";
+    btn.textContent = "Reading Search Console…";
     chrome.runtime.sendMessage({
       type: "VICI_CONSOLE", auditId: el.dataset.auditId, property: prop
     });
+    // Same watcher as the other three. This one has always ended in a draft
+    // the operator reviews in the popup, so the log is the thing that tells
+    // them the draft is ready rather than the run being silent.
+    viciWatch(el, "Search Console");
   });
 })();
 
-(function wireSpeedTest() {
-  // The report page's internal panel knows nine rows came back unanswered
-  // because one Google call failed. This is the button that re-asks Google
-  // from here, where the call works.
-  const el = document.getElementById("vici-fix");
+// ---------------------------------------------------------------------------
+// PROGRESS BELONGS ON THE PAGE YOU ARE LOOKING AT.
+//
+// Three buttons here used to say "started — watch the extension popup", and a
+// web page CANNOT open the toolbar popup: nothing pops up, and the operator
+// sits watching a tab open and close with no idea whether it worked. Then the
+// run finishes, the page still shows the old scan because nothing told it to
+// reload, and the only honest reading is that the button is broken.
+//
+// The service worker already keeps a log. This polls it and prints it right
+// under the button, then reloads the page when the run finishes — which is
+// the moment the new answers exist and the panel that started all this
+// should be gone.
+// ---------------------------------------------------------------------------
+function viciWatch(host, label) {
+  let box = host.querySelector(".vici-log");
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "vici-log";
+    box.style.cssText =
+      "margin-top:10px;padding:9px 11px;border-radius:8px;background:#0f2744;"
+      + "color:#cfe0f5;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;"
+      + "white-space:pre-wrap;max-height:190px;overflow:auto";
+    host.appendChild(box);
+  }
+  let sawRunning = false;
+  const tick = async () => {
+    let st;
+    try {
+      ({ state: st } = await chrome.runtime.sendMessage({ type: "VICI_GET_STATE" }));
+    } catch (e) { return; }              // worker asleep between messages
+    if (!st) return;
+    if (st.running) sawRunning = true;
+    const pct = st.total ? Math.round(100 * st.done / st.total) : 0;
+    box.textContent = (st.running ? `${label} — step ${st.done} of ${st.total} (${pct}%)\n\n`
+                                  : `${label} — finished\n\n`)
+                    + (st.log || []).slice(0, 12).join("\n");
+    if (sawRunning && !st.running) {
+      clearInterval(timer);
+      box.textContent += "\n\nreloading this page with the new answers…";
+      // A SHORT WAIT, NOT ZERO. The upload resolves a moment before the
+      // server has finished rescoring and rewriting the stored scan, and a
+      // reload that beats it shows the old page and looks like a failure.
+      setTimeout(() => location.reload(), 2500);
+    }
+  };
+  const timer = setInterval(tick, 1000);
+  tick();
+}
+
+function viciStart(elId, btnId, msgType, label) {
+  const el = document.getElementById(elId);
   if (!el) return;
   el.dataset.extension = "present";
   el.dataset.version = chrome.runtime.getManifest().version;
-  const btn = document.getElementById("vici-fix-go");
+  const btn = document.getElementById(btnId);
   if (!btn) return;
   btn.addEventListener("click", () => {
     btn.disabled = true;
-    btn.textContent = "Speed test started — watch the extension popup";
+    btn.textContent = label + " running…";
     chrome.runtime.sendMessage({
-      type: "VICI_PSI_FOR",
-      auditId: el.dataset.auditId,
-      url: el.dataset.target
-    });
+      type: msgType, auditId: el.dataset.auditId, url: el.dataset.target });
+    viciWatch(el, label);
   });
-})();
+}
 
-(function wireConsentPage() {
-  // Same hook, different run. The consent page is where somebody is looking
-  // at a scan that says "not tested: this ran without a browser" — which is
-  // exactly the moment the capture is worth offering, and exactly the moment
-  // it was not.
-  const el = document.getElementById("vici-consent");
-  if (!el) return;
-  el.dataset.extension = "present";
-  const btn = document.getElementById("vici-consent-go");
-  if (!btn) return;
-  btn.addEventListener("click", () => {
-    btn.disabled = true;
-    btn.textContent = "Consent capture started — watch the extension popup";
-    chrome.runtime.sendMessage({
-      type: "VICI_CONSENT_FOR",
-      auditId: el.dataset.auditId,
-      url: el.dataset.target
-    });
-  });
-})();
+viciStart("vici-fix", "vici-fix-go", "VICI_PSI_FOR", "Speed test");
+viciStart("vici-consent", "vici-consent-go", "VICI_CONSENT_FOR", "Consent capture");
+viciStart("vici-capture", "vici-capture-go", "VICI_START_FOR", "Site capture");
 
-(function wireAuditPage() {
-  const el = document.getElementById("vici-capture");
-  if (!el) return;
-  el.dataset.extension = "present";        // page reveals the button only then
-  const btn = document.getElementById("vici-capture-go");
-  if (!btn) return;
-  btn.addEventListener("click", () => {
-    btn.disabled = true;
-    btn.textContent = "Capture started — watch the extension popup";
-    chrome.runtime.sendMessage({
-      type: "VICI_START_FOR",
-      auditId: el.dataset.auditId,
-      url: el.dataset.target
-    });
-  });
-})();
+

@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-100"
-BUILD_NOTES = ("Nine Performance rows that died on one refused Google call can now be filled from the operator's browser, every capture has a direct link into the extension because its id is pinned, an area where nothing answered stops claiming it was measured, and the extension ships whole so Chrome stops refusing a manifest over a missing icon")
+BUILD = "2026.08.20-101"
+BUILD_NOTES = ("Captures now show their progress on the page and reload it when they finish, instead of pointing at a popup a web page cannot open; a site with no consent banner stops being offered a re-run that could never find one; the pre-consent headline counts the rows printed under it; and the consent page is a good deal denser")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
