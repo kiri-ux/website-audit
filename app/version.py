@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-106"
-BUILD_NOTES = ("Stop asking for a re-run of what we already hold - a GPC or Reject result an earlier capture proved carries forward with the date it came from; the coverage gap gets a re-crawl button pre-filled with the page count its own fix line names; every action in the internal panel is reachable from the panel; and a consent-only run opens on the consent page instead of a report it did not run")
+BUILD = "2026.08.20-107"
+BUILD_NOTES = ("The consent page ends with the work order and says whose it is; the same tag fired three times is one row with a count instead of three identical ones; every fired list is page-tagged; the pages scanned open to show what fired on each; the container says who owns it; and the two short refusal lists sit side by side")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

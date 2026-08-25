@@ -1412,6 +1412,25 @@ def ingest_consent_capture(audit_id: str, payload: dict,
                     _t["configured"] = None
             _mine["fired"] = sum(1 for x in _mine.get("pixels") or []
                                  if x.get("fired_pre") or x.get("fired_post"))
+    # WHICH PAGE EACH HIT CAME FROM, ON EVERY LIST.
+    #
+    # Only pre_consent was ever page-tagged, so "Fired despite Global Privacy
+    # Control" printed four identical Meta Pixel rows with no way to tell
+    # whether that was one pixel on four pages or four on one. Same fact, same
+    # stamp, all four lists.
+    for _pg in _pages:
+        _sc = _pg.get("scan") or {}
+        for _key in ("pre_consent", "post_reject", "gpc_fires"):
+            for _h in _sc.get(_key) or []:
+                if isinstance(_h, dict):
+                    _h["_page"] = _pg.get("url")
+    for _key in ("pre_consent", "post_reject", "gpc_fires"):
+        _merged = []
+        for _pg in _pages:
+            _merged += [h for h in ((_pg.get("scan") or {}).get(_key) or [])
+                        if isinstance(h, dict)]
+        if _merged:
+            scan[_key] = _merged
     scan["pages_scanned"] = len(_scans)
     if len(_scans) > 1:
         from engine.consent.scanner import _apply_verdict

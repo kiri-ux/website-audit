@@ -213,21 +213,37 @@ def _trackers(items, page_col=False):
     is the same object the product cards already use, so the two halves of
     this page stop looking like two different products.
     """
+    # THE SAME TAG TWICE IS ONE FINDING.
+    #
+    # A page that loads fbevents.js three times produced three identical rows
+    # — same vendor, same URL, same page — and a reader's first question was
+    # "what are these", which is the right question about a list that repeats
+    # itself for no stated reason. One row, with the count, says the same
+    # thing and can be read.
+    seen = {}
+    for t in items:
+        k = (t.get("_page"), t.get("vendor"), (t.get("url") or "")[:220])
+        if k in seen:
+            seen[k]["_n"] = seen[k].get("_n", 1) + 1
+        else:
+            seen[k] = {**t, "_n": 1}
     out = []
-    for t in sorted(items, key=lambda x: (_SEV.get(
+    for t in sorted(seen.values(), key=lambda x: (_SEV.get(
             str(x.get("severity") or "").lower(), 9),
-            str(x.get("vendor") or ""))):
+            str(x.get("_page") or ""), str(x.get("vendor") or ""))):
         sev = str(t.get("severity") or "recorded").lower()
         kind = {"bad": "bad", "hold": "warn"}.get(_sev_kind(sev), "neutral")
         bits = []
-        if page_col and t.get("_page"):
+        if t.get("_page"):
             bits.append(f"<span class='vsrc'>{e(t['_page'])}</span>")
         if t.get("note"):
             bits.append(f"<span class='vev'>{e(t['note'])}</span>")
         out.append(
             f"<li><span class='vb vb--{kind}'>"
             f"{e(sev if sev != 'recorded' else 'recorded')}</span>"
-            f"<div><b>{e(t.get('vendor') or '?')}</b> "
+            f"<div><b>{e(t.get('vendor') or '?')}</b>"
+            + (f"<span class='vcount'>&times;{t['_n']}</span>"
+               if t.get("_n", 1) > 1 else "") + " "
             + " ".join(bits)
             + (f"<div class='vurl'>{e((t.get('url') or '')[:220])}</div>"
                if t.get("url") else "")
@@ -352,6 +368,36 @@ _PAGE_CSS = ("<style>"
              ".vurl{color:var(--muted);font:11.5px ui-monospace,"
              "SFMono-Regular,Menlo,monospace;word-break:break-all;"
              "margin-top:3px}"
+             # ---- two columns where one was half empty -------------------
+             #
+             # A list of five short rows was rendered at the full width of a
+             # 1400px screen, so two thirds of the block was white and the
+             # sections either side of it drifted a screen apart. These lists
+             # are narrow by nature — a badge, a name, a URL — so they get a
+             # column that fits them and pair up when there is room.
+             ".vgrid{display:grid;gap:12px;"
+             "grid-template-columns:repeat(auto-fit,minmax(430px,1fr));"
+             "align-items:start}"
+             ".vgrid > *{min-width:0}"
+             # ---- ownership ----------------------------------------------
+             ".vown{font-weight:700;font-size:10.5px;letter-spacing:.06em;"
+             "text-transform:uppercase;border-radius:4px;padding:2px 7px;"
+             "white-space:nowrap}"
+             ".vown--vici{background:var(--navy);color:#fff}"
+             ".vown--client{background:#EDE3F5;color:#5B2B77}"
+             # ---- per-page detail ----------------------------------------
+             ".vpage{border:1px solid var(--line);border-radius:8px;"
+             "background:#fff;margin:0 0 8px}"
+             ".vpage > summary{cursor:pointer;padding:9px 12px;"
+             "display:flex;align-items:center;gap:9px;flex-wrap:wrap;"
+             "font-size:13.5px;list-style:none}"
+             ".vpage > summary::-webkit-details-marker{display:none}"
+             ".vpage > summary::before{content:'\\25b8';color:var(--muted);"
+             "font-size:11px;transition:transform .12s}"
+             ".vpage[open] > summary::before{transform:rotate(90deg)}"
+             ".vpage[open] > summary{border-bottom:1px dashed var(--line)}"
+             ".vpage .vbody{padding:4px 12px 8px}"
+             ".vpage .vprodc{border:0;margin:0}"
              # A PRODUCT ROW IS A GROUP HEADER, NOT A ROW WITH EMPTY CELLS.
              #
              # It carried a name and a count and left State and Evidence
@@ -705,8 +751,21 @@ def consent_html(audit: dict, detail: dict | None) -> str:
     cfg_rows = []
     if gtm:
         ids = gtm.get("container_ids") or []
+        # WHOSE CONTAINER IT IS.
+        #
+        # Whether Vici owns the GTM decides who does the work, and it is the
+        # first thing anybody wants to know about a container — the audit has
+        # recorded it on the form since implementation shipped, and the page
+        # never showed it. A pixel firing pre-consent in a container we own is
+        # our work queue; the same pixel in the client's is a conversation.
+        _impl = str(want.get("implementation") or "").lower()
+        _own = ""
+        if "vici" in _impl or _impl == "gtm":
+            _own = "<span class='vown vown--vici'>Vici owned</span>"
+        elif "client" in _impl:
+            _own = "<span class='vown vown--client'>Client owned</span>"
         cfg_rows.append([
-            "Google Tag Manager",
+            "Google Tag Manager" + (f" {_own}" if _own else ""),
             _chip("found", "ok") if gtm.get("found") else _chip("not found", "hold"),
             ", ".join(f"<code>{e(i)}</code>" for i in ids) or "—"])
     cfg_rows.append([
@@ -859,12 +918,12 @@ def consent_html(audit: dict, detail: dict | None) -> str:
                   if not (scan.get("cmps") or []) else
                   "Not tested: a consent platform was found but the scan "
                   "could not locate a Reject control on its banner.")
-    parts.append(fired(
+    _rej_block = fired(
         "Fired after Reject", scan.get("post_reject") or [],
         scan.get("reject_tested"),
         "A reject button that changes nothing is worse than none — it "
         "documents the intent to honor a choice that was not honored.",
-        reject_why, tip="reject"))
+        reject_why, tip="reject")
 
     gpc_states = _gpc_states(want.get("states") or scan.get("states") or [])
     gpc_why = ("Not tested: this scan ran without a browser." if basic else
@@ -875,11 +934,16 @@ def consent_html(audit: dict, detail: dict | None) -> str:
                f"Not tested, although {e(', '.join(gpc_states))} "
                f"{'requires' if len(gpc_states) == 1 else 'require'} it. "
                f"That is ours to fix, not the client's.")
-    parts.append(fired(
+    # SIDE BY SIDE. Both are short lists about what a refusal did or did not
+    # stop, and each was taking a full-width block of a wide screen to say
+    # four things — so the two halves of one question sat a screen apart.
+    _gpc_block = fired(
         "Fired despite Global Privacy Control", scan.get("gpc_fires") or [],
         scan.get("gpc_tested"),
         "Twelve states require GPC to be honored as an opt-out, and no "
-        "banner click is involved.", gpc_why, tip="gpc"))
+        "banner click is involved.", gpc_why, tip="gpc")
+    parts.append(f"<div class='vgrid'><div>{_rej_block}</div>"
+                 f"<div>{_gpc_block}</div></div>")
 
     after = scan.get("post_consent") or []
     if after:
@@ -1017,26 +1081,127 @@ def consent_html(audit: dict, detail: dict | None) -> str:
             f"{e(', '.join(want['states']))}.</div>"))
 
     # ------------------------------------------------------------ every page
+    #
+    # EXPANDABLE, BECAUSE "WHICH PAGE" IS THE FIRST QUESTION.
+    #
+    # The table said "3 before consent" and stopped, so finding out WHICH
+    # three meant scrolling back to a merged list and matching URLs by eye.
+    # The standalone tool opens each page and shows its own pixels; this is
+    # that, from the per-page scans we have been storing all along and
+    # rendering as two numbers.
     if len(pages) > 1:
-        rows = []
+        cards = []
         for pg in pages:
             sc = pg.get("scan") or {}
+            _u = pg.get("url") or "?"
+            _role = pg.get("role") or ""
             if pg.get("error"):
-                rows.append([e(pg.get("url")), e(pg.get("role") or ""),
-                             _chip("scan failed", "bad"), e(pg["error"])])
+                cards.append(
+                    f"<details class='vpage'><summary>"
+                    f"<span class='vb vb--bad'>scan failed</span>"
+                    f"<b>{e(_u)}</b><span class='vev'>{e(_role)}</span>"
+                    f"</summary><div class='vbody'><div class='vev'>"
+                    f"{e(pg['error'])}</div></div></details>")
                 continue
-            rows.append([
-                e(pg.get("url")), e(pg.get("role") or ""),
-                _chip(sc.get("mode") or "?",
-                      "ok" if sc.get("mode") == "full" else "hold"),
-                f"{len(sc.get('pre_consent') or [])} before consent &middot; "
-                f"{len(sc.get('post_reject') or [])} after reject"])
+            _pre = sc.get("pre_consent") or []
+            _rej = sc.get("post_reject") or []
+            _real = [h for h in _pre
+                     if str(h.get("severity") or "").lower() not in
+                     ("info", "informational")]
+            _kind = "bad" if _real else ("warn" if _pre else "ok")
+            _lbl = (f"{len(_real)} before consent" if _real
+                    else ("nothing before consent" if sc.get("mode") == "full"
+                          else "not tested"))
+            body = _trackers(_pre) if _pre else (
+                "<div class='vev' style='padding:4px 0'>No known ad or "
+                "analytics endpoint was contacted before consent on this "
+                "page.</div>")
+            if _rej:
+                body += ("<div class='csec'><h2>After reject</h2></div>"
+                         + _trackers(_rej))
+            cards.append(
+                f"<details class='vpage'><summary>"
+                f"<span class='vb vb--{_kind}'>{e(_lbl)}</span>"
+                f"<b>{e(_u)}</b>"
+                + (f"<span class='vev'>{e(_role)}</span>" if _role else "")
+                + (f"<span class='vsrc'>{e(sc.get('mode') or '?')}</span>")
+                + f"</summary><div class='vbody'>{body}</div></details>")
         parts.append(_sec(
             "Pages scanned",
-            _rows(["URL", "Role", f"Mode{_t('mode')}", "Trackers"], rows,
-                  ["40%", "14%", "12%", "34%"]),
+            "".join(cards),
             "A conversion page is where conversion pixels actually fire, so "
-            "it is the page most likely to carry an ungated one."))
+            "it is the page most likely to carry an ungated one. Open one to "
+            "see what fired on it."))
+
+    # ------------------------------------------------------- action items
+    #
+    # THE PAGE ENDED WITHOUT SAYING WHAT TO DO.
+    #
+    # Everything above is evidence, and evidence is what this page is for —
+    # but a reader who has just been told there is no banner, no opt-out link
+    # and a pixel firing on four pages still has to assemble the work order
+    # themselves. The standalone tool ends with the list, so this does too.
+    #
+    # OWNERSHIP IS THE POINT, not the wording. "A pixel fires pre-consent" is
+    # our work queue in a container we own and a conversation in the client's,
+    # and the badge is what tells the two apart before anybody starts typing.
+    _impl = str(want.get("implementation") or "").lower()
+    _ours = ("vici" in _impl or _impl == "gtm")
+    _owner = ("<span class='vown vown--vici'>Vici</span>" if _ours
+              else "<span class='vown vown--client'>Client</span>")
+    _acts = []
+
+    def _act(owner, text):
+        _acts.append(f"<li>{owner}<div>{text}</div></li>")
+
+    # Ordered by dependency: the mechanism has to exist before anything can
+    # be gated on it, and gating has to exist before Consent Mode means
+    # anything.
+    _mech_fail = [c for c in (scan.get("state_checks") or [])
+                  if str(c.get("check")) == "Opt-out mechanism"
+                  and str(c.get("status", "")).lower() == "fail"]
+    if _mech_fail and not basic:
+        _sts = sorted({str(c.get("state")) for c in _mech_fail})
+        _act("<span class='vown vown--client'>Client</span>",
+             f"Give residents a working opt-out method — required for "
+             f"{e(', '.join(_sts))} targeting and currently absent. The "
+             f"recommended fix is a consent banner (CMP), which delivers the "
+             f"opt-out link, GPC handling and pixel gating in one install; "
+             f"the law requires the opt-out, not the banner itself."
+             + (" Once one is in place, Vici applies the consent procedure "
+                "in the GTM." if _ours else ""))
+    if _no_cmp and _pre_real and not basic:
+        _vend = sorted({str(h.get("vendor")) for h in _pre_real})
+        _act(_owner,
+             f"Gate {e(_listy(_vend))} behind consent once a banner exists — "
+             f"{'they fire' if len(_vend) != 1 else 'it fires'} on every page "
+             f"load today with no mechanism to decline."
+             + ("" if _ours else " Vici supplies the procedure; the client's "
+                                 "team applies it in their container."))
+    if scan.get("gpc_tested") and scan.get("gpc_fires"):
+        _act("<span class='vown vown--client'>Client</span>",
+             "Honor the Global Privacy Control signal — ad trackers were "
+             "contacted on a page load that sent it. A consent banner "
+             "delivers this once installed.")
+    if scan.get("consent_mode_default") is False and (gtm or {}).get("found"):
+        _act(_owner,
+             "Set Google Consent Mode defaults to denied — with no defaults "
+             "declared, Google tags run at full capability before anyone "
+             "chooses, and the banner has nothing to flip.")
+    _miss = [p.get("product") for p in (scan.get("products") or [])
+             if not int(p.get("fired") or 0)]
+    _miss += sorted(bought - {p.get("product") for p in (scan.get("products") or [])})
+    if _miss and not basic:
+        _act(_owner,
+             f"Install or repair the {e(_listy(sorted(set(_miss))))} "
+             f"pixel{'s' if len(set(_miss)) != 1 else ''} — bought on the "
+             f"account and not seen firing on any page scanned.")
+    if _acts:
+        parts.append(_sec(
+            "Action items",
+            f"<div class='vprodc'><ul>{''.join(_acts)}</ul></div>",
+            "Derived from the evidence above, in the order the work has to "
+            "happen — a mechanism before gating, gating before Consent Mode."))
 
     # ------------------------------------------------------------ opt-out
     if scan.get("optout_link"):

@@ -431,6 +431,59 @@ def main():
     check("with the per-pass split, not one ambiguous total",
           "pre-consent 3" in _oddpage, str(_odd.get("capture_counts")))
 
+    print("\nTHE PAGE ENDS WITH THE WORK ORDER, AND SAYS WHOSE IT IS")
+    _act_det = {"scan": {"mode": "full", "source": "extension", "cmps": [],
+                         "gtm": {"found": True, "container_ids": ["GTM-A1"]},
+                         "consent_mode_default": False, "banner_visible": False,
+                         "reject_tested": False, "gpc_tested": True,
+                         "gpc_fires": [{"vendor": "Meta Pixel",
+                                        "severity": "high",
+                                        "url": "https://connect.facebook.net/x"}],
+                         "pre_consent": [{"vendor": "Meta Pixel",
+                                          "severity": "ungated",
+                                          "url": "https://connect.facebook.net/x"}],
+                         "post_reject": [], "products": [],
+                         "state_checks": [{"state": "TN",
+                                           "check": "Opt-out mechanism",
+                                           "status": "fail", "detail": "none"}]},
+                "pages": [], "requested": {"states": ["TN"],
+                                           "products": ["Meta"],
+                                           "implementation": "gtm"}}
+    _ap = _ch({"id": "z9", "client_name": "C", "target_url": "https://x.com"},
+              _act_det)
+    check("the page ends with action items", "Action items" in _ap)
+    check("the opt-out mechanism is the client's",
+          "Give residents a working opt-out method" in _ap)
+    check("gating a pre-consent pixel is ours in a container we own",
+          "Gate Meta Pixel behind consent" in _ap)
+    check("GPC gets its own item when trackers ignored it",
+          "Honor the Global Privacy Control signal" in _ap)
+    check("and a bought pixel nobody saw is named",
+          "Install or repair the Meta pixel" in _ap)
+    check("every item carries an owner badge",
+          _ap.count("vown--vici") + _ap.count("vown--client") >= 4)
+    # In a CLIENT-owned container the same evidence is a conversation, not a
+    # work queue — the badge is the whole difference.
+    _ap2 = _ch({"id": "z9", "client_name": "C", "target_url": "https://x.com"},
+               {**_act_det, "requested": {**_act_det["requested"],
+                                          "implementation": "client"}})
+    check("a client-owned container moves the gating work to them",
+          "the client's team applies it" in _ap2)
+    check("and the container line says who owns it",
+          "Vici owned" in _ap and "Client owned" in _ap2)
+
+    print("\nTHE SAME TAG TWICE IS ONE FINDING")
+    from app.ui_consent import _trackers as _tk
+    _dupes = [{"vendor": "Meta Pixel", "severity": "high",
+               "url": "https://connect.facebook.net/x", "_page": "https://a/"}
+              for _ in range(3)]
+    _html_d = _tk(_dupes)
+    check("three identical hits collapse to one row",
+          _html_d.count("<li>") == 1, str(_html_d.count("<li>")))
+    check("with the count kept, never dropped", "&times;3" in _html_d)
+    check("and two pages stay two rows",
+          _tk(_dupes + [{**_dupes[0], "_page": "https://b/"}]).count("<li>") == 2)
+
     print("\nDO NOT ASK FOR A RE-RUN OF SOMETHING WE ALREADY HAVE")
     # The GPC pass is a whole extra page load and does not always get set.
     # When it did not, the page said "some of this was never tested" and
