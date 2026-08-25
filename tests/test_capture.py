@@ -203,7 +203,7 @@ def main():
                 + _chunk(b"IDAT", _zl.compress(raw))
                 + _chunk(b"IEND", b""))
 
-    check("a picture painted in the mark colour is recognised",
+    check("a picture painted in the mark color is recognized",
           has_mark(_png(40, 40, MARK_RGB)))
     check("a picture with none of it is not",
           not has_mark(_png(40, 40, (255, 255, 255))))

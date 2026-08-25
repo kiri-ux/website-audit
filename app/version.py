@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-104"
-BUILD_NOTES = ("105 requests recorded next to nothing fired is a contradiction the page now names out loud, with the count split by pass and a sample of what was actually recorded - the split was on disk already and only ever a rendering decision not to show it")
+BUILD = "2026.08.20-105"
+BUILD_NOTES = ("The capture waited six seconds by the clock instead of waiting for the network to go quiet, so it recorded a page whose tags had not fired yet and called it clean - it now waits for idle like the server always did; plus American spelling throughout, guarded across every file that puts words on a screen, and the fired-tag lists in the standalone scanner's badge-first shape")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS partners (
   id            TEXT PRIMARY KEY,
   name          TEXT NOT NULL,
   api_key       TEXT UNIQUE,
-  branding      TEXT,           -- JSON: logo, colours, footer
+  branding      TEXT,           -- JSON: logo, colors, footer
   created_at    REAL NOT NULL
 );
 
@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS section_scores (
   PRIMARY KEY (audit_id, section_code)
 );
 
--- Static catalogue, seeded from seed/checkpoints.csv
+-- Static catalog, seeded from seed/checkpoints.csv
 CREATE TABLE IF NOT EXISTS checkpoints (
   id            TEXT PRIMARY KEY,
   prefix        TEXT,
@@ -285,7 +285,7 @@ MIGRATIONS = [
     # WHEN SOMEONE ASKED THIS RUN TO STOP.
     #
     # A flag rather than a status, because the worker is in another process
-    # and cannot be interrupted - it has to notice. Writing status='cancelled'
+    # and cannot be interrupted - it has to notice. Writing status='canceled'
     # directly would be overwritten by the worker's very next progress update,
     # and the run would appear to resurrect itself. The worker reads this at
     # every step and stops at the next one, which is at worst one phase away.

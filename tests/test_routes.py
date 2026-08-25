@@ -342,7 +342,7 @@ def main():
                            vertical="local_service", options={})
     POST(f"/api/audits/{qid}/stop")
     check("a queued run is stopped outright, not left 'stopping'",
-          _db.get_audit(qid)["status"] == "cancelled",
+          _db.get_audit(qid)["status"] == "canceled",
           _db.get_audit(qid)["status"])
     # And a finished run has nothing to stop.
     st, _, body = POST(f"/api/audits/{aid}/stop")
@@ -366,7 +366,7 @@ def main():
     POST(f"/api/audits/{gid}/stop")
     row = _db.get_audit(gid)
     check("an interrupted run closes out immediately",
-          row["status"] == "cancelled", row["status"])
+          row["status"] == "canceled", row["status"])
     check("and says why, without blaming the site",
           "interrupted" in (row.get("progress") or ""), row.get("progress"))
 

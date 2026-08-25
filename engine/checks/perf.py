@@ -285,14 +285,14 @@ def perf12(a, c):
 def perf19(a, c):
     data, err = _psi(a, c)
     if not data:
-        return _need_access(err, "Image optimisation")
+        return _need_access(err, "Image optimization")
     auds = data["lighthouseResult"]["audits"]
     keys = ["uses-optimized-images", "modern-image-formats", "uses-responsive-images"]
     fails = {k: auds[k].get("displayValue") for k in keys
              if k in auds and auds[k].get("score") not in (1, None)}
     return finding("Fail" if fails else "Pass", {"failing_audits": fails},
-                   f"{len(fails)} image-optimisation audits failing: {', '.join(fails)}."
-                   if fails else "Image optimisation audits pass.", [a.start_url],
+                   f"{len(fails)} image-optimization audits failing: {', '.join(fails)}."
+                   if fails else "Image optimization audits pass.", [a.start_url],
                    "Medium" if fails else "Low",
                    "Serve next-gen formats (WebP/AVIF) and correctly sized images." if fails else "")
 

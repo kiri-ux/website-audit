@@ -203,24 +203,77 @@ def main():
     # in a client deliverable is the kind of detail that reads as imported from
     # somewhere else.
     import pathlib
-    BRITISH = ["canonicalis", "optimis", "organis", "behaviour", "colour",
-               "centre", "prioritis", "analyse", "recognis", "emphasis" + "e",
-               "normalis", "licence", "defence", "catalogue"]
+    # THIS LIST IS DATA, NOT PROSE. A find-and-replace over the repo helpfully
+    # "corrected" the very spellings the check hunts for, leaving a guard that
+    # matched every American word instead. Split so no future sweep can eat it.
+    BRITISH = ["canonicalis", "optimis", "organis", "behavi" + "our",
+               "col" + "our", "cent" + "re", "prioritis", "analys" + "e",
+               "recognis", "emphasis" + "e", "normalis", "licen" + "ce",
+               "defen" + "ce", "catalog" + "ue", "hon" + "our",
+               "summaris", "customis", "utilis", "whilst"]
     root = pathlib.Path(__file__).resolve().parent.parent
     offenders = []
     # engine/consent/checks.py is OUR adapter and its strings are printed in
-    # the client report; it was simply never on this list, so "recognised" and
-    # "honoured" shipped in the consent findings for three builds. The rest of
+    # the client report; it was simply never on this list, so "recognized" and
+    # "honored" shipped in the consent findings for three builds. The rest of
     # engine/consent/ is the vendored scanner and stays off the list — we do
     # not restyle a dependency.
-    for f in ("engine/summarise.py", "engine/pdf_report.py", "engine/report.py",
-              "engine/glossary.py", "engine/context.py", "engine/charts.py",
-              "engine/judgment.py", "engine/consent/checks.py", "app/ui.py"):
-        text = (root / f).read_text()
+    # EVERY FILE THAT PUTS WORDS ON A SCREEN, NOT A HAND-PICKED NINE.
+    #
+    # The list was written when the report was the only surface. Then the
+    # consent page arrived with "recognised", "honoured" and "behaviour" all
+    # over it, in front of a client, because ui_consent.py was not on a list
+    # nobody remembered to extend. A rule that only guards the files somebody
+    # thought of is a rule that guards the past.
+    import glob as _glob, ast as _ast
+    _files = sorted(set(
+        _glob.glob("app/*.py") + _glob.glob("engine/*.py")
+        + _glob.glob("engine/**/*.py", recursive=True)
+        + _glob.glob("extension/*.js") + _glob.glob("extension/*.md")))
+
+    def _copy_of(path, raw):
+        """
+        The COPY in a file, not its symbols.
+
+        A module named engine/summarise.py and a function named summarise are
+        spellings of an identifier, and renaming them to satisfy a prose rule
+        breaks every import in the repo — which is exactly what happened the
+        first time this list was widened. Strings and comments are what a
+        client reads; identifiers are not, so only the former are scanned.
+        """
+        if not path.endswith(".py"):
+            return raw
+        try:
+            tree = _ast.parse(raw)
+        except SyntaxError:
+            return raw
+        # A string that IS a symbol — "analyse_answer" in __all__, a module
+        # path in an import — is still an identifier, and re-spelling it
+        # breaks imports rather than improving copy.
+        def _is_symbol(v):
+            return (v.isidentifier() or v.endswith(".py")
+                    or ("/" in v and " " not in v))
+        out = [n.value for n in _ast.walk(tree)
+               if isinstance(n, _ast.Constant) and isinstance(n.value, str)
+               and not _is_symbol(n.value)]
+        # Comments are copy too — the same person writes both, and a habit
+        # that lives in comments migrates into strings. Lines naming a source
+        # file are excluded for the same reason identifier-strings are.
+        out += [ln.split("#", 1)[1] for ln in raw.splitlines()
+                if "#" in ln and ".py" not in ln]
+        return "\n".join(out)
+
+    for f in _files:
+        text = _copy_of(f, (root / f).read_text())
         # reportlab's own API is spelled drawCentredString. That is a third-party
         # identifier, not our copy, so it is removed before the scan rather than
         # bending our spelling rule around it.
         text = text.replace("drawCentredString", "")
+        # A filename mentioned inside a sentence is still a filename. Strip
+        # path-shaped tokens so "see engine/summarise.py" does not read as a
+        # misspelling of a word.
+        text = " ".join(w for w in text.split()
+                        if not (w.endswith(".py") or "/" in w))
         for b in BRITISH:
             if b in text.lower():
                 offenders.append(f"{f}:{b}")

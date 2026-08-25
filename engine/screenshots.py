@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 
 # checkpoint id -> CSS selector for the thing that is wrong.
-# Only checks where a box points at something a human would recognise.
+# Only checks where a box points at something a human would recognize.
 #
 # THIS MAP HAD DRIFTED FROM THE CATALOG, WHICH IS WHY NO RED BOX EVER APPEARED.
 #
@@ -47,7 +47,7 @@ SELECTORS = {
     "ONP-42": "img",                                  # image filenames
     "ONP-44": "img:not([srcset])",                    # responsive images
     "ONP-45": "img:not([loading])",                   # no lazy loading
-    "PERF-19": "img",                                 # unoptimised images
+    "PERF-19": "img",                                 # unoptimized images
     "MOB-05": "a, button",                            # tap targets
     "MOB-06": "p",                                    # font readability
     # NOT JUST <footer>. Plenty of themes ship a <div class="site-footer">,
@@ -104,7 +104,7 @@ def _rows(png: bytes):
 
     Written by hand because the worker has no image library and is not getting
     one for this: Pillow is a build dependency and a security surface, and all
-    that is needed here is "does this picture contain the colour we painted".
+    that is needed here is "does this picture contain the color we painted".
     Handles what Chromium actually emits - 8-bit RGB or RGBA, no interlace.
     """
     import struct
@@ -161,7 +161,7 @@ def _rows(png: bytes):
 
 def has_mark(png: bytes, tol: int = 26, need: int = 40) -> bool:
     """
-    Is the outline colour actually in these pixels?
+    Is the outline color actually in these pixels?
 
     THE ONLY CHECK THAT CANNOT BE FOOLED.
     #

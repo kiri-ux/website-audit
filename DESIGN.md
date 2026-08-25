@@ -109,7 +109,7 @@ Five tables carry the system. Full DDL in `app/db.py`.
 ```
 partners ──< audits ──< findings
                     └─< section_scores
-checkpoints (static catalogue, 313 rows, seeded from seed/checkpoints.csv)
+checkpoints (static catalog, 313 rows, seeded from seed/checkpoints.csv)
 jobs (queue, used when Redis is absent)
 ```
 
@@ -265,7 +265,7 @@ checkpoint, each fed a targeted slice of the crawl artifact and returning a
 strict structured object. **Do not write one broad "assess E-E-A-T" prompt** —
 it produces confident mush that a competent SEO spots instantly and it discredits
 the other 276 rows. 37 narrow calls beat 5 broad ones on accuracy, cost and
-debuggability. Budget ~$2–4 per audit; don't optimise it, optimise accuracy.
+debuggability. Budget ~$2–4 per audit; don't optimize it, optimize accuracy.
 
 **Phase 4 — AI visibility monitor (+8 rows → 278). ✅ BUILT.** See §11.
 

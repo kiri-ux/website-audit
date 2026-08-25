@@ -98,7 +98,7 @@ CASES = [
     # ---- www normalisation ---------------------------------------------
     ("Grand Home Furnishings lists delivery options on their site.",
      cite("https://www.grandhf.com/delivery"),
-     True, True, "www must normalise to the bare domain"),
+     True, True, "www must normalize to the bare domain"),
 
     # ---- no citations at all (ungrounded answer) ------------------------
     ("I don't have specific information about furniture retailers in that area.",

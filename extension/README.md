@@ -88,7 +88,7 @@ The capture opens the page **four** times:
 | Untouched | Every request made before anyone agreed to anything, plus the rendered DOM, whether a banner is actually visible on screen, and the Consent Mode defaults the dataLayer was given |
 | After Accept | Which vendors waited for a choice — the "is the pixel actually working" half |
 | After Reject, fresh load | What still fires once somebody declines. Fresh matters: after an Accept the CMP has written a cookie, and a Reject click then tests a different state from the one a first-time visitor sees |
-| With GPC on, fresh load | What fires despite Global Privacy Control. Twelve states require it to be honoured |
+| With GPC on, fresh load | What fires despite Global Privacy Control. Twelve states require it to be honored |
 
 The GPC pass sends **both** halves of the signal — the `Sec-GPC: 1` request
 header, which is what a server-side implementation checks, and
@@ -116,7 +116,7 @@ site and there would be no way to know which was right.
 | Browser (this extension) | Server |
 |---|---|
 | Rendered DOM, headings, links, images | TLS certificate, protocol, expiry |
-| Schema (JSON-LD + microdata) | HTTP→HTTPS redirect behaviour |
+| Schema (JSON-LD + microdata) | HTTP→HTTPS redirect behavior |
 | All scripts + inline JS (the 12 analytics rows) | PageSpeed Insights / Core Web Vitals |
 | robots.txt, sitemap.xml, llms.txt | Host resolution (www vs non-www) |
 | The consent passes above, GPC included | State-law rules applied to what came back |

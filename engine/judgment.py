@@ -67,7 +67,7 @@ RULES = (
     # The head/tail cut prints a marker between the two halves, and the model
     # started describing it: "The middle sections are omitted from the
     # material". That is our slicing, in a client's report.
-    "- Never mention that any part of a page was omitted, cut or summarised. "
+    "- Never mention that any part of a page was omitted, cut or summarized. "
     "You are reading an extract; the reader is not, and does not care.\n"
     # The distinction a client cannot be asked to make for themselves.
     "- When a section says NONE, the site does not have those pages. Report "

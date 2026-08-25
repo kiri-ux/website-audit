@@ -457,7 +457,7 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
     # caller that does not know about phases at all. The hidden `phases` field
     # tells them apart: present means this form owns the choice and an absent
     # box really means off; absent means an older client or a script, and
-    # everything runs, which is the pre-existing behaviour.
+    # everything runs, which is the pre-existing behavior.
     opts = {"max_pages": max_pages, "skip_psi": bool(skip_psi),
             "render_js": bool(render_js)}
     if phases:
@@ -697,7 +697,7 @@ def rerun_audit_api(audit_id: str, x_api_key: str | None = Header(None)):
 # progress step, and the run ends at the next one: within seconds during the
 # crawl or the judgment pass, at worst one phase later.
 #
-# The row keeps everything it had already answered. A cancelled audit with 180
+# The row keeps everything it had already answered. A canceled audit with 180
 # findings is more useful than no audit, and a Stop button that also destroys
 # the work is one nobody presses.
 _STOPPABLE = {"queued", "crawling", "checking", "scoring", "capturing"}
@@ -730,7 +730,7 @@ def _request_stop(audit_id: str, scope):
     hb = a.get("heartbeat_at")
     gone = bool(hb) and (time.time() - float(hb)) > STALE_AFTER_S
     if a.get("status") == "queued" or gone:
-        db.update_audit(audit_id, status="cancelled", error=None,
+        db.update_audit(audit_id, status="canceled", error=None,
                         progress=("stopped before it started"
                                   if a.get("status") == "queued" else
                                   "stopped - this run had already been "
@@ -1125,7 +1125,7 @@ def _report_meta(a: dict) -> dict:
             "audit_id": a.get("id"),
             "gsc_property": _o.get("gsc_property") or "",
             # A per-audit partner name overrides the firm from the
-            # environment. White-labelled work goes out under the partner's
+            # environment. White-labeled work goes out under the partner's
             # name, and that varies per client — an env var is the wrong place
             # for something that changes between two audits run in the same
             # hour. Blank falls back to the configured firm, so nothing changes
@@ -1184,7 +1184,7 @@ def ingest_console_capture(audit_id: str, payload: dict,
     rows = findings_from_capture(payload or {})
     if not rows:
         raise HTTPException(
-            400, "capture carried no numbers we recognised — Google may have "
+            400, "capture carried no numbers we recognized — Google may have "
                  "renamed a label, or the report had not finished loading")
 
     # Merge over what is already stored rather than replacing it: this is a

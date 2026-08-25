@@ -93,7 +93,7 @@ def main():
           "db.get_findings(" in src and "findings.update(rows)" in src)
     check("scores are recomputed so the report reflects the new rows",
           "save_scores" in src)
-    check("and a capture we recognised nothing in is refused",
+    check("and a capture we recognized nothing in is refused",
           "if not rows" in src and "400" in src)
 
     print("\nTHE EXTENSION CONFIRMS BEFORE IT SENDS")
@@ -216,7 +216,7 @@ def main():
           'googleAccount: ""' in bg2)
 
     print("\nAND THE WRONG-ACCOUNT SCREEN IS RECOGNISED")
-    # Without this the scrape finds nothing and reports "nothing recognised",
+    # Without this the scrape finds nothing and reports "nothing recognized",
     # which points at the parser when the truth is a sign-in.
     check("Google's denial page is detected",
           "you don't have access to this property" in bg2)
@@ -226,7 +226,7 @@ def main():
           "cannot see this property" in bg2)
 
     print("\nA COMPLETE TABLE LICENSES A ZERO; AN INCOMPLETE ONE DOES NOT")
-    # Ooten's real capture: 115 not indexed, two recognised rows accounting for
+    # Ooten's real capture: 115 not indexed, two recognized rows accounting for
     # 46 of them. Sixty-nine pages sat in rows the scrape never looked at, so
     # "Soft 404" being absent proved nothing at all.
     partial = F({

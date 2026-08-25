@@ -6,7 +6,7 @@ Section 13 — GEO / AI readiness (the deterministic subset)
 The GEO rows here are the ones the template calls "Manual Review" but which
 are pure fact retrieval: does /llms.txt exist, does robots.txt admit AI
 crawlers, is there FAQ schema. The genuinely subjective GEO rows (entity
-optimisation, citation-worthiness) are Tier B and are NOT implemented here.
+optimization, citation-worthiness) are Tier B and are NOT implemented here.
 """
 from __future__ import annotations
 import re

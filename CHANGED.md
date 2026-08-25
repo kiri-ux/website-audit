@@ -1,7 +1,72 @@
-# Changed files — build 2026.08.20-59
+# Changed files — build 2026.08.20-60
 
 Cumulative delta since **2026.08.18-16**. Packed by `pack.py`.
 Extension is **1.4.4** — unchanged since ‑50.
+
+---
+
+## Browser user-agent and Render JavaScript decide themselves
+
+Both were checkboxes asking you to predict something about a site nobody has
+crawled yet. Both are expensive to get wrong in ways that do not announce
+themselves:
+
+- **UA too honest on a WAF-protected site** — every path answers with a
+  challenge page, and 322 checks report a site that is broken rather than a
+  crawl that was blocked.
+- **JS rendering off on an app** — 118 pages of empty shell, scored as 118
+  pages with no content.
+- **JS rendering on when it was not needed** — a browser per page, minutes of
+  wall clock, and memory on a 2GB instance for nothing.
+
+The crawler already diagnosed both, correctly, and separated them: `CrawlQuality`
+distinguishes *"bot protection"* from *"client-side rendering"* and says which.
+It just never acted on it, because by the time it knew, the crawl was over.
+
+So one request to the homepage now runs before the crawl:
+
+- Challenge wording on the page, or HTTP 403 / 406 / 429 / 503 → retry the same
+  request as a browser. **Only adopt the browser user-agent if it actually
+  helped.** A site that blocks both is not fixed by pretending to be Chrome,
+  and claiming otherwise buries the real finding under a setting that did
+  nothing.
+- Fewer than 40 words of text plus a mount point (`id="root"`, `__NEXT_DATA__`,
+  `ng-app`, …) → render JavaScript.
+
+The two stack, because a site can be both.
+
+### It never decides silently
+
+Every escalation carries its reason into the worker log, the live progress
+line, and `extras.preflight` on the audit:
+
+> Using a browser user-agent: the page says "just a moment", which is a
+> bot-protection screen, and the same request as a browser returned the page.
+
+> Rendering JavaScript: the homepage has 0 words of text and an `id="root"`
+> mount point, so the content is built by JavaScript.
+
+A run that quietly switched to a browser user-agent and a run where someone
+ticked the box are different facts about the client's site.
+
+### And it never escalates on a network error
+
+A site that is down is not a site that blocks bots. The probe reports
+`checked: false` with the error, and the crawl proceeds on defaults — guessing
+here sends someone to argue with a client about a WAF that is not there.
+
+### The boxes still work
+
+Ticking either forces it on; ticking both skips the probe entirely. Someone who
+knows the site beats a probe. The labels now read **auto — tick to force**.
+
+---
+
+## Tests
+
+`tests/test_preflight.py` — a fake server that plays six sites: healthy,
+WAF-that-a-UA-fixes, WAF-by-403, WAF-that-blocks-everything, an SPA shell, and
+a WAF-protected SPA. Plus the source assertions that a ticked box wins.
 
 ---
 
@@ -139,7 +204,7 @@ matches the tool-not-enabled wording specifically, and a plain bad request
 still raises where it happens:
 
 ```
-  PASS  the tool-shape 400 is recognised
+  PASS  the tool-shape 400 is recognized
   PASS  and a plain bad request is NOT — it must not burn every model
   PASS  a model that wants the older shape is asked with it
   PASS  and it is NOT written off as a dead model
@@ -219,7 +284,7 @@ table means nothing was tested. Each section states which:
 > banner on this site.
 
 > Not applicable: none of the states this client sells in (TN) require Global
-> Privacy Control to be honoured.
+> Privacy Control to be honored.
 
 Put California in the markets and that second line becomes *"Not tested,
 although CA requires it. That is ours to fix, not the client's."* A basic-mode
@@ -298,7 +363,7 @@ lines.
 
 ### GPC is the interesting one
 
-Global Privacy Control must be honoured in twelve states. **Tennessee is not
+Global Privacy Control must be honored in twelve states. **Tennessee is not
 one of them.** Ooten sells in thirteen Tennessee counties, so the scanner
 correctly skipped the GPC pass — and the row then reported that correct
 decision as a gap on our fix list.
@@ -307,7 +372,7 @@ A check that does not apply to this client's markets is an answer, not an
 omission. It reads:
 
 > Global Privacy Control does not apply here: none of the states this client
-> sells in (TN) require honouring it.
+> sells in (TN) require honoring it.
 
 Status `N/A`, off the fix list. **And the case that IS ours is not swept up
 with it**: add California to the markets and a GPC pass that did not run goes
@@ -355,7 +420,7 @@ A graceful degradation needs something loud somewhere else, or it is just a
 silent failure with good manners. The row is the loud part; what changed is
 only that it stopped claiming to be work.
 
-**A platform we DO hold a key for keeps the old behaviour.** Gemini's 404 is
+**A platform we DO hold a key for keeps the old behavior.** Gemini's 404 is
 still on the fix list with its unwrapped message, because that one genuinely
 needs somebody. That is the distinction the source tag exists to draw.
 
@@ -380,7 +445,7 @@ Guarded by arithmetic rather than by a string match: bullets shown plus the
 overflow count must equal the number in the heading.
 
 ```
-  PASS  more reasons than fit are summarised, never dropped  (6 of 10 shown)
+  PASS  more reasons than fit are summarized, never dropped  (6 of 10 shown)
   PASS  and bullets plus overflow add up to the heading      (6 + 4 vs 10)
 ```
 
@@ -1069,7 +1134,7 @@ It now loads every setting into the form, scrolls you to it, and says so:
 > *Settings loaded from The Ooten Law Firm — change anything, then Scan site.*
 
 The `/rerun` endpoint stays for the JSON API and the stalled-run panel, where
-"same settings, no questions" is the right behaviour. It is no longer what a
+"same settings, no questions" is the right behavior. It is no longer what a
 button on the dashboard does.
 
 ---
@@ -1111,9 +1176,9 @@ is default — so a capture run while signed in as `kiri@vicimediainc.com` hits
 Blank still means the default account, which is right for anyone signed into
 one.
 
-### And the wrong-account screen is recognised
+### And the wrong-account screen is recognized
 
-Without this the scrape simply finds nothing and reports *"nothing recognised
+Without this the scrape simply finds nothing and reports *"nothing recognized
 — Google may have renamed a label"*, which points at the parser when the truth
 is a sign-in. The capture now detects Google's denial page, **reads the account
 it actually used off it**, and stops:
@@ -1895,7 +1960,7 @@ says what is missing.
 
 Every finding carries a `value` dict. The collectors fill it, `db.py` stores it,
 `/api/audits/{id}/findings` returns it — and **nothing rendered it.** Grepping
-`report.py`, `pdf_report.py`, `ui.py` and `summarise.py` for `value` returned
+`report.py`, `pdf_report.py`, `ui.py` and `summarize.py` for `value` returned
 nothing at all.
 
 So the reader got one sentence — *"3 trackers fired before any consent

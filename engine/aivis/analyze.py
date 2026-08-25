@@ -28,7 +28,7 @@ STOPWORDS = {
     "the", "and", "for", "with", "your", "our", "best", "top", "home", "group",
     "company", "co", "inc", "llc", "ltd", "corp", "store", "shop", "online",
     "services", "service", "solutions", "grand", "first", "national", "american",
-    "quality", "value", "center", "centre", "direct", "plus", "pro", "prime",
+    "quality", "value", "center", "center", "direct", "plus", "pro", "prime",
 }
 
 
@@ -178,11 +178,11 @@ def aggregate(results: list[dict], queries_by_id: dict, profile) -> dict:
         k = sum(1 for r in rows if r[key])
         ph = k / n
         d = 1 + z * z / n
-        centre = (ph + z * z / (2 * n)) / d
+        center = (ph + z * z / (2 * n)) / d
         half = (z * math.sqrt(ph * (1 - ph) / n + z * z / (4 * n * n))) / d
         return {"n": n, "hits": k,
-                "low": round(100 * max(0.0, centre - half), 1),
-                "high": round(100 * min(1.0, centre + half), 1),
+                "low": round(100 * max(0.0, center - half), 1),
+                "high": round(100 * min(1.0, center + half), 1),
                 "plus_minus": round(100 * half, 1)}
 
     by_platform = {}

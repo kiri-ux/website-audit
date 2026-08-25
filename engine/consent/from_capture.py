@@ -191,7 +191,7 @@ def result_from_capture(cap: dict, states=None, products=None,
     # attached and told us nothing else, and the URLs — the one thing that
     # would have answered it in a glance — were thrown away the moment they
     # were classified. Kept now, bounded, and ONLY in the case that needs
-    # them: traffic recorded, nothing recognised.
+    # them: traffic recorded, nothing recognized.
     _all = ((cap.get("pre_requests") or []) + (cap.get("post_requests") or [])
             + (cap.get("reject_requests") or []) + (cap.get("gpc_requests") or []))
     if _all and not (r["pre_consent"] or r.get("gpc_fires")

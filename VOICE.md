@@ -36,7 +36,7 @@ which may result in browsers displaying security warnings to end users."
 
 Vici is a US agency with US clients. `optimization`, `canonicalization`,
 `behavior`, `organization`, `analyze`, `prioritize`. Never the British forms.
-This is enforced by a test — a single "optimisation" fails the suite.
+This is enforced by a test — a single "optimization" fails the suite.
 
 ## 4. Say the consequence, then the fix
 

@@ -409,7 +409,7 @@ def url06(a, c):
     h = a.http_to_https
     if h.get("error") or "upgraded" not in h:
         return finding("Need Access", h,
-                       "HTTP-to-HTTPS behaviour could not be tested — the request "
+                       "HTTP-to-HTTPS behavior could not be tested — the request "
                        "to the HTTP origin failed to complete.", [], "Medium",
                        confidence=0.0)
     ok = h.get("upgraded")
@@ -510,7 +510,7 @@ def canon01(a, c):
               and p.canonical.rstrip("/") not in known
               and urlparse(p.canonical).netloc.replace("www.", "") == a.host.replace("www.", "")]
     return finding("Fail" if broken else "Pass", {"count": len(broken)},
-                   f"{len(broken)} pages canonicalise to a URL not found in the crawl." if broken
+                   f"{len(broken)} pages canonicalize to a URL not found in the crawl." if broken
                    else "No broken canonical targets detected.", broken[:30],
                    "High" if broken else "Low")
 
@@ -531,7 +531,7 @@ def canon05(a, c):
             if t and t.meta_robots and "noindex" in t.meta_robots.lower():
                 bad.append(p.url)
     return finding("Fail" if bad else "Pass", {"count": len(bad)},
-                   f"{len(bad)} pages canonicalise to a noindexed page." if bad
+                   f"{len(bad)} pages canonicalize to a noindexed page." if bad
                    else "All canonical targets are indexable.", bad, "High" if bad else "Low")
 
 

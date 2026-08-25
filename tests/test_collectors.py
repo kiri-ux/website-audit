@@ -1,7 +1,7 @@
 """
 Contract test for the credential-gated collectors and the judgment layer.
 
-The rule every one of them must honour: with no credentials configured, return
+The rule every one of them must honor: with no credentials configured, return
 Need Access at confidence 0 — NEVER a Fail. "The client hasn't granted access"
 and "your backlink profile is weak" are different sentences, and only one of
 them is true when there's no API key.
@@ -296,7 +296,7 @@ def main():
           "Keyword rankings" in html_rk and "grand furniture roanoke" in html_rk)
     check("rows with missing volume/difficulty still render all five cells",
           "cheap mattress" in html_rk)
-    check("page-one positions are emphasised", "<b>1</b>" in html_rk)
+    check("page-one positions are emphasized", "<b>1</b>" in html_rk)
     html_no = render_html(meta, sc, F, cat, s)
     check("no rankings data -> section omitted entirely, not shown empty",
           "Keyword rankings" not in html_no)

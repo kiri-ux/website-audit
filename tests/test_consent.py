@@ -159,7 +159,7 @@ def main():
     # A custom-built banner with no known signature lands here too, which is why
     # this asks someone to look rather than declaring the site non-compliant.
     none = findings_from_scan(dict(FULL_CLEAN, cmps=[]))
-    check("no recognised CMP is a Warning", none["CONS-01"]["status"] == "Warning")
+    check("no recognized CMP is a Warning", none["CONS-01"]["status"] == "Warning")
     check("and it says a custom banner would look the same",
           "custom-built" in none["CONS-01"]["evidence"])
 
@@ -400,7 +400,7 @@ def main():
 
     # RECORDED BUT NOT CLASSIFIED IS ITS OWN FAILURE.
     #
-    # A capture came back with 105 requests and zero recognised trackers on a
+    # A capture came back with 105 requests and zero recognized trackers on a
     # site running a Tag Manager container. "105 recorded" proved the recorder
     # attached and told us nothing else, and the URLs — the one thing that
     # would answer it — were discarded at classification time.
@@ -410,7 +410,7 @@ def main():
         "pre_requests": ["https://x.com/style.css", "https://x.com/a.png",
                          "https://fonts.gstatic.com/f.woff2"],
         "banner_visible": False, "consent_defaults_read": True})
-    check("traffic with nothing recognised keeps a sample of the URLs",
+    check("traffic with nothing recognized keeps a sample of the URLs",
           len(_odd.get("unmatched_sample") or []) == 2,
           str(_odd.get("unmatched_sample")))
     check("one per host, so a hundred images do not fill it",
@@ -420,12 +420,12 @@ def main():
               "consent_defaults_read": True,
               "pre_requests": [f"https://x.com/img{i}.png" for i in range(60)]
           }).get("unmatched_sample") or []) == 1)
-    check("a capture that DID recognise something keeps no sample",
+    check("a capture that DID recognize something keeps no sample",
           not _loud.get("unmatched_sample"))
     _oddpage = _ch({"id": "z", "client_name": "C", "target_url": "https://x.com"},
                    {"scan": _odd, "pages": [], "requested": {}})
-    check("and the page says traffic was recorded and not recognised",
-          "none of it was recognised" in _oddpage)
+    check("and the page says traffic was recorded and not recognized",
+          "none of it was recognized" in _oddpage)
     check("showing what it saw",
           "fonts.gstatic.com" in _oddpage)
     check("with the per-pass split, not one ambiguous total",
@@ -577,7 +577,7 @@ def main():
 
     # The button must not promise a popup a web page cannot open.
     _cs = open("extension/content.js", encoding="utf-8").read()
-    # The comment explaining the old behaviour is allowed to mention it; a
+    # The comment explaining the old behavior is allowed to mention it; a
     # line that SETS button text is not.
     check("no button claims a popup will open",
           not [l for l in _cs.splitlines()

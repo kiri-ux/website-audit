@@ -296,7 +296,7 @@ class SectionBars(Flowable):
     Every audit area in one ranked view, worst first.
 
     `rows` is [(label, score_or_None, rating)]. A None score draws as a hollow
-    dashed track labelled "Not assessed" — never as a zero-length bar.
+    dashed track labeled "Not assessed" — never as a zero-length bar.
     """
 
     def __init__(self, rows, width=6.4 * inch, row_h=13.5, label_w=1.95 * inch,
@@ -394,7 +394,7 @@ class SectionBars(Flowable):
 
 class SegmentBar(Flowable):
     """
-    A single stacked bar with a labelled legend beneath.
+    A single stacked bar with a labeled legend beneath.
 
     Used for the severity distribution and the coverage strip. `segments` is
     [(label, count, color)]. Segments with a zero count are dropped from the
@@ -574,7 +574,7 @@ def coverage_segments(measured: int, client: int, ours: int, na: int) -> list:
     Split by WHO IT IS BLOCKED ON, not by whether we happened to get a number.
 
     The old two-way split lumped "your Search Console is private" together with
-    "we haven't set the backlink API key" and labelled the whole pile as the
+    "we haven't set the backlink API key" and labeled the whole pile as the
     client's to fix. Only the middle segment is an ask; the third is our work.
     """
     # A ZERO SEGMENT KEEPS ITS LEGEND ENTRY — except this one.

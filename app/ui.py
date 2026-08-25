@@ -428,12 +428,12 @@ STATUS_COLOR = {"ready": "var(--good)", "failed": "var(--critical)",
                 "needs_capture": "var(--serious)",
                 # Stopped on purpose. Grey, never red: it is not a failure and
                 # it should not read like one in a list of runs.
-                "cancelled": "var(--muted)"}
+                "canceled": "var(--muted)"}
 
 # adtini states are pastel pills with dark text, not a dot beside grey text.
 STATUS_PILL = {"ready": "ready", "failed": "stop", "queued": "",
                "crawling": "run", "checking": "run", "scoring": "run",
-               "needs_capture": "hold", "cancelled": ""}
+               "needs_capture": "hold", "canceled": ""}
 
 
 def e(x):
@@ -673,7 +673,7 @@ def _shell(title, body, refresh=None, heading=None, crumbs=None, tab=None):
     # scan running meant watching the page blink and the field empty itself
     # every eight seconds. There is no way to cancel a meta refresh.
     #
-    # A timer can be cancelled, so it is a timer now: same interval, same
+    # A timer can be canceled, so it is a timer now: same interval, same
     # behavior on an idle page, but it holds off while anything on the page
     # is focused or has been typed into, and gets out of the way of a form
     # somebody is filling in. `data-refresh` is what the audit status page
@@ -1863,7 +1863,7 @@ def audit_html(a):
                  f"<p class='sub'>{e(a.get('error'))}</p>"
                  f"</div>")
         refresh = None
-    elif cur == "cancelled":
+    elif cur == "canceled":
         # Not an error page. Nothing went wrong; somebody decided this run was
         # not worth finishing, and the offer is to start it again cheaply -
         # from the stored pages, so the client's server is left alone.

@@ -22,7 +22,7 @@ const DEFAULTS = {
   token: "",
   auditId: "",
   dwellMs: 2500,        // time on page after load before capture
-  jitterMs: 900,        // randomised so the cadence is not metronomic
+  jitterMs: 900,        // randomized so the cadence is not metronomic
   maxPages: 30,         // template sampling: 83% of checks need no more
   scroll: true,
   // The Google account Search Console should open under. An EMAIL, because an
@@ -393,9 +393,41 @@ function _click(patternSource) {
 async function settle(ms) { await new Promise(r => setTimeout(r, ms)); }
 
 // ---------------------------------------------------------------------------
+// WAIT FOR THE NETWORK TO GO QUIET, NOT FOR A STOPWATCH.
+//
+// A capture came back with 53 recorded requests and NOT ONE of them a known
+// ad or analytics endpoint, on a site whose Tag Manager container we could
+// read in the HTML. Fifty-three requests is a page that loaded; zero trackers
+// is a page whose tags had not run yet. We were snapshotting six seconds after
+// asking for the URL — six seconds that has to cover DNS, the document, the
+// stylesheets, GTM itself, and only THEN each tag GTM decides to fire. On a
+// slow WordPress site the tag stack is still warming up when the stopwatch
+// goes off, so we recorded the page's own furniture and called it "nothing
+// fired".
+//
+// The server never had this bug because Playwright waits for `networkidle`
+// and then settles for two more seconds. This is that, built out of the
+// bucket we are already filling: keep waiting while requests are still
+// arriving, stop when they stop, give up at a ceiling so a page with a
+// polling widget cannot hold the run open forever.
+// ---------------------------------------------------------------------------
+async function settleIdle(bucket, { quiet = 2500, max = 25000, min = 3000 } = {}) {
+  const started = Date.now();
+  let last = bucket.length, lastChange = Date.now();
+  while (Date.now() - started < max) {
+    await settle(500);
+    if (bucket.length !== last) { last = bucket.length; lastChange = Date.now(); }
+    else if (Date.now() - lastChange >= quiet && Date.now() - started >= min) {
+      break;
+    }
+  }
+  return bucket.length;
+}
+
+// ---------------------------------------------------------------------------
 // THE GPC PASS.
 //
-// Twelve states require Global Privacy Control to be honoured as an opt-out,
+// Twelve states require Global Privacy Control to be honored as an opt-out,
 // and the consent page has a whole section for what fires despite it. On this
 // path that section read "not tested — that is ours to fix, not the client's"
 // forever, because the capture never sent a gpc_requests list at all. The
@@ -484,7 +516,7 @@ async function consentOnePage(tab, url, opts) {
   // instead of reporting a clean site.
   let bucket = recStart(tab.id);
   await chrome.tabs.update(tab.id, { url });
-  await settle(opts.dwell);
+  await settleIdle(bucket);
   let probe = await inTab(tab.id, _probe);
   if (bucket.length === 0) {
     say(`${opts.label}: recorded nothing — re-arming and reloading`);
@@ -492,7 +524,7 @@ async function consentOnePage(tab, url, opts) {
     await chrome.tabs.update(tab.id, { url: "about:blank" });
     await settle(400);
     await chrome.tabs.update(tab.id, { url });
-    await settle(opts.dwell);
+    await settleIdle(bucket);
     probe = await inTab(tab.id, _probe);
   }
   cap.pre_requests = [...bucket];
@@ -508,7 +540,7 @@ async function consentOnePage(tab, url, opts) {
   const hit = await inTab(tab.id, _click, [ACCEPT_TEXT.source]);
   if (hit) {
     cap.accept_clicked = true;
-    await settle(5000);
+    await settleIdle(bucket, { quiet: 2500, max: 15000, min: 3000 });
     cap.post_requests = [...bucket];
     say(`clicked “${hit}” — ${cap.post_requests.length} requests total`);
   }
@@ -520,12 +552,12 @@ async function consentOnePage(tab, url, opts) {
   recStop();
   bucket = recStart(tab.id);
   await chrome.tabs.update(tab.id, { url: url + (url.includes("?") ? "&" : "?") + "vici=1" });
-  await settle(5000);
+  await settleIdle(bucket);
   const rej = await inTab(tab.id, _click, [REJECT_TEXT.source]);
   if (rej) {
     cap.reject_clicked = true;
     bucket.length = 0;             // only what fires AFTER the click counts
-    await settle(5000);
+    await settleIdle(bucket, { quiet: 2500, max: 15000, min: 3000 });
     cap.reject_requests = [...bucket];
     say(`clicked “${rej}” — ${cap.reject_requests.length} requests after`);
   }
@@ -543,7 +575,7 @@ async function consentOnePage(tab, url, opts) {
       bucket = recStart(tab.id);
       await chrome.tabs.update(tab.id, {
         url: url + (url.includes("?") ? "&" : "?") + "vici=2" });
-      await settle(opts.dwell);
+      await settleIdle(bucket);
       cap.gpc_requests = [...bucket];
       cap.gpc_signals = { header: gp.header, property: gp.prop };
       say(`GPC pass (${gp.header ? "Sec-GPC" : ""}`
@@ -747,7 +779,7 @@ const SC_BASE = "https://search.google.com/search-console";
 //
 // Reading five rows out of a table of twelve gave a capture that looked
 // complete and was not: Ooten's report said 115 pages not indexed and the two
-// rows we recognised accounted for 46 of them. Sixty-nine pages were excluded
+// rows we recognized accounted for 46 of them. Sixty-nine pages were excluded
 // for reasons nobody saw, and — worse — we could not tell whether "Soft 404"
 // was absent because it is zero or because we simply had not looked at it.
 //
@@ -1051,7 +1083,7 @@ async function consoleCapture(auditId, property, returnTabId) {
                 (draft.indexed ? 1 : 0) + (draft.not_indexed ? 1 : 0) +
                 (draft.cwv ? 1 : 0);
   if (!found) {
-    say("Nothing recognised. Google may have renamed a label, or the report " +
+    say("Nothing recognized. Google may have renamed a label, or the report " +
         "had not rendered. Nothing was sent.");
     // GO BACK ANYWAY. Failing is not a reason to abandon someone in a Search
     // Console tab wondering whether the thing is still running — the whole

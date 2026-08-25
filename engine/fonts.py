@@ -56,7 +56,7 @@ _FACES = [
 #
 # Agdasima is on Google Fonts and free. GT Walsheim Pro is licensed from
 # Grilli Type — it cannot be downloaded here and must come from whoever holds
-# the licence.
+# the license.
 #
 # EACH FAMILY REGISTERS INDEPENDENTLY. Headlines in Agdasima with body copy
 # still in Roboto is a perfectly good document; refusing to use either until

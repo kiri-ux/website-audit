@@ -318,7 +318,7 @@ def _bubbles(text, seen, limit=2):
 # URLs, the Consent Mode defaults, the failing state requirements with their
 # statute context, the container ids. The collectors fill it, the database
 # stores it, the API returns it, and until this build NOTHING RENDERED IT.
-# Grepping report.py, pdf_report.py, ui.py and summarise.py for "value" found
+# Grepping report.py, pdf_report.py, ui.py and summarize.py for "value" found
 # nothing at all.
 #
 # So the reader got one `evidence` sentence per row — "3 trackers fired before

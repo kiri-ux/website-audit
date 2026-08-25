@@ -539,7 +539,7 @@ def main():
     # capability, renamed. One extra request is the difference between a
     # measured platform and a checkpoint reporting a 400.
     from engine.aivis.providers import _tool_mismatch as _tm
-    check("the tool-shape 400 is recognised",
+    check("the tool-shape 400 is recognized",
           _tm("HTTP 400 from x: Search as tool is not enabled for this model."))
     check("and a plain bad request is NOT — it must not burn every model",
           not _tm("HTTP 400 from x: Invalid JSON payload received."))
@@ -656,10 +656,10 @@ def main():
     _shown = len(_re2.findall(r"distinct reason for", _t2))
     _head = int(_re2.search(r"Ours to fix &middot; (\d+)", _t2).group(1))
     _over = _re2.search(r"and \d+ more reasons? covering (\d+) checkpoint", _t2)
-    check("more reasons than fit are summarised, never dropped",
+    check("more reasons than fit are summarized, never dropped",
           bool(_over), f"{_shown} of {_head} shown")
     # THE ARITHMETIC IS THE POINT. A reader counting bullets against the
-    # heading must be able to reach it: shown + summarised == the heading.
+    # heading must be able to reach it: shown + summarized == the heading.
     # Before, the heading said 7 and four bullets appeared.
     check("and bullets plus overflow add up to the heading",
           bool(_over) and _shown + int(_over.group(1)) == _head,
@@ -914,7 +914,7 @@ def main():
     # self-nominations at any price. Avvo and Justia hold a free claimable
     # profile for every licensed attorney; Super Lawyers, Best Lawyers and
     # Expertise choose who appears. Two labels, two promises.
-    check("a directory the client can join is labelled as one",
+    check("a directory the client can join is labeled as one",
           "CAN JOIN" in _joined, _joined[:140])
     check("a directory they ARE on says so", "Yes" in _joined)
     check("one they are NOT on is called out by name",

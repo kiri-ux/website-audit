@@ -82,7 +82,7 @@ def main():
     # them silently would leave a client in Georgia unable to tell "we looked
     # and there is nothing to check" from "we forgot to look".
     s = summarize("Atlanta, GA × Boise, ID × Knoxville, TN")
-    check("all three states are recognised", s["states"] == ["GA", "ID", "TN"],
+    check("all three states are recognized", s["states"] == ["GA", "ID", "TN"],
           str(s["states"]))
     check("only the one we can test is sent to the scan",
           s["checkable"] == ["TN"], str(s["checkable"]))
@@ -173,7 +173,7 @@ def main():
     _src = _i.getsource(_api.submit_form)
     check("the six-URL cap is gone",
           "[:6]" not in _src.split("conversion_urls")[1][:400])
-    check("and the server de-duplicates on a normalised key",
+    check("and the server de-duplicates on a normalized key",
           "seen" in _src and "conversion_urls" in _src)
     _w2 = _i.getsource(_wk._consent)
     check("the worker scans every one of them, not the first six",

@@ -50,7 +50,7 @@ BLOCK_STATUS = (403, 406, 429, 503)
 
 # The words these pages actually print. Same list the crawler's own quality
 # assessment uses, kept here so a challenge that returns HTTP 200 — which is
-# most of them — is still recognised.
+# most of them — is still recognized.
 CHALLENGE = ("just a moment", "enable javascript", "checking your browser",
              "access denied", "captcha", "cloudflare", "are you a robot",
              "unusual traffic", "request unsuccessful", "attention required",

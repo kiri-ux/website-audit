@@ -56,7 +56,7 @@ def _stop_if_cancelled(audit_id: str):
     inside the collector heartbeat, which is the longest anything runs without
     reporting in.
 
-    A cancelled run keeps its findings. Everything answered before the stop is
+    A canceled run keeps its findings. Everything answered before the stop is
     already written, and throwing that away would make Stop a destructive
     button - people would stop using it and let bad runs finish instead.
     """
@@ -1525,10 +1525,10 @@ def _reap_abandoned():
         # could notice, is CANCELLED and not failed. Reporting it as a crash
         # would blame the site for a decision a person made.
         if row.get("cancel_at"):
-            db.update_audit(row["id"], status="cancelled", error=None,
+            db.update_audit(row["id"], status="canceled", error=None,
                             progress="stopped on request",
                             completed_at=time.time())
-            print(f"[worker] closed cancelled audit {row['id']}", flush=True)
+            print(f"[worker] closed canceled audit {row['id']}", flush=True)
             n += 1
             continue
         msg = (f"This run stopped responding {mins} minutes ago, at "
@@ -1590,9 +1590,9 @@ def main():
             # Falling through to the handler below would mark it failed with a
             # traceback and put it back on the queue twice - so pressing Stop
             # would start the run again, which is the opposite of Stop.
-            print(f"[worker] job {job['job_id']} cancelled on request",
+            print(f"[worker] job {job['job_id']} canceled on request",
                   flush=True)
-            db.update_audit(aid, status="cancelled",
+            db.update_audit(aid, status="canceled",
                             progress="stopped on request",
                             error=None, completed_at=time.time())
             q.complete(job)

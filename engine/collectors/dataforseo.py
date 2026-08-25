@@ -189,7 +189,7 @@ def collect_backlinks(domain: str) -> dict:
         sev = "Low" if rd >= 100 else ("Medium" if rd >= 25 else "High")
         add("OFF-02", rd >= 25, {"referring_domains": rd},
             f"{rd:,} referring domains.", sev,
-            "" if rd >= 25 else "Referring-domain count is low — prioritise digital "
+            "" if rd >= 25 else "Referring-domain count is low — prioritize digital "
                                 "PR, resource pages and unlinked-mention reclamation.")
     if ips is not None:
         info("OFF-03", {"referring_ips": ips}, f"{ips:,} referring IPs.")
@@ -598,7 +598,7 @@ def _anchor_shape(domain: str, out: dict) -> None:
             exact += n
     e_pct = round(100 * exact / total, 1)
     n_pct = round(100 * naked / total, 1)
-    # Over-optimised anchor text is a penalty risk; the threshold is the
+    # Over-optimized anchor text is a penalty risk; the threshold is the
     # conventional one rather than anything DataForSEO computes for us.
     out["OFF-16"] = _f("Pass" if e_pct < 20 else "Warning",
                        {"exact_match_pct": e_pct},
@@ -1023,9 +1023,9 @@ def collect_lighthouse(url: str) -> dict:
                             "uses-responsive-images", "efficient-animated-content")
                 if (audits.get(k) or {}).get("score") not in (1, None)]
     out["PERF-19"] = _f("Fail" if img_fail else "Pass", {"failing": img_fail},
-                        f"{len(img_fail)} image-optimisation audits failing: "
+                        f"{len(img_fail)} image-optimization audits failing: "
                         f"{', '.join(img_fail)}." if img_fail
-                        else "Image optimisation audits pass.",
+                        else "Image optimization audits pass.",
                         "Medium" if img_fail else "Low",
                         "Serve next-gen formats and correctly sized images."
                         if img_fail else "")

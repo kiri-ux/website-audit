@@ -244,7 +244,7 @@ def intl02(a, c):
                        f"No page declares the same language twice.", [], "Low")
     return finding("Fail", {"conflicts": conflicts[:8]},
                    f"{len(conflicts)} page(s) declare one language for two "
-                   f"different URLs, so Google honours neither.",
+                   f"different URLs, so Google honors neither.",
                    sorted({u for u, _ in conflicts})[:10], "Medium",
                    "One URL per language per page.")
 

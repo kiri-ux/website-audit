@@ -272,7 +272,7 @@ def _synthetic_rows(catalog: dict, findings: dict, prefix: str) -> list:
     They used to be counted in the coverage chart and then omitted from an
     appendix headed "the full record, by area" — so the document both charged
     the client for them and refused to name them. Now they are named, and
-    labelled with who they are waiting on.
+    labeled with who they are waiting on.
     """
     from engine.access import blocked_on
     out = []
@@ -1147,7 +1147,7 @@ def _asked_by_name(question, brand) -> bool:
 
     Derived from the text rather than read from a field, because the field
     (`prompted`) exists on the query and was never carried into the stored
-    example - so every report already produced can be labelled correctly on
+    example - so every report already produced can be labeled correctly on
     the next render instead of after another paid run.
     """
     q = str(question or "").lower()
@@ -1718,7 +1718,7 @@ def _reputation(meta, S):
 
     # ---- what Google suggests while they are typing ---------------------
     #
-    # Reproduced rather than summarised. "One negative suggestion" is a
+    # Reproduced rather than summarized. "One negative suggestion" is a
     # statistic; the drop-down itself, with "complaints" sitting seventh among
     # six harmless ones, is what a person actually sees when they start typing
     # the client's name - and the ordinary suggestions around it are what make
@@ -2405,7 +2405,7 @@ def _strength(text, S, width=6.55 * inch):
     """One strength as a card, with a plain-English line about the area."""
     # TWO NAME MAPS, AND THE CARDS WERE WRITTEN WITH THE OTHER ONE.
     #
-    # engine/report calls it "HTTPS & Security"; engine/summarise, which
+    # engine/report calls it "HTTPS & Security"; engine/summarize, which
     # writes these cards, calls it "HTTPS and security". Matching against one
     # map meant any area whose two names differ got no plain-English line at
     # all - the whole reason the card exists. Both maps, longest name first so
@@ -3685,7 +3685,7 @@ def build_pdf(meta: dict, scores: dict, findings: dict, catalog: dict,
             if t.get("why"):
                 block.append(Paragraph(f"<b>Why it matters.</b> {_pl(t['why'])}",
                                        S["body"]))
-            # Scope, not instructions — see SERVICE_ACTION in summarise.py.
+            # Scope, not instructions — see SERVICE_ACTION in summarize.py.
             if t.get("service") or t.get("action"):
                 block.append(Paragraph(
                     f"<b>How we handle it.</b> "

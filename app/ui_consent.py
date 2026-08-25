@@ -32,7 +32,7 @@ from .ui import _shell, e, _fmt_when
 from engine.report import extension_link as _ext_link
 
 # Severity words the scanner uses on a pre-consent row, worst first. Used for
-# ordering and for the chip colour; anything unrecognised sorts last and reads
+# ordering and for the chip color; anything unrecognized sorts last and reads
 # as informational, because inventing a severity for a word we do not know is
 # how a scanner starts overstating its case.
 _SEV = {"critical": 0, "high": 1, "ungated": 1, "medium": 2, "warning": 2,
@@ -40,7 +40,7 @@ _SEV = {"critical": 0, "high": 1, "ungated": 1, "medium": 2, "warning": 2,
 
 
 def _gpc_states(states) -> list:
-    """Which of these states require Global Privacy Control to be honoured."""
+    """Which of these states require Global Privacy Control to be honored."""
     try:
         from engine.consent.state_checks import STATE_CHECKS
     except Exception:  # noqa: BLE001
@@ -82,7 +82,7 @@ _DEFS = {
                     "updates it when the visitor chooses. Without a default, "
                     "Google tags run as if consent was given.",
     "gpc": "Global Privacy Control. A browser signal that says 'treat me as "
-           "opted out'. Twelve states require a site to honour it, and no "
+           "opted out'. Twelve states require a site to honor it, and no "
            "banner click is involved — the browser sends it on every "
            "request.",
     "pre_consent": "Requests the page made before anyone agreed to anything. "
@@ -90,7 +90,7 @@ _DEFS = {
                    "doing its job or decorating a page that tracks anyway.",
     "denied_ping": "A Google request carrying gcs= in a denied state. It is "
                    "cookieless and carries no identifier, so it is correct "
-                   "behaviour, not a violation — which is why it is marked "
+                   "behavior, not a violation — which is why it is marked "
                    "informational rather than counted as a fire.",
     "ungated": "Fired with no consent mechanism on the page at all. The "
                "finding is the missing banner, not this one tag.",
@@ -114,7 +114,7 @@ _DEFS = {
                   "That is a firing problem, not a missing install.",
     "mode": "Full means a real browser loaded the page, watched the network "
             "and clicked the banner. Basic means raw HTML only — the "
-            "banner, Consent Mode and pre-consent behaviour were never "
+            "banner, Consent Mode and pre-consent behavior were never "
             "tested, so their sections are empty for want of a browser, not "
             "for want of a problem.",
     "verdict": "The scanner's one-line read on what to do next. It is a "
@@ -201,29 +201,40 @@ def _rows(headers, rows, widths=None):
 
 
 def _trackers(items, page_col=False):
-    """A tracker table. `when` is the whole point — a vendor name alone says
-    nothing about whether it is a problem."""
+    """
+    The fired-tag list, in the standalone scanner's shape.
+
+    BADGE FIRST, EVIDENCE ATTACHED.
+
+    As a four-column table the severity sat in column three and the URL in
+    column four, so reading "is this a problem" meant crossing the row and
+    back. The original tool puts the badge hard against the vendor name with
+    the request underneath it, which is one glance instead of three — and it
+    is the same object the product cards already use, so the two halves of
+    this page stop looking like two different products.
+    """
     out = []
     for t in sorted(items, key=lambda x: (_SEV.get(
             str(x.get("severity") or "").lower(), 9),
             str(x.get("vendor") or ""))):
-        row = [e(t.get("vendor") or "?"),
-               _chip(t.get("severity") or "recorded",
-                     _sev_kind(t.get("severity"))),
-               f"<code style='font-size:11.5px;word-break:break-all'>"
-               f"{e((t.get('url') or '')[:160])}</code>"]
+        sev = str(t.get("severity") or "recorded").lower()
+        kind = {"bad": "bad", "hold": "warn"}.get(_sev_kind(sev), "neutral")
+        bits = []
+        if page_col and t.get("_page"):
+            bits.append(f"<span class='vsrc'>{e(t['_page'])}</span>")
         if t.get("note"):
-            row[2] += (f"<div class='sm' style='color:var(--muted)'>"
-                       f"{e(t['note'])}</div>")
-        if page_col:
-            row.insert(0, e(t.get("_page") or "—"))
-        out.append(row)
-    heads = ["Vendor", "Severity", "Request"]
-    widths = ["22%", "14%", "64%"]
-    if page_col:
-        heads.insert(0, "Page")
-        widths = ["24%", "18%", "12%", "46%"]
-    return _rows(heads, out, widths)
+            bits.append(f"<span class='vev'>{e(t['note'])}</span>")
+        out.append(
+            f"<li><span class='vb vb--{kind}'>"
+            f"{e(sev if sev != 'recorded' else 'recorded')}</span>"
+            f"<div><b>{e(t.get('vendor') or '?')}</b> "
+            + " ".join(bits)
+            + (f"<div class='vurl'>{e((t.get('url') or '')[:220])}</div>"
+               if t.get("url") else "")
+            + "</div></li>")
+    if not out:
+        return ""
+    return f"<div class='vprodc'><ul>{''.join(out)}</ul></div>"
 
 
 def _tag(items, page):
@@ -579,7 +590,7 @@ def consent_html(audit: dict, detail: dict | None) -> str:
 
     # An untested tile gets a GREY edge, never the default blue. The accent bar
     # is the only part of a tile you read from across the room, and blue is the
-    # colour every other tile on this dashboard uses for "here is a number".
+    # color every other tile on this dashboard uses for "here is a number".
     _GREY = "var(--line-2)"
 
     def _untested():
@@ -678,7 +689,7 @@ def consent_html(audit: dict, detail: dict | None) -> str:
     else:
         parts.append(_sec(
             "Consent platform",
-            "<div class='card'><b>No recognised consent platform.</b>"
+            "<div class='card'><b>No recognized consent platform.</b>"
             "<div class='sm' style='color:var(--ink2);margin-top:6px'>"
             "Either there is none, or the banner is custom-built and carries "
             "no signature the scanner knows. Worth thirty seconds in a "
@@ -782,7 +793,7 @@ def consent_html(audit: dict, detail: dict | None) -> str:
            if scan.get("no_requests_recorded") else "")
         + (f"<div class='card' style='margin-top:9px;border-left:3px solid "
            f"var(--critical);color:#8a1c16'><b>Traffic was recorded and none "
-           f"of it was recognised.</b> {_seen:,} requests were captured on a "
+           f"of it was recognized.</b> {_seen:,} requests were captured on a "
            f"site running a Tag Manager container, and not one matched a "
            f"known ad or analytics endpoint. That is a fault in this run, not "
            f"a clean site &mdash; treat every &ldquo;nothing fired&rdquo; "
@@ -822,8 +833,8 @@ def consent_html(audit: dict, detail: dict | None) -> str:
 
     parts.append(fired(
         "Fired before consent", pre, not basic,
-        "Read the severity column, not the row count — an expected cookieless "
-        "ping sits in the same table as a real ungated fire.",
+        "Read the badge, not the row count — an expected cookieless ping sits "
+        "in the same list as a real ungated fire.",
         "Not tested: this scan ran without a browser, so nothing was watched "
         "as the page loaded.", tip="pre_consent"))
 
@@ -838,14 +849,14 @@ def consent_html(audit: dict, detail: dict | None) -> str:
         "Fired after Reject", scan.get("post_reject") or [],
         scan.get("reject_tested"),
         "A reject button that changes nothing is worse than none — it "
-        "documents the intent to honour a choice that was not honoured.",
+        "documents the intent to honor a choice that was not honored.",
         reject_why, tip="reject"))
 
     gpc_states = _gpc_states(want.get("states") or scan.get("states") or [])
     gpc_why = ("Not tested: this scan ran without a browser." if basic else
                f"Not applicable: none of the states this client sells in "
                f"({e(', '.join(want.get('states') or scan.get('states') or [])) or 'none recorded'}) "
-               f"require Global Privacy Control to be honoured."
+               f"require Global Privacy Control to be honored."
                if not gpc_states else
                f"Not tested, although {e(', '.join(gpc_states))} "
                f"{'requires' if len(gpc_states) == 1 else 'require'} it. "
@@ -853,7 +864,7 @@ def consent_html(audit: dict, detail: dict | None) -> str:
     parts.append(fired(
         "Fired despite Global Privacy Control", scan.get("gpc_fires") or [],
         scan.get("gpc_tested"),
-        "Twelve states require GPC to be honoured as an opt-out, and no "
+        "Twelve states require GPC to be honored as an opt-out, and no "
         "banner click is involved.", gpc_why, tip="gpc"))
 
     after = scan.get("post_consent") or []
@@ -869,7 +880,7 @@ def consent_html(audit: dict, detail: dict | None) -> str:
             + "".join(_chip(x.get("vendor") if isinstance(x, dict) else x,
                             "ok") for x in after)
             + "</div></div>",
-            "These waited for a choice, which is the behaviour being asked "
+            "These waited for a choice, which is the behavior being asked "
             "for."))
 
     # ------------------------------------------------------------- products

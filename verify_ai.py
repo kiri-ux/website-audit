@@ -42,7 +42,7 @@ def pr(tp, fp, fn):
 
 mp, mr = pr(tp, fp, fn); cp, cr_ = pr(ctp, cfp, cfn)
 n = len(out["results"])
-print(f"\n{n} answers analysed\n")
+print(f"\n{n} answers analyzed\n")
 print(f"  MENTION   precision {mp*100:5.1f}%   recall {mr*100:5.1f}%   "
       f"(tp={tp} fp={fp} fn={fn} tn={tn})")
 print(f"  CITATION  precision {cp*100:5.1f}%   recall {cr_*100:5.1f}%   "

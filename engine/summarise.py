@@ -1131,7 +1131,7 @@ def polish_with_llm(summary: dict, meta: dict) -> dict:
         # the polish is subtle; it never ran. `can_polish` below lets the UI
         # decline to offer a control that cannot do anything, which is the
         # honest version of this.
-        print("[summarise] polish skipped - no ANTHROPIC_API_KEY or "
+        print("[summarize] polish skipped - no ANTHROPIC_API_KEY or "
               "OPENAI_API_KEY on this container", flush=True)
         return summary
 

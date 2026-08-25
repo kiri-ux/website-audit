@@ -261,7 +261,7 @@ https://vici-audit-api.onrender.com/oauth/google/start?t=<OAUTH_SETUP_TOKEN>&lab
 
 `label` is your name for that login and becomes the key in `GOOGLE_TOKENS`. It
 is also what the report quotes when it says which login read the data, so use
-something you will recognise a year from now.
+something you will recognize a year from now.
 
 **4. Approve.** The callback prints the complete `GOOGLE_TOKENS` value with the
 new login merged in. Paste it onto **`vici-audit-worker`** — the collectors run

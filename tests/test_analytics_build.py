@@ -212,7 +212,7 @@ def main():
     # Search Console and read it off.
     #
     # It is not true any more, and leaving the assertion alone would have
-    # pinned the old behaviour in place. An empty GSC-20 now means OUR
+    # pinned the old behavior in place. An empty GSC-20 now means OUR
     # DataForSEO call missed — a bug we fix, not an errand we hand to an
     # analyst who has no way to do anything about it.
     check("GSC-20 is ours to fix, not a missing grant",

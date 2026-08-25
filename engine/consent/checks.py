@@ -85,7 +85,7 @@ def _states(scan) -> list:
 
 
 def _gpc_states(scan) -> list:
-    """Those of them that require honouring Global Privacy Control."""
+    """Those of them that require honoring Global Privacy Control."""
     try:
         from .state_checks import STATE_CHECKS
     except Exception:  # noqa: BLE001
@@ -413,7 +413,7 @@ def findings_from_scan(scan: dict | None) -> dict:
         if not scan.get("gpc_tested") and not _gpc_states(scan):
             # NOT APPLICABLE IS NOT UNMEASURED.
             #
-            # GPC has to be honoured in twelve states. Tennessee is not one of
+            # GPC has to be honored in twelve states. Tennessee is not one of
             # them, so for a Knoxville firm selling only in TN the scanner
             # correctly skips the pass — and the row then reported the skip as
             # a gap on our fix list. A check that does not apply to this
@@ -422,7 +422,7 @@ def findings_from_scan(scan: dict | None) -> dict:
             out["CONS-06"] = _f(
                 "N/A", {"states": _states(scan), "gpc_required_in": []},
                 f"Global Privacy Control does not apply here: none of the "
-                f"states this client sells in ({st}) require honouring it.",
+                f"states this client sells in ({st}) require honoring it.",
                 "Low",
                 "Add a state that does — California, Colorado, Connecticut, "
                 "Delaware, Maryland, Minnesota, Montana, Nebraska, New "
@@ -459,7 +459,7 @@ def findings_from_scan(scan: dict | None) -> dict:
     link = scan.get("optout_link")
     if link:
         out["CONS-07"] = _f("Pass", {"link_text": link},
-                            f"An opt-out link is present, labelled "
+                            f"An opt-out link is present, labeled "
                             f"“{link}”.", "Low")
     else:
         out["CONS-07"] = _f(
@@ -467,7 +467,7 @@ def findings_from_scan(scan: dict | None) -> dict:
             "No “Do Not Sell or Share” style opt-out link was found "
             "on this page. Several state laws require one in the footer of "
             "every page.", "High",
-            "Add a clearly labelled opt-out link to the site footer.")
+            "Add a clearly labeled opt-out link to the site footer.")
 
     # ---- CONS-08 state law ---------------------------------------------------
     checks = scan.get("state_checks") or []

@@ -177,11 +177,11 @@ def main():
     check("a higher score draws a longer bar",
           sorted(round(hi_ - lo) for lo, hi_, _ in bars.values())[-1] >
           sorted(round(hi_ - lo) for lo, hi_, _ in bars.values())[0])
-    check("unassessed rows are labelled in words, not just by colour",
+    check("unassessed rows are labeled in words, not just by color",
           sum(1 for t in rec.texts if "Not assessed" in t["t"]) == 2)
     check("unassessed rows show a dash for the score, never 0",
           sum(1 for t in rec.texts if t["t"] == "—") == 2)
-    check("no row is labelled '0'", not any(t["t"].strip() == "0" for t in rec.texts))
+    check("no row is labeled '0'", not any(t["t"].strip() == "0" for t in rec.texts))
 
     print("\nTHE REPORT TYPEFACE")
     # Falling back to Helvetica is deliberate and safe, but it is also silent,
@@ -411,7 +411,7 @@ def main():
           len([r for r in rec.rects if r["fill"] and r["h"] > 10]) == 2,
           str([round(r["w"], 1) for r in rec.rects if r["fill"] and r["h"] > 10]))
     cov = coverage_segments(132, 38, 128, 15)
-    check("coverage segments are labelled in words",
+    check("coverage segments are labeled in words",
           [c[0] for c in cov] == ["Measured", "Need your access",
                                   "We complete these", "Not applicable"])
     check("the client-facing ask is the small number, not the pile",
@@ -672,7 +672,7 @@ def main():
     intro = _ai_intro(v)
     check("the intro no longer claims none of the questions named them",
           "None of them named you" not in intro, intro[:60])
-    check("a question carrying the brand is labelled as such",
+    check("a question carrying the brand is labeled as such",
           _asked_by_name("Is Ooten Law Firm legit or a scam?",
                          "The Ooten Law Firm"))
     check("and a category question is not",

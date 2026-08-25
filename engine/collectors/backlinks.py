@@ -110,7 +110,7 @@ def collect_backlinks(domain: str) -> dict:
         out["OFF-02"] = _f("Pass" if rd >= 25 else "Fail", {"referring_domains": rd},
                            f"{rd:,} referring domains ({vendor}).", sev,
                            "" if rd >= 25 else "Referring-domain count is low; "
-                                               "prioritise digital PR and "
+                                               "prioritize digital PR and "
                                                "resource-page link building.",
                            src=vendor)
     if data.get("referring_ips") is not None:

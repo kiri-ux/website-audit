@@ -57,7 +57,7 @@ from . import (crawler_checks, tagdetect, security, geo_schema, perf,  # noqa: E
 
 # Downstream consumers (severity escalation, the renderer, trend tracking) all
 # key off value["count"]. Checkers that name their countable field something
-# more descriptive get normalised here rather than each caller guessing.
+# more descriptive get normalized here rather than each caller guessing.
 _COUNT_ALIASES = ("count", "pages_affected", "missing", "missing_lang", "invalid",
                   "malformed_lines", "http_pages", "not_lazy", "without_srcset",
                   "disallow_rules", "skipped_levels")

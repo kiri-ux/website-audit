@@ -276,7 +276,7 @@ def build_panel(p: ClientProfile, target_size: int = 40) -> list[Query]:
 
     def add(intent, text, prompted, market=""):
         text = " ".join(text.split())
-        # THE LAST LINE OF DEFENCE AGAINST AN EMPTY SLOT.
+        # THE LAST LINE OF DEFENSE AGAINST AN EMPTY SLOT.
         #
         # Every caller is guarded, and a template with a hole in it still
         # reached five platforms once. This is cheap and it cannot be
