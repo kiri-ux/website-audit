@@ -184,6 +184,32 @@ def result_from_capture(cap: dict, states=None, products=None,
         "reject": len(cap.get("reject_requests") or []),
         "gpc": len(cap.get("gpc_requests") or []),
     }
+    # AND A SAMPLE OF WHAT WAS RECORDED, WHEN NOTHING MATCHED.
+    #
+    # A capture came back with 105 requests and zero classified trackers on a
+    # site running a Tag Manager container. The count proved the recorder
+    # attached and told us nothing else, and the URLs — the one thing that
+    # would have answered it in a glance — were thrown away the moment they
+    # were classified. Kept now, bounded, and ONLY in the case that needs
+    # them: traffic recorded, nothing recognised.
+    _all = ((cap.get("pre_requests") or []) + (cap.get("post_requests") or [])
+            + (cap.get("reject_requests") or []) + (cap.get("gpc_requests") or []))
+    if _all and not (r["pre_consent"] or r.get("gpc_fires")
+                     or r.get("post_reject") or r.get("post_consent")):
+        seen, sample = set(), []
+        for u in _all:
+            try:
+                host = u.split("/")[2]
+            except Exception:  # noqa: BLE001
+                host = u[:60]
+            if host in seen:
+                continue
+            seen.add(host)
+            sample.append(u[:220])
+            if len(sample) >= 25:
+                break
+        r["unmatched_sample"] = sample
+
     r["no_requests_recorded"] = (
         sum(r["capture_counts"].values()) == 0 and len(html) > 500)
 

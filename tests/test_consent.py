@@ -398,6 +398,39 @@ def main():
               {"id": "z", "client_name": "C", "target_url": "https://x.com"},
               {"scan": _silent, "pages": [], "requested": {}}))
 
+    # RECORDED BUT NOT CLASSIFIED IS ITS OWN FAILURE.
+    #
+    # A capture came back with 105 requests and zero recognised trackers on a
+    # site running a Tag Manager container. "105 recorded" proved the recorder
+    # attached and told us nothing else, and the URLs — the one thing that
+    # would answer it — were discarded at classification time.
+    _odd = result_from_capture({
+        "url": "https://x.com/", "html": "<html>" + "z" * 3000 + "</html>",
+        "scripts": ["https://www.googletagmanager.com/gtm.js?id=GTM-AB1"],
+        "pre_requests": ["https://x.com/style.css", "https://x.com/a.png",
+                         "https://fonts.gstatic.com/f.woff2"],
+        "banner_visible": False, "consent_defaults_read": True})
+    check("traffic with nothing recognised keeps a sample of the URLs",
+          len(_odd.get("unmatched_sample") or []) == 2,
+          str(_odd.get("unmatched_sample")))
+    check("one per host, so a hundred images do not fill it",
+          len(result_from_capture({
+              "url": "https://x.com/", "html": "<html>" + "z" * 3000 + "</html>",
+              "scripts": [], "banner_visible": False,
+              "consent_defaults_read": True,
+              "pre_requests": [f"https://x.com/img{i}.png" for i in range(60)]
+          }).get("unmatched_sample") or []) == 1)
+    check("a capture that DID recognise something keeps no sample",
+          not _loud.get("unmatched_sample"))
+    _oddpage = _ch({"id": "z", "client_name": "C", "target_url": "https://x.com"},
+                   {"scan": _odd, "pages": [], "requested": {}})
+    check("and the page says traffic was recorded and not recognised",
+          "none of it was recognised" in _oddpage)
+    check("showing what it saw",
+          "fonts.gstatic.com" in _oddpage)
+    check("with the per-pass split, not one ambiguous total",
+          "pre-consent 3" in _oddpage, str(_odd.get("capture_counts")))
+
     print("\nA VENDOR OUTAGE IS NOT A FACT ABOUT THE SITE")
     # Nine rows read one Google call. A consent-only re-run does not touch
     # performance and was never asked to — but it re-ran the checks anyway,

@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-103"
-BUILD_NOTES = ("A re-run that never asked for Performance stops replacing nine good speed measurements with nine gaps - a vendor outage is not a fact about the site, so the last real number carries forward with a button to refresh it; and a browser capture that recorded zero network requests now says so loudly instead of reporting a clean site")
+BUILD = "2026.08.20-104"
+BUILD_NOTES = ("105 requests recorded next to nothing fired is a contradiction the page now names out loud, with the count split by pass and a sample of what was actually recorded - the split was on disk already and only ever a rendering decision not to show it")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

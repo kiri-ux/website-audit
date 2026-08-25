@@ -724,15 +724,47 @@ def consent_html(audit: dict, detail: dict | None) -> str:
     # every section below read "nothing fired" — the same words a clean site
     # gets. The count is the difference between the two, so it is on screen
     # next to the steps rather than buried in a payload nobody opens.
+    # ONE TOTAL WAS NOT ENOUGH.
+    #
+    # "105 requests recorded" next to "nothing fired" is a contradiction, and
+    # a single total cannot say WHICH of the four passes recorded them — so it
+    # proved the recorder attached and nothing else. Split by pass, the answer
+    # is one glance: requests on the GPC load and none on the pre-consent load
+    # is a different bug from requests everywhere and no classification.
+    #
+    # The split was already being stored. It was only ever a rendering
+    # decision not to show it, which is the worst kind of missing diagnostic:
+    # the data was on disk the whole time.
     _cc = scan.get("capture_counts") or {}
     _seen = sum(_cc.values()) if _cc else None
     _count_bit = ""
     if _seen is not None:
+        _bits = " · ".join(
+            f"{_lbl} {_cc.get(_k, 0):,}"
+            for _k, _lbl in (("pre", "pre-consent"), ("post", "after accept"),
+                             ("reject", "after reject"), ("gpc", "GPC")))
         _count_bit = (
             f"<span class='vstep vstep--{'y' if _seen else 'n'}' "
-            f"style='margin-left:auto;margin-right:0'>"
+            f"style='margin-left:auto;margin-right:0' title='{e(_bits)}'>"
             f"<i>{'&#10003;' if _seen else '&#10005;'}</i>"
-            f"{_seen:,} request{'s' if _seen != 1 else ''} recorded</span>")
+            f"{_seen:,} request{'s' if _seen != 1 else ''} recorded "
+            f"<span style='color:var(--muted);font-weight:400'>"
+            f"({e(_bits)})</span></span>")
+
+    # RECORDED BUT NOT CLASSIFIED IS ITS OWN FAILURE.
+    #
+    # Traffic was captured and none of it matched a known ad or analytics
+    # endpoint. On a site with a Tag Manager container that is very close to
+    # impossible, and every section below reports it as "nothing fired" —
+    # which is the same sentence a genuinely clean site gets. A graceful
+    # degradation needs something loud somewhere else, or it is just a silent
+    # failure with good manners.
+    _classified = (len(scan.get("pre_consent") or [])
+                   + len(scan.get("post_reject") or [])
+                   + len(scan.get("gpc_fires") or [])
+                   + len(scan.get("post_consent") or []))
+    _mismatch = bool(_seen and not _classified
+                     and (scan.get("gtm") or {}).get("found"))
     parts.append(_sec(
         "Container and configuration",
         _rows(["", "State", "Detail"], cfg_rows, ["30%", "16%", "54%"])
@@ -747,7 +779,22 @@ def consent_html(audit: dict, detail: dict | None) -> str:
            "requests, which a real page load cannot do &mdash; the recorder "
            "did not attach. Every &ldquo;nothing fired&rdquo; below is that, "
            "not a clean site. Run the capture again.</div>"
-           if scan.get("no_requests_recorded") else ""),
+           if scan.get("no_requests_recorded") else "")
+        + (f"<div class='card' style='margin-top:9px;border-left:3px solid "
+           f"var(--critical);color:#8a1c16'><b>Traffic was recorded and none "
+           f"of it was recognised.</b> {_seen:,} requests were captured on a "
+           f"site running a Tag Manager container, and not one matched a "
+           f"known ad or analytics endpoint. That is a fault in this run, not "
+           f"a clean site &mdash; treat every &ldquo;nothing fired&rdquo; "
+           f"below as unmeasured.</div>" if _mismatch else "")
+        + (("<details style='margin-top:9px'><summary class='sm' "
+            "style='cursor:pointer;color:var(--blue)'>What the browser "
+            "recorded &mdash; one per host</summary>"
+            "<div class='card' style='margin-top:6px'>"
+            + "".join(f"<div class='vurl'>{e(u)}</div>"
+                      for u in (scan.get("unmatched_sample") or []))
+            + "</div></details>")
+           if scan.get("unmatched_sample") else ""),
         "", tip="gtm"))
 
     # ----------------------------------------------------------- the trackers
