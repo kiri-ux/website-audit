@@ -151,6 +151,24 @@ def build() -> str:
     dropped = 0
     if prev:
         ship = [f for f in files if prev.get(f) != now[f]]
+        # THE EXTENSION IS ONE UNIT, NOT A SET OF FILES.
+        #
+        # Chrome refuses to load a manifest whose icon is missing — the whole
+        # extension, over one PNG. The incremental zip is right about every
+        # other directory in this project, where an unshipped unchanged file
+        # is simply already there, and wrong about this one: the operator does
+        # not deploy the extension folder, they REPLACE it, and a folder
+        # replaced with the four files that changed is a folder with no icons
+        # in it. "Could not load icon 'icons/icon16.png'. Could not load
+        # manifest."
+        #
+        # So the moment anything under extension/ changes, all of it ships.
+        # It is a dozen files and eighty kilobytes, once in a while.
+        if any(f.startswith("extension/") or f.startswith("extension\\")
+               for f in ship):
+            _ext = [f for f in files if f.startswith("extension/")
+                    or f.startswith("extension\\")]
+            ship = sorted(set(ship) | set(_ext))
         dropped = len(files) - len(ship)
 
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:

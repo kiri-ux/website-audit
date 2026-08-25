@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Site Scanner",
-  "version": "1.5.0",
-  "description": "Runs the audit, the consent scan (including the Global Privacy Control pass) and the Search Console capture from your own signed-in browser.",
+  "version": "1.6.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAodQL5KpFulG6XPi9wvrQJ6svJkuK9Ggu7uqyg1hj044pZvqAxI8ZU3YYsrIOVKOnfE2jSY4/UFtLsYgfgTIxomj6FCWA5ynpf0KjciXKRuueYDvdl33JlygT+6hFuvurWqObJ/NhyEcNFKn3Ou/0jG4IItW4gK6s5ozEuvcrnJ/fTxQ8yf2GxrsjTmHSIuwjdfQgZqLKu4hIEeucv258yrnoBgM4dS+nw8fy8KlVag9T2w2gQeyV2ffWKJmnJMABkuAHeyNWod1UAuJuPNdCXOGdqsB23v/pcvJdUe+GPVxPjVTR+9yNi08XISYaeoHH9rfvi4Bq149mSrwtjEspAwIDAQAB",
+  "description": "Runs the audit, the consent scan, the speed test and the Search Console capture from your own signed-in browser.",
   "permissions": [
     "activeTab",
     "scripting",
@@ -50,7 +51,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "gpc.js"
+        "gpc.js",
+        "popup.html"
       ],
       "matches": [
         "<all_urls>"

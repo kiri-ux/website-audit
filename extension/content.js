@@ -210,6 +210,27 @@ chrome.runtime.onMessage.addListener((msg, _s, respond) => {
   });
 })();
 
+(function wireSpeedTest() {
+  // The report page's internal panel knows nine rows came back unanswered
+  // because one Google call failed. This is the button that re-asks Google
+  // from here, where the call works.
+  const el = document.getElementById("vici-fix");
+  if (!el) return;
+  el.dataset.extension = "present";
+  el.dataset.version = chrome.runtime.getManifest().version;
+  const btn = document.getElementById("vici-fix-go");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    btn.disabled = true;
+    btn.textContent = "Speed test started — watch the extension popup";
+    chrome.runtime.sendMessage({
+      type: "VICI_PSI_FOR",
+      auditId: el.dataset.auditId,
+      url: el.dataset.target
+    });
+  });
+})();
+
 (function wireConsentPage() {
   // Same hook, different run. The consent page is where somebody is looking
   // at a scan that says "not tested: this ran without a browser" — which is

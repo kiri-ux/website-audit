@@ -1203,6 +1203,69 @@ def ingest_console_capture(audit_id: str, payload: dict,
             "overall": (scores.get("overall") or {}).get("score")}
 
 
+@app.post("/api/audits/{audit_id}/psi-capture")
+def ingest_psi_capture(audit_id: str, payload: dict,
+                       x_api_key: str | None = Header(None)):
+    """
+    Accept a Lighthouse report fetched in the operator's browser.
+
+    THE THIRD ROUTE TO THE SAME ENDPOINT.
+
+    PageSpeed Insights is refused from Render often enough to take out the
+    whole Performance section in one go — nine checkpoints, nine identical
+    "the speed-testing service did not respond" rows in the internal panel,
+    and nothing about the client's site involved in any of it. The DataForSEO
+    Lighthouse fallback has its own bad days, and when both miss there was no
+    third option but to re-run the audit and hope.
+
+    The operator's own Chrome is a third route to the same public Google
+    endpoint, from a residential IP Google is not rate-limiting. It costs
+    nothing and it needs no credential.
+
+    THE EXTENSION GRADES NOTHING. It posts the raw PSI response; the same nine
+    checkers read it here. A browser that decided what a good LCP was would
+    eventually disagree with the server about the same site, with no way to
+    tell which was right.
+    """
+    p = principal(x_api_key)
+    a = db.get_audit(audit_id, p.scope)
+    if not a:
+        raise HTTPException(404, "audit not found")
+    report = payload.get("psi") or payload.get("report") or payload
+    if not (report or {}).get("lighthouseResult"):
+        raise HTTPException(400, "payload carried no lighthouseResult — the "
+                                 "PageSpeed call did not return a report")
+
+    from engine.checks.perf import findings_from_psi
+    rows = findings_from_psi(payload.get("url") or a["target_url"], report)
+    if not rows:
+        raise HTTPException(400, "the report was readable but answered none "
+                                 "of the nine checkpoints")
+    for f in rows.values():
+        # WHERE THE NUMBER CAME FROM, ON THE ROW ITSELF.
+        #
+        # A report where six areas were measured on the server and one was
+        # measured on somebody's laptop should say so somewhere. This is the
+        # somewhere: the value block the internal panel and the findings table
+        # both already read.
+        f.setdefault("value", {})
+        if isinstance(f["value"], dict):
+            f["value"]["measured_in"] = "operator browser"
+    db.save_findings(audit_id, rows)
+
+    findings = db.get_findings(audit_id)
+    cat = db.catalog()
+    sc = engine_scoring.score(findings, cat, a.get("vertical"))
+    db.save_scores(audit_id, sc)
+
+    answered = sum(1 for f in rows.values() if f.get("status") != "Need Access")
+    print(f"[api] {audit_id} PageSpeed capture ingested — {answered}/{len(rows)} "
+          f"rows answered from the browser", flush=True)
+    return {"ok": True, "answered": answered, "total": len(rows),
+            "filled": sorted(rows), "report": f"/audits/{audit_id}",
+            "overall": (sc.get("overall") or {}).get("score")}
+
+
 @app.post("/api/audits/{audit_id}/consent-capture")
 def ingest_consent_capture(audit_id: str, payload: dict,
                            x_api_key: str | None = Header(None)):

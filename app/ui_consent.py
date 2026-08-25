@@ -29,6 +29,7 @@ things.
 from __future__ import annotations
 
 from .ui import _shell, e, _fmt_when
+from engine.report import extension_link as _ext_link
 
 # Severity words the scanner uses on a pre-consent row, worst first. Used for
 # ordering and for the chip colour; anything unrecognised sorts last and reads
@@ -305,16 +306,24 @@ def _capture_panel(aid, url, why, heading="This scan ran without a browser"):
         f"class='btn' type='button'>Run the consent capture in this "
         f"browser</button></p>"
         f"<div id='vici-consent-manual'>"
-        f"<p class='sm' style='color:var(--ink2);margin:10px 0 0'>"
-        f"<b>The Site Scanner extension is not installed in this browser.</b> "
-        f"<a href='/extension.zip'>Download it</a>, unzip it somewhere "
-        f"permanent, then load it unpacked from <code>chrome://extensions</code> "
-        f"{_copy('chrome://extensions')} with Developer mode on. Reload this "
-        f"page and the button appears.</p>"
-        f"<p class='sm' style='color:var(--ink2);margin:8px 0 0'>Or drive it "
-        f"by hand: open the site, click the extension, choose "
-        f"<b>Consent scan</b>, and paste audit id <code>{e(aid)}</code> "
-        f"{_copy(aid)}</p></div>"
+        # NOT INSTALLED AND NOT UP TO DATE LOOK IDENTICAL FROM HERE, and the
+        # second is far more common — it is the state everybody is in for the
+        # ten minutes after we ship. Telling someone to download and unzip an
+        # extension already sitting in their toolbar is the wrong instruction
+        # in the more likely case, so the direct link goes FIRST: the id is
+        # pinned in the manifest, so it opens whatever version is installed.
+        f"<p class='sm' style='color:var(--ink2);margin:10px 0 0;"
+        f"line-height:1.65'>"
+        f"<b>The button needs the Site Scanner extension, and this browser is "
+        f"not answering.</b> If it is installed, it is older than this build "
+        f"&mdash; <a href='{e(_ext_link('consent', aid, url))}'><b>open it "
+        f"directly</b></a> (the audit id travels with the link), then reload "
+        f"it at <code>chrome://extensions</code> {_copy('chrome://extensions')} "
+        f"to get the button back.</p>"
+        f"<p class='sm' style='color:var(--ink2);margin:8px 0 0'>"
+        f"Not installed at all? <a href='/extension.zip'>Download it</a>, "
+        f"unzip it somewhere permanent, and load it unpacked with Developer "
+        f"mode on. Audit id <code>{e(aid)}</code> {_copy(aid)}</p></div>"
         f"<p class='sm' style='color:var(--muted);margin:12px 0 0'>It opens "
         f"the page four times — once untouched, once after Accept, once after "
         f"Reject, once with Global Privacy Control on — and uploads what "

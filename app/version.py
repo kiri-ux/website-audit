@@ -12,14 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-99"
-BUILD_NOTES = ("The snapshot draws the star bands instead of describing them, "
-               "an extension consent capture is now stored and rendered "
-               "rather than reduced to nine rows, the capture path gained the "
-               "verdict, the product pixels and the state checks it always "
-               "had the inputs for, the extension runs a real GPC pass, and "
-               "the consent page leads with the four answers and offers the "
-               "capture wherever the browser half is missing")
+BUILD = "2026.08.20-100"
+BUILD_NOTES = ("Nine Performance rows that died on one refused Google call can now be filled from the operator's browser, every capture has a direct link into the extension because its id is pinned, an area where nothing answered stops claiming it was measured, and the extension ships whole so Chrome stops refusing a manifest over a missing icon")
+
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where
 # the audience is whoever is checking what actually shipped.

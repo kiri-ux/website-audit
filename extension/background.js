@@ -567,6 +567,103 @@ async function consentRun(startUrl) {
   chrome.runtime.sendMessage({ type: "VICI_STATE", state }).catch(() => {});
 }
 
+// ===================================================================
+// PAGESPEED CAPTURE
+//
+// Nine checkpoints read one Lighthouse report, so when PageSpeed Insights
+// refuses the server it is never one missing row — it is the whole
+// Performance section, nine identical "the speed-testing service did not
+// respond" lines, with nothing about the client's site involved in any of it.
+// Render's egress pool is shared and gets 429'd; the DataForSEO fallback has
+// its own bad days.
+//
+// This browser is a third route to the SAME public Google endpoint, on a
+// residential IP nobody is rate-limiting, needing no credential. There is
+// nothing clever here — it is one fetch that works from here and not from
+// there.
+//
+// It posts the raw response. The extension does not decide what a good LCP
+// is; the same nine checkers grade it server-side, or the browser and the
+// server would eventually disagree about the same site with no way to tell
+// which was right.
+// ===================================================================
+
+const PSI_ENDPOINT =
+  "https://www.googleapis.com/pagespeedonline/v5/runPagespeed";
+
+async function psiRun(startUrl, auditId) {
+  const c = await cfg();
+  const id = auditId || c.auditId;
+  if (!c.apiBase || !id) { say("ERROR: set API URL and audit ID first"); return; }
+  state = { running: true, done: 0, total: 2, log: state.log, pages: [], extras: {} };
+  keepAlive(true);
+  say(`speed test of ${startUrl}`);
+
+  // MOBILE, because that is the strategy the server asks for and the one
+  // Google ranks on. Matching it matters more than it looks: a desktop report
+  // would fill the same nine rows with kinder numbers, and nothing on the
+  // page would say the two runs were measured differently.
+  const q = new URL(PSI_ENDPOINT);
+  q.searchParams.set("url", startUrl);
+  q.searchParams.set("strategy", "mobile");
+  for (const cat of ["performance", "seo", "accessibility", "best-practices"]) {
+    q.searchParams.append("category", cat);
+  }
+
+  let report = null;
+  // PSI genuinely takes 30-60s: it fetches the page and runs Lighthouse on
+  // Google's hardware before it answers. Two attempts, because the failure
+  // this exists to route around is intermittent by nature.
+  for (let i = 0; i < 2 && !report; i++) {
+    try {
+      say(i ? "retrying…" : "asking Google to run Lighthouse (up to a minute)…");
+      const r = await fetch(q.toString());
+      if (!r.ok) { say(`PageSpeed returned HTTP ${r.status}`); continue; }
+      const j = await r.json();
+      if (j?.lighthouseResult) { report = j; } else { say("no report in the reply"); }
+    } catch (e) {
+      say("PageSpeed call failed: " + (e?.message || e));
+    }
+  }
+  state.done = 1;
+
+  if (!report) {
+    say("no report — nothing uploaded, so the rows stay honestly unanswered");
+    state.running = false; keepAlive(false);
+    chrome.runtime.sendMessage({ type: "VICI_STATE", state }).catch(() => {});
+    return;
+  }
+
+  const score = Math.round(
+    100 * (report.lighthouseResult?.categories?.performance?.score ?? 0));
+  say(`got a report — performance ${score}/100. uploading…`);
+  try {
+    const res = await fetch(
+      `${c.apiBase.replace(/\/$/, "")}/api/audits/${id}/psi-capture`,
+      { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: startUrl, psi: report }) });
+    const body = await res.json().catch(() => ({}));
+    say(res.ok ? `done — ${body.answered ?? "?"} of ${body.total ?? 9} rows filled`
+               : `upload failed: HTTP ${res.status}`);
+  } catch (e) {
+    say("upload failed: " + (e?.message || e));
+  }
+  state.done = 2; state.running = false;
+  keepAlive(false);
+  chrome.runtime.sendMessage({ type: "VICI_STATE", state }).catch(() => {});
+}
+
+chrome.runtime.onMessage.addListener((msg, _s, respond) => {
+  if (msg?.type === "VICI_PSI") { psiRun(msg.url, msg.auditId); respond({ ok: true }); }
+  if (msg?.type === "VICI_PSI_FOR") {
+    chrome.storage.local.set({ auditId: msg.auditId, apiBase: API_BASE })
+      .then(() => psiRun(msg.url, msg.auditId));
+    respond({ ok: true });
+  }
+  return true;
+});
+
+
 // ---------------------------------------------------------------------------
 // SEARCH CONSOLE CAPTURE
 //

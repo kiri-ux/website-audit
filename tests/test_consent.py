@@ -28,6 +28,7 @@ WHAT THIS FILE GUARDS
      SEO reader expects, and that is correct.
 """
 from __future__ import annotations
+import json
 import os
 import sys
 
@@ -227,6 +228,52 @@ def main():
                                              "CONS-05")}))
 
     from app.ui_consent import consent_html as _ch
+    print("\nONE FAILED GOOGLE CALL TAKES OUT NINE ROWS — AND HAS A BUTTON")
+    # Nine checkpoints read one Lighthouse report. When PageSpeed refuses the
+    # server the whole section comes back Need Access, and the fix used to be
+    # "run the audit again and hope". The browser reaches the same endpoint.
+    from engine.checks.perf import findings_from_psi, PSI_CHECK_IDS
+    _lh = {"lighthouseResult": {"audits": {
+        "largest-contentful-paint": {"numericValue": 3100, "displayValue": "3.1 s"},
+        "cumulative-layout-shift": {"numericValue": 0.04, "displayValue": "0.04"},
+        "server-response-time": {"numericValue": 420, "displayValue": "420 ms"},
+        "uses-text-compression": {"score": 1, "details": {"items": []}},
+        "unminified-javascript": {"score": 1, "details": {"items": []}},
+        "unminified-css": {"score": 1, "details": {"items": []}},
+        "total-byte-weight": {"numericValue": 1500000, "details": {"items": []}},
+        "interactive": {"numericValue": 4200, "displayValue": "4.2 s"},
+        "resource-summary": {"details": {"items": []}}},
+        "categories": {"performance": {"score": 0.62}}}}
+    _pf = findings_from_psi("https://x.com/", _lh)
+    check("a browser-fetched report answers every row that reads it",
+          set(_pf) == set(PSI_CHECK_IDS), str(sorted(set(PSI_CHECK_IDS) - set(_pf))))
+    check("and none of them is left as Need Access",
+          not [c for c, f in _pf.items() if f["status"] == "Need Access"],
+          str([c for c, f in _pf.items() if f["status"] == "Need Access"]))
+    check("the browser grades nothing — the server does",
+          _pf["PERF-11"]["status"] == "Warning", _pf["PERF-11"]["status"])
+    check("a reply with no report fills nothing rather than guessing",
+          findings_from_psi("https://x.com/", {"error": "429"}) == {})
+
+    # The panel that lists the nine must offer the fix, not just name it.
+    from engine.report import _todo_panel, extension_link
+    _cat = {c: {"section": "PERF", "title": c} for c in PSI_CHECK_IDS}
+    _nf = {c: {"status": "Need Access", "confidence": 0.0, "source": "perf",
+               "evidence": "the speed-testing service did not respond",
+               "value": {"internal": True}} for c in PSI_CHECK_IDS}
+    _panel = "".join(_todo_panel(_nf, _cat,
+                                 {"audit_id": "abc123", "url": "https://x.com/",
+                                  "extras": {}}))
+    check("the internal panel offers the speed test", "vici-fix" in _panel)
+    check("and links straight into the extension when the button is missing",
+          "chrome-extension://" in _panel)
+    check("the extension id is pinned, or no link could exist",
+          "key" in json.load(open("extension/manifest.json")))
+    check("and the popup is reachable from a page",
+          any("popup.html" in (r.get("resources") or [])
+              for r in json.load(open("extension/manifest.json"))
+              .get("web_accessible_resources", [])))
+
     print("\nAN ABSENT GPC PASS IS UNTESTED, NEVER CLEAN")
     # "Field present" is what marks GPC as tested, so an extension that could
     # not set the signal must send NO field rather than an empty list. An empty

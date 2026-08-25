@@ -60,7 +60,18 @@ index, because the index shifts when accounts are added.</div>
 </div>
 <button id="go">Start capture</button>
   <button id="consent" class="alt">Consent check</button>
+  <button id="perf" class="alt">Speed test (PageSpeed)</button>
   <button id="console" class="alt">Search Console capture</button>
+
+<!-- OPENED FROM A LINK, NOT ONLY FROM THE TOOLBAR.
+     A report page that knows which capture it needs can now link straight
+     here with the audit id and the target already in the URL, and this banner
+     is what tells you the click landed and what it is about to do. The
+     toolbar popup never sees it, because the toolbar popup has no query
+     string. -->
+<div id="deep" style="display:none;margin-top:10px;padding:9px 11px;
+  border-radius:8px;background:#eef4fb;border-left:3px solid #1c5ba6;
+  font-size:12px;line-height:1.5"></div>
 
 <!-- THE DRAFT, SHOWN BEFORE ANYTHING IS SENT.
      The scrape reads Google's own visible labels off an obfuscated Angular

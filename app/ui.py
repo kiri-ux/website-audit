@@ -12,6 +12,7 @@ import time as _time
 
 from .config import cfg
 from . import version
+from engine.report import extension_link as _ext_link
 
 # How long a run may go without a progress update before the page stops
 # pretending it is still working. Generous on purpose: the judgment layer can sit
@@ -1915,9 +1916,12 @@ def audit_html(a):
             f"You should see <b>Site Scanner 1.5.0</b>.</li>"
             f"<li>Reload this page — the Start capture button appears once "
             f"the extension is detected.</li></ol>"
-            f"<p class='sub' style='margin-top:10px'>Or drive it by hand: open "
-            f"the site, click the extension, and paste audit id "
-            f"<code>{e(a['id'])}</code> "
+            f"<p class='sub' style='margin-top:10px'>"
+            f"<a href='{e(_ext_link('crawl', a['id'], a['target_url']))}'>"
+            f"<b>Open the extension directly</b></a> &mdash; the id travels "
+            f"with the link, and it works on whatever version is installed. "
+            f"Or drive it by hand: open the site, click the extension, and "
+            f"paste audit id <code>{e(a['id'])}</code> "
             f"<button class='del' type='button' onclick=\"navigator.clipboard"
             f".writeText('{e(a['id'])}');this.textContent='copied'\">copy</button>"
             f"</p></div></div>"

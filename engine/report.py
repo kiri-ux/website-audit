@@ -50,6 +50,33 @@ def _dashes(t: str) -> str:
              .replace("&mdash;", "-").replace("&ndash;", "-"))
 
 
+# ---------------------------------------------------------------- extension
+#
+# THE ID IS PINNED, WHICH IS THE ONLY REASON A LINK CAN EXIST.
+#
+# An unpacked Chrome extension normally gets a different id on every machine,
+# derived from the folder path — so no page could ever link to it. Putting a
+# `key` in the manifest fixes the id everywhere, and popup.html is declared
+# web-accessible, so this href works from any page on any of our machines.
+#
+# It is the FALLBACK, not the main path. When the extension's content script
+# is present it reveals a real button that starts the job in one click and
+# needs no id at all. The link is for the case that button cannot cover: an
+# extension that is installed but out of date, so the script that would have
+# revealed the button is not in it yet. That is precisely the state somebody
+# is in right after we ship a change, and it used to leave them reading
+# "download it and unzip it" about an extension already in their toolbar.
+EXTENSION_ID = "pllpocohmdkjddlhneimecdhfdhelnce"
+
+
+def extension_link(run: str, audit_id: str = "", url: str = "") -> str:
+    """A link that opens the Site Scanner popup in a tab, pre-filled."""
+    from urllib.parse import urlencode
+    q = urlencode({k: v for k, v in
+                   (("run", run), ("audit", audit_id), ("url", url)) if v})
+    return f"chrome-extension://{EXTENSION_ID}/popup.html?{q}"
+
+
 def e(x):
     return _dashes(_h.escape(str(x if x is not None else "")))
 
@@ -618,6 +645,36 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
 
     if vendor:
         items = bullets(reasons(vendor))
+        # THE ONE FAILURE IN THIS GROUP THAT HAS A BUTTON.
+        #
+        # Nine of these rows are one HTTP call. PageSpeed Insights refuses our
+        # host often enough to take out the whole Performance section in a
+        # single go, and the reader is then looking at nine "ours to fix"
+        # bullets whose only fix is to run the audit again and hope the pool
+        # is less busy. The operator's browser reaches the same endpoint on an
+        # IP Google is not throttling, so the fix is a click, not a re-run —
+        # and a list that names a fixable thing without offering the fix is
+        # just a list.
+        from engine.checks.perf import PSI_CHECK_IDS
+        _psi_out = [c for c in vendor if c in set(PSI_CHECK_IDS)]
+        _aid = (meta or {}).get("audit_id") or ""
+        _url = (meta or {}).get("url") or ""
+        _btn = ""
+        if _psi_out and _aid:
+            _btn = (
+                f"<div id='vici-fix' style='margin-top:11px'"
+                f" data-audit-id='{e(_aid)}' data-target='{e(_url)}'>"
+                f"<button id='vici-fix-go' type='button' class='btn ghost'>"
+                f"Re-run the speed test from this browser "
+                f"({len(_psi_out)} row{'s' if len(_psi_out) != 1 else ''})"
+                f"</button>"
+                f"<span id='vici-fix-note' class='sm' "
+                f"style='color:var(--muted);margin-left:10px'>"
+                f"Same Google endpoint, from your IP instead of the server's. "
+                f"Needs the Site Scanner extension &mdash; "
+                f"<a href='{e(extension_link('perf', _aid, _url))}'>open it "
+                f"directly</a>, or <a href='/extension.zip'>download</a> and "
+                f"reload it at chrome://extensions.</span></div>")
         out.append(
             f"<div style='margin-top:12px'>"
             f"<b style='color:var(--critical)'>Ours to fix &middot; "
@@ -625,7 +682,7 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
             f"A credential we have not set, or a call we have not written. "
             f"Nothing to ask anyone for.</div>"
-            f"<ul style='margin:6px 0 0 18px'>{items}</ul></div>")
+            f"<ul style='margin:6px 0 0 18px'>{items}</ul>{_btn}</div>")
 
     # THE CARRIED-FORWARD GROUP AND THE "NOT MEASURED TODAY" GROUP HAVE
     # BEEN MERGED INTO ONE DATED LIST - see the end of this function.
@@ -686,8 +743,13 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
                f"Capture all of these from Search Console</button>"
                f"<span id='vici-console-note' class='sm' "
                f"style='color:var(--muted);margin-left:10px'>"
-               f"Needs the Site Scanner extension, version 1.3 or newer &mdash; "
-               f"<a href='/extension.zip'>download</a>, then reload it at "
+               f"Needs the Site Scanner extension &mdash; "
+               f"<a href='"
+               + e(extension_link("console",
+                                  (meta or {}).get("audit_id") or "",
+                                  (meta or {}).get("url") or ""))
+               + f"'>open it directly</a>, or "
+               f"<a href='/extension.zip'>download</a> and reload it at "
                f"chrome://extensions.</span></div>"
                if (meta or {}).get("audit_id") else "")
             + "</div>")
@@ -716,19 +778,34 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
     # every row made the panel read like a log file rather than like an
     # answer to a question somebody asked.
     def _section_dates():
-        """[(label, when, is_carried)] for every area with data here."""
+        """
+        [(label, when, is_carried, answered_anything)] per area.
+
+        "MEASURED" HAS TO MEAN A NUMBER CAME BACK.
+
+        Having rows was the test, and every area has rows — so a run where
+        PageSpeed refused every call still listed Performance & CWV under
+        "Measured on this run", directly above nine bullets in the same panel
+        saying it could not be measured. The panel contradicted itself on one
+        screen, and the half a reader believes is the confident half.
+
+        A section where nothing answered is not measured and it is not
+        carried. It is attempted, and it gets said as that.
+        """
         _run_at = (meta or {}).get("generated_at") or _now()
-        by_prefix = {}
+        by_prefix, answered = {}, {}
         for cid, f in (findings or {}).items():
             pref = str(cid).split("-")[0]
             val = f.get("value") if isinstance(f.get("value"), dict) else {}
             when = (val or {}).get("carried_at")
             if pref not in by_prefix:
                 by_prefix[pref] = None
+            answered[pref] = answered.get(pref, False) or (
+                f.get("status") not in ("Need Access", None))
             if when:
                 by_prefix[pref] = when
         rows = [(SECTION_NAMES.get(pref, pref), by_prefix[pref] or _run_at,
-                 bool(by_prefix[pref]))
+                 bool(by_prefix[pref]), answered.get(pref, False))
                 for pref in ORDER if pref in by_prefix]
         for key, label in (("reputation", "Reputation"),
                            ("ai_visibility", "AI Search Visibility")):
@@ -736,7 +813,7 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             if not isinstance(blob, dict) or not blob:
                 continue
             at = blob.get("carried_at")
-            rows.append((label, at or _run_at, bool(at)))
+            rows.append((label, at or _run_at, bool(at), True))
         return rows
 
     _fresh_rows = _section_dates()
@@ -757,13 +834,24 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
         # no clock reads as a contradiction.
         _run_at = (meta or {}).get("generated_at") or _now()
         _today = _stamp(_run_at, False)
-        _fresh = [l for l, _w, c in _fresh_rows if not c]
-        _stale_rows = [(l, w) for l, w, c in _fresh_rows if c]
+        _fresh = [l for l, _w, c, ok in _fresh_rows if not c and ok]
+        _empty = [l for l, _w, c, ok in _fresh_rows if not c and not ok]
+        _stale_rows = [(l, w) for l, w, c, _ok in _fresh_rows if c]
         _bits = []
         if _fresh:
             _bits.append(
                 f"<b>Measured on this run</b> ({e(_today)}): "
                 f"{e(_listy([_l for _l in _fresh]))}.")
+        if _empty:
+            # Named separately rather than dropped. An area that vanishes from
+            # this list looks like an area nobody thought to run, and the whole
+            # point of the sentence is to account for every section in the
+            # report.
+            _bits.append(
+                f"<b>Attempted, nothing came back</b> ({e(_today)}): "
+                f"{e(_listy(_empty))} &mdash; every row in "
+                f"{'those areas is' if len(_empty) != 1 else 'that area is'} "
+                f"in the list above.")
         if _stale_rows:
             # Group by the date they came from - usually one date, sometimes
             # two, never nineteen.

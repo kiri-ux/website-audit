@@ -72,6 +72,68 @@ $("consent").addEventListener("click", async () => {
   chrome.runtime.sendMessage({ type: "VICI_CONSENT", url: tab.url });
 });
 
+// The speed test is not a capture of the site at all — it is one call to a
+// Google endpoint that refuses our server and answers this browser. Separate
+// button for the same reason as consent: one button that guessed which job
+// you meant would guess wrong.
+$("perf").addEventListener("click", async () => {
+  const url = deep.url || (await chrome.tabs.query(
+    { active: true, currentWindow: true }))[0]?.url;
+  if (!url || !/^https?:/.test(url)) {
+    alert("Open the client site in this tab first, or start from the report "
+          + "page so the URL comes with it.");
+    return;
+  }
+  if (!$("auditId").value.trim()) {
+    $("status").textContent = "paste an audit id, or start from the report page";
+    return;
+  }
+  chrome.runtime.sendMessage({ type: "VICI_PSI", url,
+                               auditId: $("auditId").value.trim() });
+});
+
+// ---- opened from a link ----------------------------------------------------
+//
+// A WEB PAGE CANNOT OPEN A TOOLBAR POPUP, and that is the whole reason this
+// exists. The in-page buttons work by messaging the service worker through the
+// content script, which is the better path when it is available — but it is
+// available only when the extension is loaded AND current, and somebody
+// looking at a page whose button never appeared has no way forward at all.
+//
+// The manifest pins a `key`, so this extension always has the same id on every
+// machine, and popup.html is web-accessible. That makes a plain link to
+// chrome-extension://<fixed id>/popup.html?... work from the report page. It
+// opens in a TAB rather than as a popup, which is better for a job that runs
+// for a minute: a real popup closes the moment you click away and takes the
+// run's log with it.
+//
+// It does NOT auto-start. A link that begins spending time and hitting a
+// client's site the instant it is clicked is a link nobody can inspect first.
+const deep = {};
+(function readLink() {
+  const q = new URLSearchParams(location.search);
+  if (![...q.keys()].length) return;         // toolbar popup: nothing to read
+  const id = (q.get("audit") || "").trim();
+  const url = (q.get("url") || "").trim();
+  const run = (q.get("run") || "").trim();
+  if (id) { $("auditId").value = id; chrome.storage.local.set({ auditId: id }); }
+  if (/^https?:/.test(url)) deep.url = url;
+  const label = { perf: "Speed test (PageSpeed)", consent: "Consent check",
+                  crawl: "Start capture",
+                  console: "Search Console capture" }[run];
+  const el = document.getElementById("deep");
+  if (!el) return;
+  el.style.display = "block";
+  el.innerHTML =
+    "<b>Opened from the report.</b><br>"
+    + (id ? "Audit <code>" + id.replace(/[^0-9a-f]/gi, "") + "</code>" : "No audit id in the link")
+    + (deep.url ? "<br>" + deep.url.replace(/[<>&"]/g, "") : "")
+    + (label ? "<br>Press <b>" + label + "</b> below when you are ready."
+             : "");
+  const hint = document.getElementById("idhint");
+  if (hint && id) hint.textContent = "filled in from the report link";
+})();
+
 chrome.runtime.onMessage.addListener(m => { if (m?.type === "VICI_STATE") render(m.state); });
 chrome.runtime.sendMessage({ type: "VICI_GET_STATE" }).then(r => render(r?.state));
 setInterval(() => chrome.runtime.sendMessage({ type: "VICI_GET_STATE" })

@@ -16,7 +16,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from . import check, finding, escalate
+from . import check, finding, escalate, REGISTRY
 
 OK = lambda a: [p for p in a.pages.values() if not p.error and 200 <= p.status_code < 300]
 PSI = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
@@ -142,6 +142,74 @@ def _metric(cid, label, audit_key, good, poor, unit="ms"):
 _metric("PERF-11", "Largest Contentful Paint (LCP)", "largest-contentful-paint", 2500, 4000)
 _metric("PERF-13", "Cumulative Layout Shift (CLS)", "cumulative-layout-shift", 0.1, 0.25, "")
 _metric("PERF-14", "Time to First Byte (TTFB)", "server-response-time", 800, 1800)
+
+
+# EVERY CHECKPOINT THAT LIVES OR DIES ON ONE HTTP CALL.
+#
+# Nine rows read the same Lighthouse report, so when neither provider answers
+# it is never one Need Access — it is nine, all with the identical sentence,
+# filling the internal panel with what looks like nine separate defects. This
+# list is what lets a third source fill exactly those nine and nothing else.
+PSI_CHECK_IDS = ("PERF-05", "PERF-07", "PERF-09", "PERF-10", "PERF-11",
+                 "PERF-12", "PERF-13", "PERF-14", "PERF-19")
+
+
+class _StubSite:
+    """
+    The little that a Lighthouse-reading check touches on the artifact.
+
+    All nine read `a.start_url` and nothing else — they get every other fact
+    out of the report. So a re-run of just these nine does not need the crawl
+    reconstituted, which matters because the run that needs this most is the
+    consent-only run, where there may not be a full crawl to reconstitute.
+    """
+
+    def __init__(self, start_url):
+        self.start_url = start_url
+        self.pages = {}
+        self.quality = None
+
+
+def findings_from_psi(start_url: str, report: dict) -> dict:
+    """
+    Run the same nine checkers over a Lighthouse report from anywhere.
+
+    A THIRD PROVIDER, NOT A THIRD CLASSIFIER.
+
+    PageSpeed Insights is refused from Render often enough to take out the
+    whole section — 429s on the shared egress pool, then read timeouts — and
+    the DataForSEO fallback has its own bad days. The operator's own browser
+    is a third route to the SAME Google endpoint, on a residential IP that
+    Google is not rate-limiting, and it costs nothing.
+
+    What arrives here is the raw PSI response, unread. The extension does not
+    decide what a good LCP is, or which audit key holds it: these nine
+    functions do, exactly as they do on the server path. Two graders would
+    eventually disagree about the same site with no way to tell which was
+    right — the same rule the consent capture follows.
+    """
+    if not (report or {}).get("lighthouseResult"):
+        return {}
+    a = _StubSite(start_url)
+    c = {"_psi": report, "_psi_err": None,
+         "_psi_source": "PageSpeed Insights, fetched in the browser",
+         # Already answered. Without this the fallback would run again on the
+         # first check that finds a metric missing.
+         "_psi_fallback_tried": True}
+    out = {}
+    for cid in PSI_CHECK_IDS:
+        fn = REGISTRY.get(cid)
+        if not fn:
+            continue
+        try:
+            f = fn(a, c)
+        except Exception as exc:  # noqa: BLE001
+            continue
+        if f is None:
+            continue
+        f.setdefault("source", "perf")
+        out[cid] = f
+    return out
 
 
 @check("PERF-10")
