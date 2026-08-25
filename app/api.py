@@ -616,6 +616,7 @@ def submit_form(target_url: str = Form(...), client_name: str = Form(...),
 
 @app.post("/audits/{audit_id}/rerun")
 def rerun_audit(audit_id: str, reuse_crawl: str = Form(""),
+                max_pages: str = Form(""),
                 x_api_key: str | None = Header(None)):
     """
     Run the same site again, as a NEW audit.
@@ -661,6 +662,23 @@ def rerun_audit(audit_id: str, reuse_crawl: str = Form(""),
     # them again is both slow and rude.
     if reuse_crawl:
         opts["reuse_crawl"] = True
+    # A FIX LINE THAT NAMES A NUMBER SHOULD BE ABLE TO SET IT.
+    #
+    # Four checkpoints came back "this check needs full-site coverage, but
+    # only 1 of 9 known URLs were crawled" with the instruction "re-run with
+    # max_pages >= 9" — correct, and it left the reader to find the form,
+    # remember the number and retype it. The panel already knows the number;
+    # the button carries it.
+    if max_pages:
+        try:
+            _mp = int(str(max_pages).strip())
+            if _mp > 0:
+                opts["max_pages"] = _mp
+                # A bigger crawl is the whole point, so the stored pages from
+                # the run that was too small must not be reused.
+                opts.pop("reuse_crawl", None)
+        except ValueError:
+            pass
     new_id = db.create_audit(tenancy.owner_for_new_audit(p), a["client_name"],
                              a["target_url"], a.get("vertical"),
                              a.get("business_model"), opts)
@@ -922,6 +940,21 @@ def consent_detail(audit_id: str, x_api_key: str | None = Header(None)):
     return Response(blob, media_type="application/json")
 
 
+def _consent_only(a: dict) -> bool:
+    """Was consent the only phase this run was asked for?"""
+    try:
+        o = json.loads(a.get("options") or "{}") or {}
+    except Exception:  # noqa: BLE001
+        return False
+    if not o.get("run_consent"):
+        return False
+    # Every other optional phase off. `reuse_crawl` says the crawl was not
+    # re-done either, which is the shape of "I only wanted the consent scan".
+    return not any(o.get(k) for k in ("run_aivis", "run_collectors",
+                                      "run_screenshots", "run_reputation",
+                                      "run_judgment"))
+
+
 @app.get("/audits/{audit_id}", response_class=HTMLResponse)
 def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
     p = principal(x_api_key)
@@ -930,6 +963,18 @@ def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
         raise HTTPException(404, "audit not found")
     if a["status"] != "ready":
         return audit_html(a)                       # live status page, auto-refreshes
+    # A CONSENT-ONLY RUN OPENS ON THE CONSENT PAGE.
+    #
+    # Ticking one box and landing on a twenty-nine-section audit — most of it
+    # carried forward from an earlier run and none of it what you just asked
+    # for — means scrolling past everything you did not run to reach the one
+    # thing you did. The report is still one click away in the breadcrumb.
+    #
+    # Only when consent is the ONLY phase asked for, and only when there is
+    # something to show: a redirect to a page that says "no consent detail was
+    # stored" would be worse than the report.
+    if _consent_only(a) and get_artifact(audit_id, "consent_scan.json"):
+        return RedirectResponse(f"/audits/{audit_id}/consent", status_code=303)
     findings = db.get_findings(audit_id)
     scores = db.get_scores(audit_id)
     meta = _report_meta(a)
@@ -1393,6 +1438,31 @@ def ingest_consent_capture(audit_id: str, payload: dict,
             prior = json.loads(_blob.decode()) or {}
     except Exception:  # noqa: BLE001
         prior = {}
+    # A STEP THIS RUN COULD NOT DO, THAT AN EARLIER RUN DID.
+    #
+    # The GPC pass is a whole extra page load and it does not always get set —
+    # and when it did not, the page said "some of this was never tested" and
+    # offered a capture, about a signal a capture two hours earlier had
+    # already sent and watched. Being asked to re-run for an answer we already
+    # hold is the same complaint as the nine PageSpeed rows, one layer down.
+    #
+    # Same rules, then: only a step THIS run did not do, only a real answer,
+    # only from this URL, and never silently — the step is stamped with the
+    # date it came from and the page says so beside the tick.
+    _prior_scan = prior.get("scan") or {}
+    if (not scan.get("gpc_tested")) and _prior_scan.get("gpc_tested"):
+        scan["gpc_tested"] = True
+        scan["gpc_fires"] = _prior_scan.get("gpc_fires") or []
+        scan["gpc_carried_at"] = (_prior_scan.get("scanned_at")
+                                  or prior.get("scanned_at"))
+        print(f"[api] {audit_id} carried the GPC result forward from "
+              f"{scan['gpc_carried_at']}", flush=True)
+    if (not scan.get("reject_tested")) and _prior_scan.get("reject_tested"):
+        scan["reject_tested"] = True
+        scan["post_reject"] = _prior_scan.get("post_reject") or []
+        scan["reject_carried_at"] = (_prior_scan.get("scanned_at")
+                                     or prior.get("scanned_at"))
+
     detail_ok = True
     try:
         # THE PAGES COME FROM THIS RUN, NEVER THE LAST ONE.

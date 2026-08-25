@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-105"
-BUILD_NOTES = ("The capture waited six seconds by the clock instead of waiting for the network to go quiet, so it recorded a page whose tags had not fired yet and called it clean - it now waits for idle like the server always did; plus American spelling throughout, guarded across every file that puts words on a screen, and the fired-tag lists in the standalone scanner's badge-first shape")
+BUILD = "2026.08.20-106"
+BUILD_NOTES = ("Stop asking for a re-run of what we already hold - a GPC or Reject result an earlier capture proved carries forward with the date it came from; the coverage gap gets a re-crawl button pre-filled with the page count its own fix line names; every action in the internal panel is reachable from the panel; and a consent-only run opens on the consent page instead of a report it did not run")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

@@ -681,6 +681,31 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             f"directly</a>, or <a href='/extension.zip'>download</a> and "
             f"reload it at chrome://extensions.</span></div>")
 
+    # THE COVERAGE GAP GETS A BUTTON TOO.
+    #
+    # Four checkpoints say "this check needs full-site coverage, but only 1 of
+    # 9 known URLs were crawled" and then "re-run with max_pages >= 9". True,
+    # actionable, and it still left the reader to open the form, remember the
+    # number and type it in. Every other fixable thing in this panel now has a
+    # control; this is the last one that did not.
+    _cov = [(c, ((findings.get(c) or {}).get("value") or {}).get("needs_pages"))
+            for c in (vendor + list(b["manual"]))
+            if ((findings.get(c) or {}).get("value") or {}).get("needs_pages")]
+    _cov_btn = ""
+    if _cov and _aid:
+        _need = max(int(n) for _c, n in _cov)
+        _cov_btn = (
+            f"<form method='post' action='/audits/{e(_aid)}/rerun' "
+            f"style='margin-top:11px;display:flex;align-items:center;gap:10px;"
+            f"flex-wrap:wrap'>"
+            f"<input type='hidden' name='max_pages' value='{_need}'>"
+            f"<button class='btn ghost' type='submit'>Re-crawl this site with "
+            f"{_need} pages ({len(_cov)} row"
+            f"{'s' if len(_cov) != 1 else ''})</button>"
+            f"<span class='sm' style='color:var(--muted)'>Starts a new run at "
+            f"the coverage these checks need. The stored pages are not reused "
+            f"&mdash; a bigger crawl is the point.</span></form>")
+
     if vendor:
         items = bullets(reasons(vendor))
         out.append(
@@ -691,7 +716,37 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             f"A credential we have not set, or a call we have not written. "
             f"Nothing to ask anyone for.</div>"
             f"<ul style='margin:6px 0 0 18px'>{items}</ul>"
-            + (_btn if _psi_out else "") + "</div>")
+            + (_btn if _psi_out else "")
+            + (_cov_btn if any(c in vendor for c, _n in _cov) else "")
+            + "</div>")
+    # AN ACTION YOU HAVE TO GO LOOKING FOR IS NOT AN OFFER.
+    #
+    # The consent capture button lives on the consent page, so the only way to
+    # learn there was something left to test was to click into a sub-page and
+    # read it. This panel is where somebody checks what a run still owes, so
+    # anything actionable has to be reachable FROM here — every other fixable
+    # thing in this list already is.
+    _con = _ex.get("consent") or {}
+    _con_gap = ""
+    if _aid and _con.get("has_detail"):
+        _why = ("it ran without a browser, so the banner, Consent Mode and "
+                "everything that fired before consent were never tested"
+                if _con.get("mode") != "full" else "")
+        if _why:
+            _con_gap = (
+                f"<div style='margin-top:12px'>"
+                f"<b style='color:var(--ink2)'>The consent scan has more to "
+                f"give</b>"
+                f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
+                f"On this run {_why}. It can be captured from your own "
+                f"browser in about a minute.</div>"
+                f"<p style='margin:9px 0 0'>"
+                f"<a class='btn ghost' href='/audits/{e(_aid)}/consent'>"
+                f"Open the consent scan</a></p></div>")
+
+    if _con_gap:
+        out.append(_con_gap)
+
     if _btn and not _psi_out:
         # Nothing is wrong, so this gets no heading and no color — it is an
         # offer, not a finding.

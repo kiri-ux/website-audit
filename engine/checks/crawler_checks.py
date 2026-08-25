@@ -22,8 +22,13 @@ def _sampled(a):
     crawled = len(OK(a))
     return finding(
         "Need Access",
+        # `needs_pages` is the number the fix line names, in a field a button
+        # can read. The sentence has always said "re-run with max_pages >= 9";
+        # leaving the reader to find the form and retype the 9 is the same
+        # failure as naming a fixable thing without offering the fix.
         {"pages_crawled": crawled, "sitemap_urls": known,
-         "coverage": round(a.coverage_ratio, 3)},
+         "coverage": round(a.coverage_ratio, 3), "needs_pages": known,
+         "retryable": False},
         f"Not assessed — this check needs full-site coverage, but only "
         f"{crawled} of {known} known URLs were crawled ({a.coverage_ratio:.0%}). "
         f"Reporting the {max(0, known - crawled)} uncrawled pages as a defect "

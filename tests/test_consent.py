@@ -431,6 +431,68 @@ def main():
     check("with the per-pass split, not one ambiguous total",
           "pre-consent 3" in _oddpage, str(_odd.get("capture_counts")))
 
+    print("\nDO NOT ASK FOR A RE-RUN OF SOMETHING WE ALREADY HAVE")
+    # The GPC pass is a whole extra page load and does not always get set.
+    # When it did not, the page said "some of this was never tested" and
+    # offered a capture — about a signal an earlier capture had already sent
+    # and watched. Same complaint as the nine PageSpeed rows, one layer down.
+    _aid3 = _db.create_audit("default", "C", "https://gpc.example/", None, None,
+                             {"consent_products": []})
+    _base = {"url": "https://gpc.example/",
+             "html": "<html>" + "q" * 3000 + "</html>", "scripts": [],
+             "pre_requests": ["https://facebook.com/tr?id=9"],
+             "banner_visible": False, "consent_defaults_read": True,
+             "accept_clicked": False, "reject_clicked": False}
+    _api.ingest_consent_capture(_aid3, {**_base, "gpc_requests": []}, None)
+    _d = _json.loads(_ga(_aid3, "consent_scan.json").decode())
+    check("the first capture tests GPC", _d["scan"]["gpc_tested"] is True)
+    # Now one that could not set the signal at all — no gpc_requests key.
+    _api.ingest_consent_capture(_aid3, dict(_base), None)
+    _d2 = _json.loads(_ga(_aid3, "consent_scan.json").decode())
+    check("a later capture that could not set GPC keeps the earlier answer",
+          _d2["scan"]["gpc_tested"] is True)
+    check("stamped with where it came from, never as this run's work",
+          bool(_d2["scan"].get("gpc_carried_at")))
+    _pg3 = _ch(_db.get_audit(_aid3), _d2)
+    check("so the page stops offering a capture for it",
+          "vici-consent" not in _pg3)
+    check("and the tick says which run it came from", "from 20" in _pg3)
+
+    print("\nA FIX LINE THAT NAMES A NUMBER CAN SET IT")
+    from engine.report import _todo_panel as _tp2
+    _covcat = {c: {"section": "ONP", "title": c}
+               for c in ("ONP-15", "ONP-48", "TECH-25", "TECH-36")}
+    _covf = {c: {"status": "Need Access", "confidence": 0.0,
+                 "source": "crawler_checks",
+                 "evidence": "Not assessed - this check needs full-site "
+                             "coverage, but only 1 of 9 known URLs were "
+                             "crawled (11%).",
+                 "recommendation": "Re-run with max_pages >= 9 for a "
+                                   "definitive answer.",
+                 "value": {"pages_crawled": 1, "sitemap_urls": 9,
+                           "needs_pages": 9}} for c in _covcat}
+    _covp = "".join(_tp2(_covf, _covcat, {"audit_id": "abc123",
+                                          "url": "http://x.com/",
+                                          "extras": {}}))
+    check("the coverage gap carries a re-crawl button",
+          "name='max_pages'" in _covp)
+    check("pre-filled with the number the fix line names",
+          "value='9'" in _covp, _covp[_covp.find("max_pages") - 40:][:90])
+    import inspect as _ins2
+    check("and the server honors it",
+          "max_pages" in _ins2.signature(_api.rerun_audit).parameters)
+    check("without reusing the crawl that was too small",
+          'opts.pop("reuse_crawl"' in _ins2.getsource(_api.rerun_audit))
+
+    print("\nA CONSENT-ONLY RUN OPENS ON THE CONSENT PAGE")
+    check("a run with only consent ticked is recognized as such",
+          _api._consent_only({"options": _json.dumps({"run_consent": True})}))
+    check("but a run with another phase on is not",
+          not _api._consent_only({"options": _json.dumps(
+              {"run_consent": True, "run_aivis": True})}))
+    check("and neither is a run without consent",
+          not _api._consent_only({"options": _json.dumps({"run_aivis": True})}))
+
     print("\nA VENDOR OUTAGE IS NOT A FACT ABOUT THE SITE")
     # Nine rows read one Google call. A consent-only re-run does not touch
     # performance and was never asked to — but it re-ran the checks anyway,

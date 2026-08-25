@@ -366,9 +366,13 @@ _PAGE_CSS = ("<style>"
 def _steps(pairs):
     """A tick or a cross per step, on one line, with no pill anywhere."""
     out = []
-    for label, ok in pairs:
+    for row in pairs:
+        label, ok = row[0], row[1]
+        note = row[2] if len(row) > 2 else ""
         out.append(f"<span class='vstep vstep--{'y' if ok else 'n'}'>"
-                   f"<i>{'&#10003;' if ok else '&#10005;'}</i>{e(label)}</span>")
+                   f"<i>{'&#10003;' if ok else '&#10005;'}</i>{e(label)}"
+                   + (f"<span style='color:var(--muted)'>{e(note)}</span>"
+                      if note else "") + "</span>")
     return "".join(out)
 
 
@@ -726,9 +730,19 @@ def consent_html(audit: dict, detail: dict | None) -> str:
     # three things that decide whether the empty tables further down mean
     # "clean" or "never looked". A chip row says that in one line instead of
     # three rows of nothing.
-    steps = _steps([("Accept clicked", scan.get("accept_clicked")),
-                    ("Reject clicked", scan.get("reject_tested")),
-                    ("GPC signal sent", scan.get("gpc_tested"))])
+    # A CARRIED STEP IS A TICK WITH A DATE ON IT, NOT A PLAIN TICK.
+    #
+    # Carrying the GPC result forward stops us asking for a re-run we do not
+    # need, and it must never read as though this run did the work. The date
+    # is the whole difference.
+    def _when(key):
+        w = scan.get(key)
+        return f" (from {str(w)[:16]})" if w else ""
+    steps = _steps([
+        ("Accept clicked", scan.get("accept_clicked"), ""),
+        ("Reject clicked", scan.get("reject_tested"),
+         _when("reject_carried_at")),
+        ("GPC signal sent", scan.get("gpc_tested"), _when("gpc_carried_at"))])
     # HOW MUCH TRAFFIC THE RECORDER ACTUALLY SAW.
     #
     # A capture came back with the page's HTML and an empty request list, and
