@@ -165,6 +165,28 @@ def result_from_capture(cap: dict, states=None, products=None,
     if not r["privacy_policy_link"] and 'href="/privacy' in low:
         r["privacy_policy_link"] = "/privacy (href)"
 
+    # A PAGE THAT MADE NO REQUESTS DID NOT LOAD.
+    #
+    # A capture came back with HTML, a GTM container id, and an empty request
+    # list on every pass — and the page rendered that as "Nothing fired",
+    # "0 fired before consent", and every bought pixel "configured, not
+    # firing". Four confident statements about a client's tags, all of them
+    # derived from a recorder that never attached.
+    #
+    # Zero requests is not a quiet result, it is an impossible one: a real
+    # page load fetches its own stylesheet. So the count is recorded, shown,
+    # and — when it is zero — the whole page result is marked inconclusive,
+    # exactly as a challenge-page crawl is. A clean scan and a scan that
+    # watched nothing must never look the same.
+    r["capture_counts"] = {
+        "pre": len(cap.get("pre_requests") or []),
+        "post": len(cap.get("post_requests") or []),
+        "reject": len(cap.get("reject_requests") or []),
+        "gpc": len(cap.get("gpc_requests") or []),
+    }
+    r["no_requests_recorded"] = (
+        sum(r["capture_counts"].values()) == 0 and len(html) > 500)
+
     # ---- everything below is the browser-free half of the scanner ---------
     #
     # It was Playwright-only for no reason other than where the code happened

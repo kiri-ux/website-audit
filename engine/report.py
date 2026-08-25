@@ -643,38 +643,46 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
                   if (findings.get(c) or {}).get("source") in _NO_TEXT]
     vendor = [c for c in vendor if c not in set(unreadable)]
 
+    # THE ONE FAILURE HERE THAT HAS A BUTTON.
+    #
+    # Nine rows are one HTTP call. PageSpeed Insights refuses our host often
+    # enough to take out the whole Performance section in a single go, and the
+    # reader is then looking at nine bullets whose only fix is to run the audit
+    # again and hope the pool is less busy. The operator's browser reaches the
+    # same endpoint on an IP Google is not throttling, so the fix is a click.
+    #
+    # OFFERED WHEN THE ROWS ARE CARRIED, TOO. Those nine now carry forward
+    # from the last run that got a number rather than overwriting it with a
+    # gap — which is right, and which also means they leave the "ours to fix"
+    # list entirely. A month-old LCP with no way to refresh it is a quieter
+    # version of the same problem, so the button follows the rows.
+    from engine.checks.perf import PSI_CHECK_IDS
+    _aid = (meta or {}).get("audit_id") or ""
+    _url = (meta or {}).get("url") or ""
+    _psi_out = [c for c in vendor if c in set(PSI_CHECK_IDS)]
+    _psi_old = [c for c in PSI_CHECK_IDS
+                if ((findings.get(c) or {}).get("value") or {}).get("carried_at")
+                and c not in set(_psi_out)]
+    _stale = _psi_out + _psi_old
+    _btn = ""
+    if _stale and _aid:
+        _btn = (
+            f"<div id='vici-fix' style='margin-top:11px'"
+            f" data-audit-id='{e(_aid)}' data-target='{e(_url)}'>"
+            f"<button id='vici-fix-go' type='button' class='btn ghost'>"
+            f"{'Re-run' if _psi_out else 'Refresh'} the speed test from this "
+            f"browser ({len(_stale)} row{'s' if len(_stale) != 1 else ''})"
+            f"</button>"
+            f"<span id='vici-fix-note' class='sm' "
+            f"style='color:var(--muted);margin-left:10px'>"
+            f"Same Google endpoint, from your IP instead of the server's. "
+            f"Needs the Site Scanner extension &mdash; "
+            f"<a href='{e(extension_link('perf', _aid, _url))}'>open it "
+            f"directly</a>, or <a href='/extension.zip'>download</a> and "
+            f"reload it at chrome://extensions.</span></div>")
+
     if vendor:
         items = bullets(reasons(vendor))
-        # THE ONE FAILURE IN THIS GROUP THAT HAS A BUTTON.
-        #
-        # Nine of these rows are one HTTP call. PageSpeed Insights refuses our
-        # host often enough to take out the whole Performance section in a
-        # single go, and the reader is then looking at nine "ours to fix"
-        # bullets whose only fix is to run the audit again and hope the pool
-        # is less busy. The operator's browser reaches the same endpoint on an
-        # IP Google is not throttling, so the fix is a click, not a re-run —
-        # and a list that names a fixable thing without offering the fix is
-        # just a list.
-        from engine.checks.perf import PSI_CHECK_IDS
-        _psi_out = [c for c in vendor if c in set(PSI_CHECK_IDS)]
-        _aid = (meta or {}).get("audit_id") or ""
-        _url = (meta or {}).get("url") or ""
-        _btn = ""
-        if _psi_out and _aid:
-            _btn = (
-                f"<div id='vici-fix' style='margin-top:11px'"
-                f" data-audit-id='{e(_aid)}' data-target='{e(_url)}'>"
-                f"<button id='vici-fix-go' type='button' class='btn ghost'>"
-                f"Re-run the speed test from this browser "
-                f"({len(_psi_out)} row{'s' if len(_psi_out) != 1 else ''})"
-                f"</button>"
-                f"<span id='vici-fix-note' class='sm' "
-                f"style='color:var(--muted);margin-left:10px'>"
-                f"Same Google endpoint, from your IP instead of the server's. "
-                f"Needs the Site Scanner extension &mdash; "
-                f"<a href='{e(extension_link('perf', _aid, _url))}'>open it "
-                f"directly</a>, or <a href='/extension.zip'>download</a> and "
-                f"reload it at chrome://extensions.</span></div>")
         out.append(
             f"<div style='margin-top:12px'>"
             f"<b style='color:var(--critical)'>Ours to fix &middot; "
@@ -682,7 +690,17 @@ def _todo_panel(findings: dict, catalog: dict, meta: dict | None = None) -> list
             f"<div class='sm' style='color:var(--ink2);margin-top:2px'>"
             f"A credential we have not set, or a call we have not written. "
             f"Nothing to ask anyone for.</div>"
-            f"<ul style='margin:6px 0 0 18px'>{items}</ul>{_btn}</div>")
+            f"<ul style='margin:6px 0 0 18px'>{items}</ul>"
+            + (_btn if _psi_out else "") + "</div>")
+    if _btn and not _psi_out:
+        # Nothing is wrong, so this gets no heading and no color — it is an
+        # offer, not a finding.
+        out.append(
+            f"<div style='margin-top:12px'>"
+            f"<div class='sm' style='color:var(--ink2)'>"
+            f"<b>Performance came from an earlier run.</b> PageSpeed would "
+            f"not answer this host, so the last real measurement was kept "
+            f"rather than replaced with a gap.</div>{_btn}</div>")
 
     # THE CARRIED-FORWARD GROUP AND THE "NOT MEASURED TODAY" GROUP HAVE
     # BEEN MERGED INTO ONE DATED LIST - see the end of this function.

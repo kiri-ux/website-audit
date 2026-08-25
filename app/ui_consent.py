@@ -718,6 +718,21 @@ def consent_html(audit: dict, detail: dict | None) -> str:
     steps = _steps([("Accept clicked", scan.get("accept_clicked")),
                     ("Reject clicked", scan.get("reject_tested")),
                     ("GPC signal sent", scan.get("gpc_tested"))])
+    # HOW MUCH TRAFFIC THE RECORDER ACTUALLY SAW.
+    #
+    # A capture came back with the page's HTML and an empty request list, and
+    # every section below read "nothing fired" — the same words a clean site
+    # gets. The count is the difference between the two, so it is on screen
+    # next to the steps rather than buried in a payload nobody opens.
+    _cc = scan.get("capture_counts") or {}
+    _seen = sum(_cc.values()) if _cc else None
+    _count_bit = ""
+    if _seen is not None:
+        _count_bit = (
+            f"<span class='vstep vstep--{'y' if _seen else 'n'}' "
+            f"style='margin-left:auto;margin-right:0'>"
+            f"<i>{'&#10003;' if _seen else '&#10005;'}</i>"
+            f"{_seen:,} request{'s' if _seen != 1 else ''} recorded</span>")
     parts.append(_sec(
         "Container and configuration",
         _rows(["", "State", "Detail"], cfg_rows, ["30%", "16%", "54%"])
@@ -725,7 +740,14 @@ def consent_html(audit: dict, detail: dict | None) -> str:
           f"align-items:center;flex-wrap:wrap;gap:6px 0'>"
           f"<span class='sm' style='color:var(--muted);margin-right:16px'>"
           f"Steps this run completed</span>"
-        + steps + "</div>",
+        + steps + _count_bit + "</div>"
+        + ("<div class='card' style='margin-top:9px;border-left:3px solid "
+           "var(--critical);color:#8a1c16'><b>This run watched no traffic.</b> "
+           "The browser returned the page's HTML but recorded zero network "
+           "requests, which a real page load cannot do &mdash; the recorder "
+           "did not attach. Every &ldquo;nothing fired&rdquo; below is that, "
+           "not a clean site. Run the capture again.</div>"
+           if scan.get("no_requests_recorded") else ""),
         "", tip="gtm"))
 
     # ----------------------------------------------------------- the trackers

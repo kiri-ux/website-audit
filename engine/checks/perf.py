@@ -108,7 +108,17 @@ def _need_access(err, label):
     it went out in a paid document fourteen times in one report. The technical
     detail stays in `value`, where the team can see it and the client cannot.
     """
-    return finding("Need Access", {"error": err, "internal": True},
+    # RETRYABLE MEANS "NOT ABOUT THE SITE".
+    #
+    # Every other Need Access on this report is a fact we could not reach —
+    # a credential, a permission, a page we could not read. This one is a
+    # third party being unreachable from our host, and the sentence below
+    # says so in as many words. That distinction is what lets a re-run carry
+    # last week's real number forward instead of overwriting it with a gap:
+    # nothing about the site changed, so last week's measurement of the site
+    # is still a measurement of the site.
+    return finding("Need Access", {"error": err, "internal": True,
+                                   "retryable": True},
                    f"{label} could not be measured on this run — the speed-testing "
                    f"service did not respond. Nothing about the site caused this, "
                    f"and it is re-run rather than left.",

@@ -923,6 +923,30 @@ def _carry_forward(a, opts, audit_id, findings) -> dict:
         pass
     for k in off_keys:
         want += list(_PHASE_EXTRA_IDS.get(k, ()))
+
+    # A VENDOR OUTAGE IS NOT A FACT ABOUT THE SITE.
+    #
+    # The rule above is "only phases this run did not do", and it is right for
+    # everything it was written for: a phase that ran and failed is a failure,
+    # and last week's answer would paper over it. PageSpeed is the exception,
+    # and the row says why in its own words — "the speed-testing service did
+    # not respond. Nothing about the site caused this."
+    #
+    # Nine rows read that one call. Google refuses our host often enough that
+    # a consent-only re-run — which does not touch performance and was never
+    # asked to — came back having REPLACED nine good measurements from a
+    # successful full audit with nine gaps. The re-run measured the site less
+    # well than not running at all, which is the worst thing a re-run can do.
+    #
+    # So: rows that flagged themselves retryable are eligible to carry. Same
+    # rules as everything else here — same URL, newest first, real answers
+    # only, stamped with where it came from, counted in the panel. Nothing is
+    # papered over; the report says the number is from an earlier run and the
+    # button to refresh it is right there.
+    want += [cid for cid, f in (findings or {}).items()
+             if (f or {}).get("status") == "Need Access"
+             and ((f.get("value") or {}) if isinstance(f.get("value"), dict)
+                  else {}).get("retryable")]
     # A row that this run answered properly always wins.
     _ANSWERED = ("Pass", "Fail", "Warning", "Not Implemented", "Info", "N/A")
     need = [cid for cid in dict.fromkeys(want)

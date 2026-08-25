@@ -363,6 +363,79 @@ def main():
           "consentRun(msg.url, msg.urls)"
           in open("extension/background.js", encoding="utf-8").read())
 
+    import time as _t                                # noqa: F811
+    print("\nA CAPTURE THAT WATCHED NOTHING IS NOT A CLEAN SITE")
+    # Zero requests is not a quiet result, it is an impossible one — a real
+    # page load fetches its own stylesheet. It rendered as "Nothing fired",
+    # "0 fired before consent" and every bought pixel "configured, not
+    # firing": four confident statements derived from a recorder that never
+    # attached.
+    _silent = result_from_capture({
+        "url": "https://x.com/", "html": "<html>" + "z" * 3000 + "</html>",
+        "scripts": ["https://www.googletagmanager.com/gtm.js?id=GTM-AB1"],
+        "pre_requests": [], "banner_visible": False,
+        "consent_defaults_read": True})
+    check("a capture with no requests at all is flagged",
+          _silent.get("no_requests_recorded") is True)
+    check("and the whole result is inconclusive, not clean",
+          _silent.get("inconclusive") is True, _silent.get("verdict"))
+    check("saying the recorder did not attach",
+          "recorder did not attach" in (_silent.get("verdict_detail") or ""))
+    check("the count travels with the capture so the page can show it",
+          _silent.get("capture_counts", {}).get("pre") == 0)
+    _loud = result_from_capture({
+        "url": "https://x.com/", "html": "<html>" + "z" * 3000 + "</html>",
+        "scripts": [], "pre_requests": ["https://facebook.com/tr?id=1"],
+        "banner_visible": False, "consent_defaults_read": True})
+    check("a capture that saw traffic is not flagged",
+          not _loud.get("no_requests_recorded"))
+    _cs2 = open("extension/content.js", encoding="utf-8").read()
+    check("and the extension retries the page before accepting a zero",
+          "re-arming and reloading"
+          in open("extension/background.js", encoding="utf-8").read())
+    check("the page says so rather than reporting nothing fired",
+          "watched no traffic" in _ch(
+              {"id": "z", "client_name": "C", "target_url": "https://x.com"},
+              {"scan": _silent, "pages": [], "requested": {}}))
+
+    print("\nA VENDOR OUTAGE IS NOT A FACT ABOUT THE SITE")
+    # Nine rows read one Google call. A consent-only re-run does not touch
+    # performance and was never asked to — but it re-ran the checks anyway,
+    # PageSpeed refused, and nine good measurements from a successful full
+    # audit were REPLACED with nine gaps. The re-run measured the site less
+    # well than not running at all.
+    from engine.checks.perf import _need_access as _pna
+    _row = _pna("TimeoutError", "Largest Contentful Paint (LCP)")
+    check("a PageSpeed gap marks itself retryable",
+          (_row.get("value") or {}).get("retryable") is True)
+    check("and still says nothing about the site caused it",
+          "Nothing about the site caused this" in _row["evidence"])
+    from app import worker as _w
+    _u = "https://carry.example/"
+    _old = _db.create_audit("default", "C", _u, None, None, {})
+    _db.save_findings(_old, {"PERF-11": {
+        "status": "Warning", "confidence": 1.0, "source": "perf",
+        "evidence": "LCP: 3.1 s", "value": {"value": 3100}}})
+    _db.update_audit(_old, status="ready", completed_at=_t.time() - 3600)
+    _new = _db.create_audit("default", "C", _u, None, None, {"run_consent": True})
+    _now_f = {"PERF-11": {
+        "status": "Need Access", "confidence": 0.0, "source": "perf",
+        "evidence": "could not be measured on this run",
+        "value": {"internal": True, "retryable": True}}}
+    _carried = _w._carry_forward(_db.get_audit(_new), {"run_consent": True},
+                                 _new, _now_f)
+    check("a consent-only re-run keeps the last real speed measurement",
+          _carried.get("PERF-11", {}).get("status") == "Warning",
+          str(_carried.get("PERF-11", {}).get("status")))
+    check("stamped with where it came from",
+          bool((_carried.get("PERF-11", {}).get("value") or {}).get("carried_at")))
+    # A row that this run DID answer must never be overwritten by an old one.
+    _fresh = {"PERF-11": {"status": "Pass", "confidence": 1.0, "source": "perf",
+                          "evidence": "LCP: 1.1 s", "value": {}}}
+    check("but a row this run answered is left alone",
+          "PERF-11" not in _w._carry_forward(
+              _db.get_audit(_new), {"run_consent": True}, _new, _fresh))
+
     print("\nAN ABSENT GPC PASS IS UNTESTED, NEVER CLEAN")
     # "Field present" is what marks GPC as tested, so an extension that could
     # not set the signal must send NO field rather than an empty list. An empty

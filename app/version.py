@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-102"
-BUILD_NOTES = ("The consent capture now scans the conversion pages too, so a client's bought pixels stop being reported as dead; the stored record keeps THIS run's pages instead of inheriting the last run's, which was putting two dates on one screen; and the product section is the standalone scanner's card layout, badge first")
+BUILD = "2026.08.20-103"
+BUILD_NOTES = ("A re-run that never asked for Performance stops replacing nine good speed measurements with nine gaps - a vendor outage is not a fact about the site, so the last real number carries forward with a button to refresh it; and a browser capture that recorded zero network requests now says so loudly instead of reporting a clean site")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

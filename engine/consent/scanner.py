@@ -1022,6 +1022,15 @@ def _inconclusive_reason(r):
     status = r.get("http_status")
     if status and status >= 400:
         return f"The page returned HTTP {status}."
+    # A browser capture that recorded no network traffic at all did not
+    # observe this page — a real load fetches its own stylesheet. Everything
+    # downstream would otherwise read as "nothing fired", which is the same
+    # words as a clean result and the opposite meaning.
+    if r.get("no_requests_recorded"):
+        return ("The browser returned the page's HTML but recorded no network "
+                "requests on it at all, which a real page load cannot do - the "
+                "request recorder did not attach. Nothing here is a "
+                "measurement of the site's tags.")
     # THE LENGTH PROXY IS CALIBRATED FOR A SERVER FETCH.
     #
     # "Under 2000 characters" means a shell or a challenge page when Playwright

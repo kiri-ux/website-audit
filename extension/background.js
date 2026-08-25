@@ -466,10 +466,35 @@ async function consentOnePage(tab, url, opts) {
   const cap = { url, accept_clicked: false, reject_clicked: false };
 
   // ---- 1. pre-consent: load and watch, touching nothing ------------------
+  //
+  // AND CHECK THAT WE ACTUALLY WATCHED.
+  //
+  // A run came back with the page's HTML and an empty request list on every
+  // pass. Zero is not a quiet result, it is an impossible one — a real page
+  // load fetches its own stylesheet — so the recorder was not attached when
+  // the navigation happened. An MV3 service worker is evicted aggressively
+  // and a webRequest listener added at runtime does not survive that; the run
+  // got longer when it started covering two pages, which is exactly when the
+  // idle gaps get long enough to matter.
+  //
+  // Rather than diagnose it after the fact from a page that says "nothing
+  // fired", the pass checks its own work: no requests at all means re-arm the
+  // listener and load the page once more. If the second attempt is also
+  // empty, the count travels with the capture and the page says so loudly
+  // instead of reporting a clean site.
   let bucket = recStart(tab.id);
   await chrome.tabs.update(tab.id, { url });
   await settle(opts.dwell);
-  const probe = await inTab(tab.id, _probe);
+  let probe = await inTab(tab.id, _probe);
+  if (bucket.length === 0) {
+    say(`${opts.label}: recorded nothing — re-arming and reloading`);
+    bucket = recStart(tab.id);
+    await chrome.tabs.update(tab.id, { url: "about:blank" });
+    await settle(400);
+    await chrome.tabs.update(tab.id, { url });
+    await settle(opts.dwell);
+    probe = await inTab(tab.id, _probe);
+  }
   cap.pre_requests = [...bucket];
   cap.html = probe?.html || "";
   cap.scripts = probe?.scripts || [];
