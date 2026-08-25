@@ -261,7 +261,7 @@ async function run(startUrl) {
 
 chrome.runtime.onMessage.addListener((msg, _s, respond) => {
   if (msg?.type === "VICI_START") { run(msg.url); respond({ ok: true }); }
-  if (msg?.type === "VICI_CONSENT") { consentRun(msg.url); respond({ ok: true }); }
+  if (msg?.type === "VICI_CONSENT") { consentRun(msg.url, msg.urls); respond({ ok: true }); }
   // Launched from the audit page's own button: the page already knows the
   // audit id and the target, so nothing needs copying into the popup.
   if (msg?.type === "VICI_START_FOR") {
@@ -274,7 +274,7 @@ chrome.runtime.onMessage.addListener((msg, _s, respond) => {
   // that exists only because nothing wired the two pages together.
   if (msg?.type === "VICI_CONSENT_FOR") {
     chrome.storage.local.set({ auditId: msg.auditId, apiBase: API_BASE })
-      .then(() => consentRun(msg.url));
+      .then(() => consentRun(msg.url, msg.urls));
     respond({ ok: true });
   }
   if (msg?.type === "VICI_STOP") {
@@ -454,95 +454,125 @@ async function gpcOff() {
   } catch (e) { /* nothing to remove */ }
 }
 
-async function consentRun(startUrl) {
+async function consentOnePage(tab, url, opts) {
+  // ONE PAGE, FOUR PASSES. Extracted so the run can do several.
+  //
+  // The server scans the homepage AND the conversion URLs on the audit, and
+  // that is not a nicety: conversion pixels fire on thank-you pages. A capture
+  // that only did the start URL came back saying every bought product was
+  // "configured, never fired" about a client whose pixels the server had
+  // watched fire forty minutes earlier — a false all-clear in the one table
+  // that costs money.
+  const cap = { url, accept_clicked: false, reject_clicked: false };
+
+  // ---- 1. pre-consent: load and watch, touching nothing ------------------
+  let bucket = recStart(tab.id);
+  await chrome.tabs.update(tab.id, { url });
+  await settle(opts.dwell);
+  const probe = await inTab(tab.id, _probe);
+  cap.pre_requests = [...bucket];
+  cap.html = probe?.html || "";
+  cap.scripts = probe?.scripts || [];
+  cap.banner_visible = !!probe?.visible;
+  cap.consent_defaults = probe?.defaults || {};
+  cap.consent_defaults_read = !!probe?.read;
+  say(`${opts.label}: ${cap.pre_requests.length} requests, ` +
+      `banner ${cap.banner_visible ? "visible" : "not seen"}`);
+
+  // ---- 2. accept, then watch again ---------------------------------------
+  const hit = await inTab(tab.id, _click, [ACCEPT_TEXT.source]);
+  if (hit) {
+    cap.accept_clicked = true;
+    await settle(5000);
+    cap.post_requests = [...bucket];
+    say(`clicked “${hit}” — ${cap.post_requests.length} requests total`);
+  }
+
+  // ---- 3. reject, on a FRESH load ----------------------------------------
+  // A fresh load matters: once Accept has been clicked the CMP has written
+  // its cookie, and a Reject click after that is testing a different state
+  // from the one a first-time visitor sees.
+  recStop();
+  bucket = recStart(tab.id);
+  await chrome.tabs.update(tab.id, { url: url + (url.includes("?") ? "&" : "?") + "vici=1" });
+  await settle(5000);
+  const rej = await inTab(tab.id, _click, [REJECT_TEXT.source]);
+  if (rej) {
+    cap.reject_clicked = true;
+    bucket.length = 0;             // only what fires AFTER the click counts
+    await settle(5000);
+    cap.reject_requests = [...bucket];
+    say(`clicked “${rej}” — ${cap.reject_requests.length} requests after`);
+  }
+
+  // ---- 4. the GPC pass, on another fresh load ----------------------------
+  //
+  // `gpc_requests` stays UNDEFINED if the signal could not be set. The server
+  // reads "field present" as "tested", so sending an empty array after a
+  // failed setup would report a clean GPC pass on a site that was never sent
+  // the signal — a false clean bill in the section about legal obligations.
+  recStop();
+  const gp = await gpcOn(url);
+  if (gp.header || gp.prop) {
+    try {
+      bucket = recStart(tab.id);
+      await chrome.tabs.update(tab.id, {
+        url: url + (url.includes("?") ? "&" : "?") + "vici=2" });
+      await settle(opts.dwell);
+      cap.gpc_requests = [...bucket];
+      cap.gpc_signals = { header: gp.header, property: gp.prop };
+      say(`GPC pass (${gp.header ? "Sec-GPC" : ""}`
+          + `${gp.header && gp.prop ? " + " : ""}`
+          + `${gp.prop ? "navigator" : ""}): `
+          + `${cap.gpc_requests.length} requests`);
+    } finally {
+      await gpcOff();
+    }
+  } else {
+    say("GPC could not be set — leaving that section untested rather than "
+        + "reporting a pass");
+  }
+  recStop();
+  return cap;
+}
+
+async function consentRun(startUrl, urls) {
   const c = await cfg();
   if (!c.apiBase || !c.auditId) { say("ERROR: set API URL and audit ID first"); return; }
-  state = { running: true, done: 0, total: 5, log: state.log, pages: [], extras: {} };
+
+  // The conversion URLs come from the AUDIT, handed over by the page that
+  // launched this. The extension has no business knowing which pages a client
+  // counts as conversions.
+  const targets = [];
+  for (const u of [startUrl, ...(urls || [])]) {
+    if (/^https?:/i.test(u || "") && !targets.includes(u)) targets.push(u);
+  }
+  state = { running: true, done: 0, total: targets.length + 1,
+            log: state.log, pages: [], extras: {} };
   keepAlive(true);
-  say(`consent capture of ${startUrl}`);
+  say(`consent capture of ${targets.length} page${targets.length === 1 ? "" : "s"}`);
 
   const tab = await chrome.tabs.create({ url: "about:blank", active: false });
-  const cap = { url: startUrl, accept_clicked: false, reject_clicked: false };
+  const caps = [];
   try {
-    // ---- 1. pre-consent: load and watch, touching nothing ----------------
-    let bucket = recStart(tab.id);
-    await chrome.tabs.update(tab.id, { url: startUrl });
-    await settle(6000);
-    const probe = await inTab(tab.id, _probe);
-    cap.pre_requests = [...bucket];
-    cap.html = probe?.html || "";
-    cap.scripts = probe?.scripts || [];
-    cap.banner_visible = !!probe?.visible;
-    cap.consent_defaults = probe?.defaults || {};
-    cap.consent_defaults_read = !!probe?.read;
-    state.done = 1; say(`pre-consent: ${cap.pre_requests.length} requests, ` +
-                        `banner ${cap.banner_visible ? "visible" : "not seen"}`);
-
-    // ---- 2. accept, then watch again -------------------------------------
-    const hit = await inTab(tab.id, _click, [ACCEPT_TEXT.source]);
-    if (hit) {
-      cap.accept_clicked = true;
-      await settle(5000);
-      cap.post_requests = [...bucket];
-      say(`clicked “${hit}” — ${cap.post_requests.length} requests total`);
-    } else {
-      say("no Accept control found");
-    }
-    state.done = 2;
-
-    // ---- 3. reject, on a FRESH load --------------------------------------
-    // A fresh load matters: once Accept has been clicked the CMP has written
-    // its cookie, and a Reject click after that is testing a different state
-    // from the one a first-time visitor sees.
-    recStop();
-    bucket = recStart(tab.id);
-    await chrome.tabs.update(tab.id, { url: startUrl + (startUrl.includes("?") ? "&" : "?") + "vici=1" });
-    await settle(5000);
-    const rej = await inTab(tab.id, _click, [REJECT_TEXT.source]);
-    if (rej) {
-      cap.reject_clicked = true;
-      bucket.length = 0;             // only what fires AFTER the click counts
-      await settle(5000);
-      cap.reject_requests = [...bucket];
-      say(`clicked “${rej}” — ${cap.reject_requests.length} requests after`);
-    } else {
-      say("no Reject control found");
-    }
-    state.done = 3;
-
-    // ---- 4. the GPC pass, on another fresh load --------------------------
-    //
-    // Fresh again for the same reason the Reject pass is: this must be what a
-    // first-time visitor with GPC on sees, not what a visitor sees after a
-    // CMP has already written a cookie recording a choice.
-    //
-    // `gpc_requests` stays UNDEFINED if the signal could not be set. The
-    // server reads "field present" as "tested", so sending an empty array
-    // after a failed setup would report a clean GPC pass on a site that was
-    // never sent the signal — a false clean bill in the section about legal
-    // obligations.
-    recStop();
-    const gp = await gpcOn(startUrl);
-    if (gp.header || gp.prop) {
+    for (let i = 0; i < targets.length; i++) {
+      const role = i === 0 ? "homepage" : "conversion";
+      say(`page ${i + 1} of ${targets.length}: ${targets[i]}`);
       try {
-        bucket = recStart(tab.id);
-        await chrome.tabs.update(tab.id, {
-          url: startUrl + (startUrl.includes("?") ? "&" : "?") + "vici=2" });
-        await settle(6000);
-        cap.gpc_requests = [...bucket];
-        cap.gpc_signals = { header: gp.header, property: gp.prop };
-        say(`GPC pass (${gp.header ? "Sec-GPC" : ""}`
-            + `${gp.header && gp.prop ? " + " : ""}`
-            + `${gp.prop ? "navigator" : ""}): `
-            + `${cap.gpc_requests.length} requests`);
-      } finally {
-        await gpcOff();
+        const cap = await consentOnePage(tab, targets[i], {
+          dwell: 6000, label: `pre-consent (${role})` });
+        cap.role = role;
+        caps.push(cap);
+      } catch (e) {
+        // A PAGE THAT FAILED IS PART OF THE RECORD.
+        //
+        // Dropping it means the dashboard lists two pages for a run asked to
+        // cover three, and says nothing about the third.
+        say(`page ${i + 1} failed: ${e?.message || e}`);
+        caps.push({ url: targets[i], role, error: String(e?.message || e) });
       }
-    } else {
-      say("GPC could not be set — leaving that section untested rather than "
-          + "reporting a pass");
+      state.done = i + 1;
     }
-    state.done = 4;
   } catch (e) {
     say("ERROR: " + (e?.message || e));
   } finally {
@@ -556,16 +586,18 @@ async function consentRun(startUrl) {
     const res = await fetch(
       `${c.apiBase.replace(/\/$/, "")}/api/audits/${c.auditId}/consent-capture`,
       { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(cap) });
-    say(res.ok ? "done — consent capture uploaded"
+        body: JSON.stringify({ url: targets[0], pages: caps, ...caps[0] }) });
+    const body = await res.json().catch(() => ({}));
+    say(res.ok ? `done — ${body.answered ?? "?"} of ${body.total ?? 9} rows filled`
                : `upload failed: HTTP ${res.status}`);
   } catch (e) {
     say("upload failed: " + (e?.message || e));
   }
-  state.done = 5; state.running = false;
+  state.done = state.total; state.running = false;
   keepAlive(false);
   chrome.runtime.sendMessage({ type: "VICI_STATE", state }).catch(() => {});
 }
+
 
 // ===================================================================
 // PAGESPEED CAPTURE

@@ -274,6 +274,95 @@ def main():
               for r in json.load(open("extension/manifest.json"))
               .get("web_accessible_resources", [])))
 
+    from app import db as _db, api as _api          # noqa: F811
+    from app.artifacts import get_artifact as _ga    # noqa: F811
+    import json as _json                             # noqa: F811
+    print("\nA CAPTURE THAT SKIPS THE THANK-YOU PAGE REPORTS DEAD PIXELS")
+    # CONVERSION PIXELS FIRE ON CONVERSION PAGES.
+    #
+    # The capture did the start URL only, so it came back saying every bought
+    # product was "configured, never fired" about a client whose pixels the
+    # server had watched fire forty minutes earlier. A false all-clear in the
+    # one table that costs money, produced by a coverage gap rather than a
+    # matching bug — which is why it looked so convincing.
+    _home = {"url": "https://x.com/", "role": "homepage",
+             "html": "<html>" + "x" * 3000 + "</html>",
+             "scripts": ["https://www.googletagmanager.com/gtm.js?id=GTM-AB1"],
+             "pre_requests": ["https://www.google-analytics.com/g/collect?v=2"],
+             "banner_visible": False, "consent_defaults": {},
+             "consent_defaults_read": True, "accept_clicked": False,
+             "reject_clicked": False}
+    _thanks = {"url": "https://x.com/thank-you/", "role": "conversion",
+               "html": "<html>" + "y" * 3000 + "</html>", "scripts": [],
+               "pre_requests": [
+                   "https://cnv.event.prod.bidr.io/log/cnv?tag_id=1",
+                   "https://segment.prod.bidr.io/associate-segment?buzz_key=d",
+                   "https://sp.analytics.yahoo.com/spp.pl?a=1",
+                   "https://ad.doubleclick.net/ddm/activity/src=163",
+                   "https://insight.adsrvr.org/track/pxl/?adv=61c"],
+               "banner_visible": False, "consent_defaults": {},
+               "consent_defaults_read": True, "accept_clicked": False,
+               "reject_clicked": False}
+    _aid2 = _db.create_audit("default", "X", "https://x.com/", None, None,
+                             {"consent_products": ["BARCK+"],
+                              "conversion_urls": ["https://x.com/thank-you/"]})
+    _one = _api.ingest_consent_capture(_aid2, {**_home, "pages": [_home]}, None)
+    _d1 = _json.loads(_ga(_aid2, "consent_scan.json").decode())
+    _p1 = next((p for p in _d1["scan"]["products"]
+                if p["product"] == "BARCK+"), {})
+    check("the homepage alone reports the bought pixels as never firing",
+          _p1.get("fired") == 0, str(_p1.get("fired")))
+
+    _api.ingest_consent_capture(
+        _aid2, {"url": _home["url"], "pages": [_home, _thanks], **_home}, None)
+    _d2 = _json.loads(_ga(_aid2, "consent_scan.json").decode())
+    _p2 = next((p for p in _d2["scan"]["products"]
+                if p["product"] == "BARCK+"), {})
+    check("adding the conversion page finds every one of them",
+          _p2.get("fired") == 5, str(_p2.get("fired")))
+    check("and the record says it covered two pages",
+          _d2["scan"].get("pages_scanned") == 2)
+
+    # THE PAGES BELONG TO THIS RUN, NOT THE LAST ONE.
+    #
+    # The ingest kept the previous scan's page list, so the page rendered one
+    # run's tiles above another run's per-page tracker table — two dates on
+    # one screen, contradicting each other, under a header claiming both were
+    # captured in the browser.
+    check("a one-page capture stores one page, not the last run's two",
+          len(_json.loads(_ga(_aid2, "consent_scan.json").decode())["pages"]) == 2)
+    _api.ingest_consent_capture(_aid2, {**_home, "pages": [_home]}, None)
+    _d3 = _json.loads(_ga(_aid2, "consent_scan.json").decode())
+    check("and a later one-page capture does not inherit them",
+          len(_d3["pages"]) == 1, str([p["url"] for p in _d3["pages"]]))
+
+    # A failed page is part of the record, not dropped.
+    _api.ingest_consent_capture(_aid2, {"url": _home["url"], **_home, "pages": [
+        _home, {"url": "https://x.com/gone/", "role": "conversion",
+                "error": "TimeoutError"}]}, None)
+    _d4 = _json.loads(_ga(_aid2, "consent_scan.json").decode())
+    check("a page that failed is listed with its error",
+          any(p.get("error") for p in _d4["pages"]),
+          str([p.get("role") for p in _d4["pages"]]))
+
+    # And the extension has to be told which extra pages to visit.
+    _pg_urls = _ch({"id": "zz9", "client_name": "C",
+                    "target_url": "https://x.com"},
+                   {"scan": {"mode": "basic", "cmps": [], "gtm": {},
+                             "pre_consent": [], "post_reject": [],
+                             "gpc_fires": [], "products": [],
+                             "state_checks": []},
+                    "pages": [],
+                    "requested": {"conversion_urls":
+                                  ["https://x.com/thank-you/"]}})
+    check("the page hands the conversion URLs to the extension",
+          "data-urls" in _pg_urls and "thank-you" in _pg_urls)
+    check("and the extension reads them",
+          "el.dataset.urls" in open("extension/content.js", encoding="utf-8").read())
+    check("passing them into the run",
+          "consentRun(msg.url, msg.urls)"
+          in open("extension/background.js", encoding="utf-8").read())
+
     print("\nAN ABSENT GPC PASS IS UNTESTED, NEVER CLEAN")
     # "Field present" is what marks GPC as tested, so an extension that could
     # not set the signal must send NO field rather than an empty list. An empty

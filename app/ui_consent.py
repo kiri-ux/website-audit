@@ -305,6 +305,42 @@ _PAGE_CSS = ("<style>"
              "font-style:normal;font-size:9px;font-weight:700;color:#fff}"
              ".vstep--y i{background:var(--good)}"
              ".vstep--n i{background:#b9c4d2}"
+             # ---- the standalone scanner's product cards ------------------
+             #
+             # Lifted from the original Site Scanner, badges and all: a
+             # bordered card per product, a dashed rule under its header, and
+             # every pixel a flex row whose STATUS COMES FIRST. The badge next
+             # to the name is the whole trick — in the table version the
+             # status sat in column three and the name in column one, so
+             # joining them cost a trip across the page.
+             ".vprodc{border:1px solid var(--line);border-radius:8px;"
+             "background:#fff;margin:0 0 9px}"
+             ".vprodh{display:flex;align-items:center;gap:9px;padding:8px 12px;"
+             "border-bottom:1px dashed var(--line);font-size:14px}"
+             ".vprodc ul{list-style:none;margin:0;padding:2px 12px 6px}"
+             ".vprodc li{font-size:13.5px;padding:7px 0;display:flex;gap:10px;"
+             "align-items:baseline;border-bottom:1px dashed var(--line)}"
+             ".vprodc li:last-child{border-bottom:none}"
+             ".vprodc li > div{min-width:0}"
+             # BADGES, NOT PILLS. Condensed, uppercase, squared-off — the same
+             # object the original used, so a screen from one tool and a
+             # screen from the other read as the same product.
+             ".vb{font-weight:700;font-size:11px;letter-spacing:.06em;"
+             "text-transform:uppercase;border-radius:5px;padding:3px 8px;"
+             "white-space:nowrap;flex:none}"
+             ".vb--ok{background:#E7F4ED;color:#1F7A4D}"
+             ".vb--warn{background:#FBF1D9;color:#9A6A00}"
+             ".vb--bad{background:#F9E7E5;color:#B3261E}"
+             ".vb--neutral{background:#E8F1F8;color:#0066B3}"
+             ".vcount{background:#E8F1F8;color:#0066B3;border-radius:4px;"
+             "font-size:12px;font-weight:700;padding:2px 8px}"
+             ".vev{font-size:12.5px;color:var(--muted)}"
+             ".vsrc{font-size:10.5px;font-weight:700;letter-spacing:.06em;"
+             "border:1.5px solid var(--blue);color:var(--blue);"
+             "border-radius:4px;padding:1px 6px;white-space:nowrap}"
+             ".vurl{color:var(--muted);font:11.5px ui-monospace,"
+             "SFMono-Regular,Menlo,monospace;word-break:break-all;"
+             "margin-top:3px}"
              # A PRODUCT ROW IS A GROUP HEADER, NOT A ROW WITH EMPTY CELLS.
              #
              # It carried a name and a count and left State and Evidence
@@ -343,7 +379,18 @@ def _tile(value, label, tip="", edge=None):
             f"<div class='k'>{dot}{label}{tip}</div></div>")
 
 
-def _capture_panel(aid, url, why, heading="This scan ran without a browser"):
+def _conv_urls(audit):
+    """The conversion URLs off the audit's stored options."""
+    import json
+    try:
+        return (json.loads(audit.get("options") or "{}")
+                or {}).get("conversion_urls") or []
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _capture_panel(aid, url, why, heading="This scan ran without a browser",
+                   extra_urls=()):
     """
     The handoff to the extension, on the page where it is needed.
 
@@ -366,8 +413,16 @@ def _capture_panel(aid, url, why, heading="This scan ran without a browser"):
     """
     return (
         f"<div class='card' id='vici-consent' data-audit-id='{e(aid)}' "
-        f"data-target='{e(url)}' style='border-left:3px solid var(--gold);"
-        f"margin-top:16px'>"
+        f"data-target='{e(url)}' "
+        # THE CONVERSION URLS TRAVEL WITH THE BUTTON.
+        #
+        # They are on the audit and the extension has no business knowing
+        # which pages a client counts as conversions — but it has to scan
+        # them, because that is where conversion pixels fire. A capture that
+        # did the homepage alone came back reporting every bought product as
+        # never firing.
+        f"data-urls='{e(' '.join(extra_urls or []))}' "
+        f"style='border-left:3px solid var(--gold);margin-top:16px'>"
         f"<b style='font-size:14.5px'>{e(heading)}</b>"
         f"<p class='sm' style='color:var(--ink2);margin:5px 0 0;"
         f"line-height:1.6'>{why} Site Scanner runs the same scan from your own "
@@ -440,7 +495,8 @@ def consent_html(audit: dict, detail: dict | None) -> str:
                 "If the re-run comes back the same way, the site is turning "
                 "the server's browser away rather than having nothing to "
                 "report.",
-                heading="Or capture it from your own browser"))
+                heading="Or capture it from your own browser",
+                extra_urls=_conv_urls(audit)))
         return _shell(f"Consent — {client}", _PAGE_CSS + body,
                       heading="Consent scan", crumbs=crumbs)
 
@@ -594,7 +650,8 @@ def consent_html(audit: dict, detail: dict | None) -> str:
         parts.append(_capture_panel(
             aid, url, _why,
             heading=("This scan ran without a browser" if basic
-                     else "Some of this was never tested")))
+                     else "Some of this was never tested"),
+            extra_urls=want.get("conversion_urls") or []))
 
     # ------------------------------------------------------- CMP + container
     cmp_rows = []
@@ -748,91 +805,98 @@ def consent_html(audit: dict, detail: dict | None) -> str:
 
     # ------------------------------------------------------------- products
     #
-    # THIS TABLE WAS PRINTING PYTHON.
+    # THE STANDALONE SCANNER'S LAYOUT, BECAUSE IT WAS RIGHT.
     #
-    # `pixels` is a list of dicts and the Evidence column ran str() over each
-    # one, so the money section of the page showed
-    # {'name': 'Meta Pixel', 'fired_pre': False, ...} truncated at 120
-    # characters. The other three columns were wrong in a quieter way:
-    # `expected` is the NUMBER of pixels a product defines and `fired` is how
-    # many were seen, and both were being read as yes/no — so a product with
-    # one of four pixels firing said "firing", and every product said "bought".
+    # A four-column table gave a product row a name, a count and two empty
+    # cells, and gave a pixel row a badge marooned in the third column with
+    # its evidence in the fourth — so the eye crossed the full page width to
+    # join a status to the thing it was about. The original tool puts the
+    # badge FIRST, hard against the pixel name, and groups the pixels inside a
+    # bordered card headed by their product. Same information, one glance.
     #
-    # One row per pixel, because the pixel is the unit anybody acts on: you
-    # cannot fix "PMax", you fix the Floodlight tag inside it.
+    # The wording is the original's too: "configured, not firing" is what a
+    # tag in the container that never made a request is, and "never fired"
+    # implied a longer observation than one page load.
     prods = scan.get("products") or []
     bought = {str(x) for x in (want.get("products") or [])}
     if prods or bought:
-        rows = []
+        def _pxbadge(px):
+            if px.get("fired_pre"):
+                return ("bad", "fires pre-consent") if not _no_cmp \
+                    else ("neutral", "ungated")
+            if px.get("fired_post"):
+                return ("ok", "post-consent")
+            if px.get("configured") is True:
+                return ("warn", "configured, not firing")
+            if px.get("configured") is False:
+                return ("bad", "not found")
+            return ("bad", "not seen")
+
+        cards = []
         for p in sorted(prods, key=lambda x: str(x.get("product") or "")):
             pix = p.get("pixels") or []
             name = p.get("product") or "?"
             n_fired = int(p.get("fired") or 0)
             n_total = len(pix) or int(p.get("expected") or 0)
-            head_kind = ("ok" if n_fired and n_fired == n_total
-                         else ("bad" if not n_fired else "hold"))
-            # "0 of 1 firing" over an empty pixel list is a fraction with
-            # nothing under it. Say the thing instead.
-            head_txt = (f"{n_fired} of {n_total} firing" if pix
-                        else "no pixels seen")
-            rows.append([
-                f"<span class='vprod'><b>{e(name)}</b>"
-                + (f"<span class='sm' style='color:var(--muted)'> &middot; on "
-                   f"the account</span>" if name in bought else "") + "</span>",
-                _chip(head_txt, head_kind),
-                "", ""])
+            head_kind, head_txt = (
+                ("ok", "firing") if n_fired and n_fired == n_total
+                else ("bad", "missing") if not n_fired
+                else ("warn", "partial"))
+            lis = []
             for px in pix:
-                if px.get("fired_pre"):
-                    stx, kind = "fires before consent", "bad"
-                elif px.get("fired_post"):
-                    stx, kind = "fires after consent", "ok"
-                elif px.get("configured"):
-                    stx, kind = "configured, never fired", "hold"
-                elif px.get("configured") is False:
-                    stx, kind = "not found anywhere", "bad"
-                else:
-                    stx, kind = "not seen", "hold"
-                ev = []
-                if px.get("sample_url"):
-                    ev.append(f"<code style='font-size:11.5px;"
-                              f"word-break:break-all'>"
-                              f"{e(px['sample_url'][:140])}</code>")
+                kind, stx = _pxbadge(px)
+                bits = []
                 if px.get("containers"):
-                    ev.append(f"<div class='sm' style='color:var(--muted)'>"
-                              f"in container "
-                              f"{e(', '.join(px['containers']))}</div>")
+                    # Just the container id. "GTM GTM-K4SZBGQZ" said GTM
+                    # twice, which is what happens when a label and the thing
+                    # it labels both carry the prefix.
+                    bits.append(f"<span class='vsrc' title='Found in this "
+                                f"published GTM container'>"
+                                f"{e(', '.join(px['containers']))}</span>")
                 if px.get("macro_warning"):
-                    ev.append("<div class='sm' style='color:var(--critical)'>"
-                              "unreplaced template macro in the URL — the tag "
-                              "was pasted without filling its values</div>")
+                    bits.append("<span class='vev' style='color:var(--critical)'>"
+                                "unreplaced template macro — pasted without "
+                                "filling its values</span>")
                 if px.get("severity_note"):
-                    ev.append(f"<div class='sm' style='color:var(--muted)'>"
-                              f"{e(px['severity_note'])}</div>")
-                rows.append([
-                    f"<span style='color:var(--muted)'>&nbsp;&nbsp;↳</span> "
-                    f"{e(px.get('name') or '?')}",
-                    "", _chip(stx, kind)
-                    + (_t("configured") if px.get("configured") else ""),
-                    "".join(ev) or "—"])
+                    bits.append(f"<span class='vev'>{e(px['severity_note'])}"
+                                f"</span>")
+                url = (f"<div class='vurl'>{e(px['sample_url'][:180])}</div>"
+                       if px.get("sample_url") else "")
+                lis.append(
+                    f"<li><span class='vb vb--{kind}'>{e(stx)}</span>"
+                    + (_t("configured") if px.get("configured") is True else "")
+                    + f"<div><b>{e(px.get('name') or '?')}</b> "
+                    + " ".join(bits) + url + "</div></li>")
+            cards.append(
+                f"<div class='vprodc'><div class='vprodh'><b>{e(name)}</b>"
+                + (f"<span class='vcount'>{n_fired}/{n_total}</span>"
+                   if n_total > 1 else "")
+                + f"<span class='vb vb--{head_kind}'>{e(head_txt)}</span>"
+                + (f"<span class='vev'>on the account</span>"
+                   if name in bought else "")
+                + "</div><ul>" + ("".join(lis) or
+                                  "<li><span class='vb vb--bad'>no pixels "
+                                  "seen</span><div>Nothing matching this "
+                                  "product was observed.</div></li>")
+                + "</ul></div>")
         # A product on the account that the scan never even listed. Absent is
         # unknown, never off — but a bought product with no record at all is
         # the one case where the absence IS the finding.
         for name in sorted(bought - {p.get("product") for p in prods}):
-            rows.append([f"<span class='vprod'><b>{e(name)}</b>"
-                         f"<span class='sm' style='color:var(--muted)'> "
-                         f"&middot; on the account</span></span>",
-                         _chip("no pixels seen", "bad"), "",
-                         "<span class='sm' style='color:var(--ink2)'>"
-                         "Nothing matching this product fired, and nothing "
-                         "matching it is in the page source or the published "
-                         "container.</span>"])
+            cards.append(
+                f"<div class='vprodc'><div class='vprodh'><b>{e(name)}</b>"
+                f"<span class='vb vb--bad'>missing</span>"
+                f"<span class='vev'>on the account</span></div>"
+                f"<ul><li><span class='vb vb--bad'>not found</span>"
+                f"<div>Nothing matching this product fired, and nothing "
+                f"matching it is in the page source or the published "
+                f"container.</div></li></ul></div>")
         parts.append(_sec(
-            "Products bought against what fires",
-            _rows(["Product / pixel", "Firing", "State", "Evidence"], rows,
-                  ["26%", "13%", "20%", "41%"]),
-            "A pixel they pay for that never fires is invisible to a scan "
-            "that only reports what it found — so this table starts from what "
-            "was bought.", tip="product"))
+            "Product pixels",
+            "".join(cards),
+            "Starts from what was bought, so a pixel they pay for that never "
+            "fires is visible — a scan that only reports what it found cannot "
+            "show you that.", tip="product"))
 
     # ---------------------------------------------------------- state checks
     st = scan.get("state_checks") or []

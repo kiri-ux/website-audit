@@ -275,7 +275,11 @@ function viciStart(elId, btnId, msgType, label) {
     btn.disabled = true;
     btn.textContent = label + " running…";
     chrome.runtime.sendMessage({
-      type: msgType, auditId: el.dataset.auditId, url: el.dataset.target });
+      type: msgType, auditId: el.dataset.auditId, url: el.dataset.target,
+      // The extra pages come off the audit, via the page. A conversion URL is
+      // where conversion pixels fire, so a capture that skips them reports a
+      // client's bought products as never firing.
+      urls: (el.dataset.urls || "").split(/\s+/).filter(Boolean) });
     viciWatch(el, label);
   });
 }

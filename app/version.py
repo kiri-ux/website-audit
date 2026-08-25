@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-101"
-BUILD_NOTES = ("Captures now show their progress on the page and reload it when they finish, instead of pointing at a popup a web page cannot open; a site with no consent banner stops being offered a re-run that could never find one; the pre-consent headline counts the rows printed under it; and the consent page is a good deal denser")
+BUILD = "2026.08.20-102"
+BUILD_NOTES = ("The consent capture now scans the conversion pages too, so a client's bought pixels stop being reported as dead; the stored record keeps THIS run's pages instead of inheriting the last run's, which was putting two dates on one screen; and the product section is the standalone scanner's card layout, badge first")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

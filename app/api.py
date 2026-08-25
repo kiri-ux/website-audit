@@ -1310,11 +1310,67 @@ def ingest_consent_capture(audit_id: str, payload: dict,
                  "conversion_urls": _opt.get("conversion_urls") or [],
                  "implementation": _opt.get("implementation") or ""}
 
-    scan = result_from_capture({**payload, "url": payload.get("url")
-                                or a["target_url"]},
-                               states=requested["states"],
-                               products=requested["products"],
-                               industries=requested["industries"])
+    # ONE CAPTURE MAY COVER SEVERAL PAGES, and it must, because conversion
+    # pixels fire on thank-you pages. The homepage decides the verdict; the
+    # other pages contribute their pixels, exactly as the server path does.
+    _caps = [c for c in (payload.get("pages") or []) if isinstance(c, dict)]
+    if not _caps:
+        _caps = [payload]
+    _pages, _scans = [], []
+    for _i, _cap in enumerate(_caps):
+        _role = _cap.get("role") or ("homepage" if _i == 0 else "conversion")
+        _u = _cap.get("url") or a["target_url"]
+        if _cap.get("error"):
+            # A page that failed is part of the record. Dropping it means the
+            # dashboard lists two pages for a run asked to cover three, and
+            # says nothing about the third.
+            _pages.append({"url": _u, "role": _role, "error": _cap["error"]})
+            continue
+        _one = result_from_capture(
+            {**_cap, "url": _u},
+            states=requested["states"] if _i == 0 else [],
+            products=requested["products"],
+            industries=requested["industries"] if _i == 0 else [])
+        _scans.append(_one)
+        _pages.append({"url": _u, "role": _role, "scan": _one})
+
+    if not _scans:
+        raise HTTPException(400, "every page in the capture failed")
+    scan = _scans[0]
+    for _other in _scans[1:]:
+        # A pixel firing pre-consent on ANY scanned page is a pre-consent
+        # fire, and the nine checkpoints should say so once.
+        for _key in ("pre_consent", "post_reject", "gpc_fires",
+                     "post_consent"):
+            if _other.get(_key):
+                scan[_key] = (scan.get(_key) or []) + _other[_key]
+        for _p in _other.get("products") or []:
+            _mine = next((x for x in scan.get("products") or []
+                          if x.get("product") == _p.get("product")), None)
+            if not _mine:
+                scan.setdefault("products", []).append(_p)
+                continue
+            # A pixel seen firing on the thank-you page is a pixel that
+            # fires. Merge per-pixel rather than per-product, or the
+            # homepage's "never fired" overwrites the page that saw it.
+            for _px in _p.get("pixels") or []:
+                _t = next((x for x in _mine.get("pixels") or []
+                           if x.get("name") == _px.get("name")), None)
+                if not _t:
+                    _mine.setdefault("pixels", []).append(_px)
+                    continue
+                for _f in ("fired_pre", "fired_post"):
+                    _t[_f] = bool(_t.get(_f)) or bool(_px.get(_f))
+                if _px.get("sample_url") and not _t.get("sample_url"):
+                    _t["sample_url"] = _px["sample_url"]
+                if _t.get("fired_pre") or _t.get("fired_post"):
+                    _t["configured"] = None
+            _mine["fired"] = sum(1 for x in _mine.get("pixels") or []
+                                 if x.get("fired_pre") or x.get("fired_post"))
+    scan["pages_scanned"] = len(_scans)
+    if len(_scans) > 1:
+        from engine.consent.scanner import _apply_verdict
+        _apply_verdict(scan)          # re-read the verdict off the merge
     rows = findings_from_scan(scan)
     db.save_findings(audit_id, rows)
 
@@ -1339,9 +1395,16 @@ def ingest_consent_capture(audit_id: str, payload: dict,
         prior = {}
     detail_ok = True
     try:
+        # THE PAGES COME FROM THIS RUN, NEVER THE LAST ONE.
+        #
+        # This kept the previous scan's page list, so the page rendered one
+        # run's tiles and products above another run's per-page tracker table
+        # — two dates on one screen, contradicting each other, with a header
+        # that claimed both were "captured in the operator's browser". If a
+        # capture covered one page, the record says one page.
         put_artifact(audit_id, "consent_scan.json", json.dumps(
             {"scan": scan,
-             "pages": prior.get("pages") or [],
+             "pages": _pages,
              "requested": {**(prior.get("requested") or {}), **requested},
              "server_scan": (prior.get("scan") or None)},
             default=str).encode())
@@ -1365,7 +1428,7 @@ def ingest_consent_capture(audit_id: str, payload: dict,
         "verdict": scan.get("verdict"),
         "verdict_detail": scan.get("verdict_detail"),
         "scanned_at": scan.get("scanned_at"),
-        "pages_scanned": 1,
+        "pages_scanned": len(_scans),
         "has_detail": detail_ok,
     }
     db.update_audit(audit_id, extras=json.dumps(_ex, default=str))
