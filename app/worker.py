@@ -949,6 +949,38 @@ def _carry_forward(a, opts, audit_id, findings) -> dict:
                   else {}).get("retryable")]
     # A row that this run answered properly always wins.
     _ANSWERED = ("Pass", "Fail", "Warning", "Not Implemented", "Info", "N/A")
+
+    # ---- THE RULE THAT SUBSUMES EVERY LIST ABOVE ------------------------
+    #
+    # A SCAN MUST NEVER GO BACKWARDS.
+    #
+    # The lists above name particular phases and particular retryable rows,
+    # and each was added after a specific report came back worse than the one
+    # before it. They kept missing cases, because they were enumerating
+    # symptoms of one rule nobody had written down: a re-run that measures
+    # LESS than the run before it must not publish the shortfall as if it
+    # were a finding.
+    #
+    # A consent-only re-run of a fully audited site produced "Ours to fix -
+    # 194": one hundred and eighty-one crawl checks, ten Lighthouse rows and
+    # three Search Console rows, every one of them previously answered, all
+    # reverted to a gap because this run did not do that work and was never
+    # asked to. The PDF went backwards. That is the worst thing a re-run can
+    # do, and it had happened three times before anybody named it.
+    #
+    # WHY THIS IS NOT PAPERING OVER A FAILURE. The distinction is what the
+    # two statuses MEAN. A Fail is a measurement of the site and must never
+    # be overwritten by anything. A Need Access is the explicit admission
+    # that we did not measure — it is a statement about the run, never about
+    # the site. Replacing "we did not look today" with "here is what we saw
+    # on Tuesday, dated" is strictly more information, not less.
+    #
+    # And it is never silent: every carried row is stamped with the run and
+    # the date it came from, the internal panel counts them, and the "where
+    # this report's data came from" line names the areas.
+    want += [cid for cid, f in (findings or {}).items()
+             if (f or {}).get("status") == "Need Access"]
+
     need = [cid for cid in dict.fromkeys(want)
             if (findings.get(cid) or {}).get("status") not in _ANSWERED]
     if not need:
@@ -1562,6 +1594,19 @@ def main():
     from .config import warn_startup
     warn_startup()
     _publish_capabilities()
+    # BUILD THE TAG MANAGER INDEX BEFORE A SCAN NEEDS IT.
+    #
+    # The first index build costs one paced API call per GTM account, and the
+    # API is capped at 0.25 QPS per project — so an estate of forty accounts
+    # is nearly three minutes. Paying that inside the first consent scan of
+    # the day would look exactly like a hung scan. No-op when the credentials
+    # are not configured.
+    try:
+        from engine.consent.gtm_api import warm_index
+        warm_index()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[worker] GTM index not warmed: {type(exc).__name__}: {exc}",
+              flush=True)
     _reap_abandoned()
     print(f"[worker] up · {version.label()} · {cfg.summary()} · waiting for jobs",
           flush=True)

@@ -132,6 +132,38 @@ body{margin:0;background:var(--plane);color:var(--ink);
  --seq:#3987e5; --track:#262623;
 }
 .wrap{max-width:1080px;margin:0 auto;padding:40px 28px 80px}
+
+/* ---- report tabs -------------------------------------------------------
+   THE REPORT HAS ITS OWN STYLESHEET, which is why the tab strip arrived here
+   as four bare underlined links running into each other. This page is not
+   rendered by the app shell — it is a standalone document with its own CSS,
+   by design, because it is also what gets saved and mailed around. So the
+   strip's styles come with it rather than being inherited from a chrome this
+   page does not have. Same shapes as the dashboard, so the two read as one
+   product. */
+.ctabs{display:flex;gap:2px;border-bottom:1px solid var(--line);
+ margin:0 0 4px;flex-wrap:wrap}
+.ctab{padding:8px 15px;font-size:13.5px;font-weight:500;color:var(--ink2);
+ border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;
+ position:relative;top:1px;text-decoration:none}
+.ctab:hover{color:var(--seq);background:var(--surface);text-decoration:none}
+.ctab.on{background:#fff;border-color:var(--line);color:var(--ink);
+ font-weight:600}
+.csibs{display:flex;gap:8px;flex-wrap:wrap;align-items:baseline;
+ font-size:12.5px;color:var(--muted);margin:8px 0 22px}
+.csibs > span{margin-right:2px}
+.csibs a{color:var(--ink2);border:1px solid var(--line);border-radius:14px;
+ padding:2px 10px;background:var(--surface);text-decoration:none}
+.csibs a:hover{border-color:var(--seq);color:var(--seq);text-decoration:none}
+.csibs .k{color:var(--muted)}
+/* The build, top right, on this page too — a saved report that does not say
+   which build made it is a bug report with no version number. */
+.bstamp{position:fixed;top:10px;right:14px;z-index:50;
+ font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);
+ background:var(--surface);border:1px solid var(--line);border-radius:12px;
+ padding:2px 10px;opacity:.7}
+.bstamp:hover{opacity:1}
+@media print{.ctabs,.csibs,.bstamp{display:none}}
 header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:30px}
 h1{font-size:25px;margin:0 0 6px;letter-spacing:-.02em}
 .sub{color:var(--ink2);font-size:14px}
@@ -1131,6 +1163,9 @@ def render_html(meta, sc, findings, catalog, summary=None):
             "Re-run with a browser user-agent, with JavaScript rendering enabled, "
             "or from an allowlisted IP.</div>")
 
+    from app import version as _ver
+    P.append(f"<div class='bstamp' title='Build that produced this report'>"
+             f"{e(_ver.label())}</div>")
     P.append(f"<header><h1>SEO &amp; Generative Engine Optimization Audit</h1>"
              f"<div class='sub'>{e(meta['client'])} · <code>{e(meta['url'])}</code><br>"
              f"{meta['pages_crawled']} pages crawled · {e(meta['coverage'])} checkpoints "

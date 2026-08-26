@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-109"
-BUILD_NOTES = ("The consent-only redirect had made the consent page a room with no door - its way out pointed at the URL that redirected back. Both report pages now carry tabs for every report the run produced and links to the client's other runs, so a full audit and a consent scan reach each other")
+BUILD = "2026.08.20-110"
+BUILD_NOTES = ("A scan can no longer go backwards: a row this run could not measure keeps the last real answer instead of publishing the shortfall as a gap. The build moved to the top right of every page and our own name left it, and the report page styles the tabs it was being handed")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

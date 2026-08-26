@@ -594,6 +594,67 @@ def main():
     check("without reusing the crawl that was too small",
           'opts.pop("reuse_crawl"' in _ins2.getsource(_api.rerun_audit))
 
+    import inspect as _ins3
+    from types import SimpleNamespace as _N2
+    from app import worker as _w
+    print("\nA SCAN MUST NEVER GO BACKWARDS")
+    # A consent-only re-run of a fully audited site produced "Ours to fix -
+    # 194": 181 crawl checks, 10 Lighthouse rows and 3 Search Console rows,
+    # every one previously answered, all reverted to a gap because this run
+    # did not do that work and was never asked to. The PDF went backwards.
+    _bu = "https://backwards.example/"
+    _b1 = _db.create_audit("default", "B", _bu, None, None, {})
+    _db.save_findings(_b1, {
+        "ANA-01": {"status": "Pass", "confidence": 1.0, "source": "analytics",
+                   "evidence": "GA4 present", "value": {}},
+        "ONP-15": {"status": "Fail", "confidence": 1.0, "source": "onpage",
+                   "evidence": "12 duplicate titles", "value": {}},
+        "GA4-01": {"status": "Need Access", "confidence": 0.0, "source": "ga4",
+                   "evidence": "no credentials", "value": {}}})
+    _db.update_audit(_b1, status="ready", completed_at=_t.time() - 7200)
+    _b2 = _db.create_audit("default", "B", _bu, None, None, {"run_consent": True})
+    _now2 = {
+        "ANA-01": {"status": "Need Access", "confidence": 0.0,
+                   "source": "crawler",
+                   "evidence": "the crawl checks produced no result for this run",
+                   "value": {}},
+        "ONP-15": {"status": "Need Access", "confidence": 0.0,
+                   "source": "crawler",
+                   "evidence": "the crawl checks produced no result for this run",
+                   "value": {}},
+        "GA4-01": {"status": "Need Access", "confidence": 0.0, "source": "ga4",
+                   "evidence": "no credentials", "value": {}},
+        "CONS-01": {"status": "Fail", "confidence": 1.0, "source": "consent",
+                    "evidence": "no CMP", "value": {}}}
+    _c2 = _w._carry_forward(_db.get_audit(_b2), {"run_consent": True}, _b2, _now2)
+    check("a row this run could not measure keeps its last real answer",
+          _c2.get("ANA-01", {}).get("status") == "Pass")
+    check("including a Fail — a measurement is a measurement",
+          _c2.get("ONP-15", {}).get("status") == "Fail")
+    check("but a row that was never answered stays unanswered",
+          "GA4-01" not in _c2, str(sorted(_c2)))
+    check("and a row THIS run answered is never touched",
+          "CONS-01" not in _c2)
+    check("every carried row says which run it came from",
+          all((f.get("value") or {}).get("carried_from") for f in _c2.values()))
+    # The rule, stated where the next reader will find it.
+    check("the rule is written down, not just implemented",
+          "A SCAN MUST NEVER GO BACKWARDS" in _ins3.getsource(_w._carry_forward))
+
+    print("\nTHE BUILD IS ON EVERY PAGE, QUIETLY")
+    from engine.report import CSS as _RCSS
+    import app.ui as _uimod
+    _dash = _uimod.dashboard_html([], _N2(name="V", email="e"), 0)
+    check("the top bar carries the build", "bstamp" in _dash)
+    check("and our own name and the dead dot are gone",
+          "<span>Vici Media</span>" not in _dash)
+    check("the dashboard does not print it twice",
+          _dash.count("class='chip build'") == 0)
+    check("the report stylesheet styles the tabs it is given",
+          ".ctab{" in _RCSS and ".csibs{" in _RCSS)
+    check("and carries the build stamp too", ".bstamp{" in _RCSS)
+    check("none of which survives into print", "@media print" in _RCSS)
+
     print("\nNO REPORT PAGE IS A DEAD END")
     # THE LOOP I SHIPPED. A consent-only run redirects to the consent page,
     # and the consent page's only way out pointed at the URL that redirects —
@@ -601,7 +662,6 @@ def main():
     # client with a full audit AND a consent run had no route between them at
     # all, because Open goes to the newest and the newest was the consent one.
     from app.ui import client_tabs as _ct
-    import inspect as _ins3
     _a = {"id": "aud1", "client_name": "C", "target_url": "https://x.com/",
           "options": _json.dumps({"run_consent": True})}
     _sib = [{"id": "aud0", "created_at": _t.time() - 90000,

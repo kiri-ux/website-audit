@@ -131,6 +131,9 @@ code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
 .topbar h1{color:#1e1e1e;font-weight:700;letter-spacing:-.015em}
 .topbar .burger{color:#5c6673}
 .topbar .right{color:var(--ink2)}
+.bstamp{font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace;
+ color:var(--muted);letter-spacing:.01em;white-space:nowrap;opacity:.75}
+.bstamp:hover{opacity:1}
 
 /* ---- hover help ----
    Every one of these lines was true and none of them was needed twice. On
@@ -776,8 +779,17 @@ def _shell(title, body, refresh=None, heading=None, crumbs=None, tab=None):
             f"<body class='viz-root'>{RAIL}"
             f"<header class='topbar'><span class='burger'>\u2630</span>"
             f"<h1>{e(heading or title)}</h1>"
-            f"<div class='right'><span>Vici Media</span>"
-            f"<span title='notifications'>\u25cf</span></div></header>"
+            # THE BUILD, WHERE IT IS ALWAYS VISIBLE.
+            #
+            # "Vici Media ●" was our own name and a dot that did nothing, on
+            # every page, in the one corner people already look at. The build
+            # is the thing actually worth having there: deploying and then
+            # reading a stale page is an easy mistake to make and a hard one
+            # to spot, because the report looks plausible either way. Quiet
+            # enough to ignore, present enough to check.
+            f"<div class='right'><span class='bstamp' "
+            f"title='Build running on this server'>{e(version.label())}"
+            f"</span></div></header>"
             f"{trail}<div class='wrap'>{body}</div></body></html>")
 
 
@@ -1157,9 +1169,10 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
         f"<button type='button' class='tg' data-pr=\"{e(k)}\" "
         f"onclick='prToggle(this)'>{e(k)}</button>" for k in _PP)
 
+    # The build moved to the top bar, where it is on EVERY page rather than
+    # only this one. A second copy here is the same fact twice, above the
+    # first number anyone came to read.
     body = f"""
-    <div class='sub'>
-      <span class='chip build'>{e(version.label())}</span></div>
     {stats}
 
     <h2>New audit</h2>
