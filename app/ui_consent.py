@@ -718,6 +718,88 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
                      else "Some of this was never tested"),
             extra_urls=want.get("conversion_urls") or []))
 
+    # ------------------------------------------------------- action items
+    #
+    # FIRST, NOT LAST.
+    #
+    # This was the closing section, which put the work order below nine
+    # sections of evidence and a seventeen-row page table — so the one thing
+    # anybody actually has to DO was the thing you had to scroll furthest to
+    # reach. The evidence is why; the items are what. What goes first.
+    #
+    # THE PAGE ENDED WITHOUT SAYING WHAT TO DO.
+    #
+    # Everything above is evidence, and evidence is what this page is for —
+    # but a reader who has just been told there is no banner, no opt-out link
+    # and a pixel firing on four pages still has to assemble the work order
+    # themselves. The standalone tool ends with the list, so this does too.
+    #
+    # OWNERSHIP IS THE POINT, not the wording. "A pixel fires pre-consent" is
+    # our work queue in a container we own and a conversation in the client's,
+    # and the badge is what tells the two apart before anybody starts typing.
+    # The facts this section reads are established further down the page —
+    # hoisted here, not duplicated, so there is still one definition of each.
+    gtm = scan.get("gtm") or {}
+    bought = {str(x) for x in (want.get("products") or [])}
+    _impl = str(want.get("implementation") or "").lower()
+    _ours = ("vici" in _impl or _impl == "gtm")
+    _owner = ("<span class='vown vown--vici'>Vici</span>" if _ours
+              else "<span class='vown vown--client'>Client</span>")
+    _acts = []
+
+    def _act(owner, text):
+        _acts.append(f"<li>{owner}<div>{text}</div></li>")
+
+    # Ordered by dependency: the mechanism has to exist before anything can
+    # be gated on it, and gating has to exist before Consent Mode means
+    # anything.
+    _mech_fail = [c for c in (scan.get("state_checks") or [])
+                  if str(c.get("check")) == "Opt-out mechanism"
+                  and str(c.get("status", "")).lower() == "fail"]
+    if _mech_fail and not basic:
+        _sts = sorted({str(c.get("state")) for c in _mech_fail})
+        _act("<span class='vown vown--client'>Client</span>",
+             f"Give residents a working opt-out method — required for "
+             f"{e(', '.join(_sts))} targeting and currently absent. The "
+             f"recommended fix is a consent banner (CMP), which delivers the "
+             f"opt-out link, GPC handling and pixel gating in one install; "
+             f"the law requires the opt-out, not the banner itself."
+             + (" Once one is in place, Vici applies the consent procedure "
+                "in the GTM." if _ours else ""))
+    if _no_cmp and _pre_real and not basic:
+        _vend = sorted({str(h.get("vendor")) for h in _pre_real})
+        _act(_owner,
+             f"Gate {e(_listy(_vend))} behind consent once a banner exists — "
+             f"{'they fire' if len(_vend) != 1 else 'it fires'} on every page "
+             f"load today with no mechanism to decline."
+             + ("" if _ours else " Vici supplies the procedure; the client's "
+                                 "team applies it in their container."))
+    if scan.get("gpc_tested") and scan.get("gpc_fires"):
+        _act("<span class='vown vown--client'>Client</span>",
+             "Honor the Global Privacy Control signal — ad trackers were "
+             "contacted on a page load that sent it. A consent banner "
+             "delivers this once installed.")
+    if scan.get("consent_mode_default") is False and (gtm or {}).get("found"):
+        _act(_owner,
+             "Set Google Consent Mode defaults to denied — with no defaults "
+             "declared, Google tags run at full capability before anyone "
+             "chooses, and the banner has nothing to flip.")
+    _miss = [p.get("product") for p in (scan.get("products") or [])
+             if not int(p.get("fired") or 0)]
+    _miss += sorted(bought - {p.get("product") for p in (scan.get("products") or [])})
+    if _miss and not basic:
+        _act(_owner,
+             f"Install or repair the {e(_listy(sorted(set(_miss))))} "
+             f"pixel{'s' if len(set(_miss)) != 1 else ''} — bought on the "
+             f"account and not seen firing on any page scanned.")
+    if _acts:
+        parts.append(_sec(
+            "Action items",
+            f"<div class='vprodc'><ul>{''.join(_acts)}</ul></div>",
+            "Every item is drawn from the evidence below, ordered the way the "
+            "work has to happen — a mechanism before gating, gating before "
+            "Consent Mode."))
+
     # ------------------------------------------------------- CMP + container
     cmp_rows = []
     for c in (scan.get("cmps") or []):
@@ -749,7 +831,6 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
             "no signature the scanner knows. Worth thirty seconds in a "
             "browser before it goes in a deck.</div></div>"))
 
-    gtm = scan.get("gtm") or {}
     cm = scan.get("consent_mode_default")
     defaults = scan.get("consent_defaults") or {}
     cfg_rows = []
@@ -1055,7 +1136,21 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
     parts.append(f"<div class='vgrid'><div>{_rej_block}</div>"
                  f"<div>{_gpc_block}</div></div>")
 
-    after = scan.get("post_consent") or []
+    # SEVENTEEN PAGES, ELEVEN VENDORS, ONE HUNDRED AND EIGHTY-SEVEN CHIPS.
+    #
+    # `post_consent` is merged across every scanned page, and this printed the
+    # merged list verbatim — so a clean seventeen-page site produced the same
+    # eleven names sixteen times over, filling a screen and a half to say
+    # "eleven vendors waited for a choice". The page count is the interesting
+    # part of the repetition, so it is kept as a number on the chip and the
+    # rest goes.
+    _after_raw = [(x.get("vendor") if isinstance(x, dict) else x)
+                  for x in (scan.get("post_consent") or [])]
+    _after_n = {}
+    for _v in _after_raw:
+        if _v:
+            _after_n[_v] = _after_n.get(_v, 0) + 1
+    after = sorted(_after_n)
     if after:
         # A LIST OF NAMES IS NOT A TABLE. One column under a full-width navy
         # header, for three words per row — it took the visual weight of the
@@ -1065,11 +1160,15 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
             "Fired only after consent",
             "<div class='card'><div style='display:flex;gap:8px;"
             "flex-wrap:wrap'>"
-            + "".join(_chip(x.get("vendor") if isinstance(x, dict) else x,
-                            "ok") for x in after)
+            + "".join(
+                f"<span class='amark amark--ok'>{e(v)}"
+                + (f"<span style='opacity:.65;font-weight:400'> &times;"
+                   f"{_after_n[v]}</span>" if _after_n[v] > 1 else "")
+                + "</span>" for v in after)
             + "</div></div>",
-            "These waited for a choice, which is the behavior being asked "
-            "for."))
+            f"{len(after)} vendor{'s' if len(after) != 1 else ''} waited for a "
+            f"choice, which is the behavior being asked for. The count is how "
+            f"many scanned pages each was seen on."))
 
     # ------------------------------------------------------------- products
     #
@@ -1086,7 +1185,6 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
     # tag in the container that never made a request is, and "never fired"
     # implied a longer observation than one page load.
     prods = scan.get("products") or []
-    bought = {str(x) for x in (want.get("products") or [])}
     if prods or bought:
         def _pxbadge(px):
             if px.get("fired_pre"):
@@ -1242,76 +1340,6 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
             "A conversion page is where conversion pixels actually fire, so "
             "it is the page most likely to carry an ungated one. Open one to "
             "see what fired on it."))
-
-    # ------------------------------------------------------- action items
-    #
-    # THE PAGE ENDED WITHOUT SAYING WHAT TO DO.
-    #
-    # Everything above is evidence, and evidence is what this page is for —
-    # but a reader who has just been told there is no banner, no opt-out link
-    # and a pixel firing on four pages still has to assemble the work order
-    # themselves. The standalone tool ends with the list, so this does too.
-    #
-    # OWNERSHIP IS THE POINT, not the wording. "A pixel fires pre-consent" is
-    # our work queue in a container we own and a conversation in the client's,
-    # and the badge is what tells the two apart before anybody starts typing.
-    _impl = str(want.get("implementation") or "").lower()
-    _ours = ("vici" in _impl or _impl == "gtm")
-    _owner = ("<span class='vown vown--vici'>Vici</span>" if _ours
-              else "<span class='vown vown--client'>Client</span>")
-    _acts = []
-
-    def _act(owner, text):
-        _acts.append(f"<li>{owner}<div>{text}</div></li>")
-
-    # Ordered by dependency: the mechanism has to exist before anything can
-    # be gated on it, and gating has to exist before Consent Mode means
-    # anything.
-    _mech_fail = [c for c in (scan.get("state_checks") or [])
-                  if str(c.get("check")) == "Opt-out mechanism"
-                  and str(c.get("status", "")).lower() == "fail"]
-    if _mech_fail and not basic:
-        _sts = sorted({str(c.get("state")) for c in _mech_fail})
-        _act("<span class='vown vown--client'>Client</span>",
-             f"Give residents a working opt-out method — required for "
-             f"{e(', '.join(_sts))} targeting and currently absent. The "
-             f"recommended fix is a consent banner (CMP), which delivers the "
-             f"opt-out link, GPC handling and pixel gating in one install; "
-             f"the law requires the opt-out, not the banner itself."
-             + (" Once one is in place, Vici applies the consent procedure "
-                "in the GTM." if _ours else ""))
-    if _no_cmp and _pre_real and not basic:
-        _vend = sorted({str(h.get("vendor")) for h in _pre_real})
-        _act(_owner,
-             f"Gate {e(_listy(_vend))} behind consent once a banner exists — "
-             f"{'they fire' if len(_vend) != 1 else 'it fires'} on every page "
-             f"load today with no mechanism to decline."
-             + ("" if _ours else " Vici supplies the procedure; the client's "
-                                 "team applies it in their container."))
-    if scan.get("gpc_tested") and scan.get("gpc_fires"):
-        _act("<span class='vown vown--client'>Client</span>",
-             "Honor the Global Privacy Control signal — ad trackers were "
-             "contacted on a page load that sent it. A consent banner "
-             "delivers this once installed.")
-    if scan.get("consent_mode_default") is False and (gtm or {}).get("found"):
-        _act(_owner,
-             "Set Google Consent Mode defaults to denied — with no defaults "
-             "declared, Google tags run at full capability before anyone "
-             "chooses, and the banner has nothing to flip.")
-    _miss = [p.get("product") for p in (scan.get("products") or [])
-             if not int(p.get("fired") or 0)]
-    _miss += sorted(bought - {p.get("product") for p in (scan.get("products") or [])})
-    if _miss and not basic:
-        _act(_owner,
-             f"Install or repair the {e(_listy(sorted(set(_miss))))} "
-             f"pixel{'s' if len(set(_miss)) != 1 else ''} — bought on the "
-             f"account and not seen firing on any page scanned.")
-    if _acts:
-        parts.append(_sec(
-            "Action items",
-            f"<div class='vprodc'><ul>{''.join(_acts)}</ul></div>",
-            "Derived from the evidence above, in the order the work has to "
-            "happen — a mechanism before gating, gating before Consent Mode."))
 
     # ------------------------------------------------------------ opt-out
     if scan.get("optout_link"):

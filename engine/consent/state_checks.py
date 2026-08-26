@@ -49,6 +49,18 @@ STATE_CHECKS = {
            "optout_link": True,
            "cite": "Cal. Civ. Code 1798.135; CCPA Regs 7025 (opt-out "
                    "preference signals); AG/CPPA guidance naming GPC",
+           # OPT-OUT FOR ADULTS, OPT-IN FOR MINORS — and the second half was
+           # missing entirely. CCPA/CPRA is an opt-out regime for adults, so
+           # "no opt-out method" is the right finding for a general audience.
+           # But selling or sharing the personal information of a consumer
+           # KNOWN to be under 16 requires affirmative opt-in (13-15 from the
+           # consumer, under 13 from a parent), and sensitive personal
+           # information carries a separate right to limit its use. A site
+           # that attracts families is exactly where that distinction bites,
+           # and reporting only "opt-out" there understates what the law asks.
+           "optin_minors": True,
+           "optin_cite": "Cal. Civ. Code 1798.120(c) (under-16 opt-in); "
+                         "1798.121 (right to limit sensitive PI)",
            "notes": "Active enforcement incl. 2025-26 CA/CO/CT sweep. 2026 "
                     "regs add opt-out status display expectations."},
     "CO": {"name": "Colorado", "law": "Colorado Privacy Act",

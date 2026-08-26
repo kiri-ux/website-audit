@@ -1365,6 +1365,116 @@ def main():
     check("the fix line travels with it",
           "Render JavaScript forced" in _html)
 
+    print("\nA CONSENT MODE PING IS NOT A QUESTION")
+    # Eight rows on a correctly configured client read "verify state in GTM
+    # Preview" because this file only knew `gcs=`, and current GA4 sends
+    # `gcd=`. Amber is the wrong color for behavior that is exactly right.
+    from engine.consent.scanner import (
+        _consent_signalled, _defaults_all_denied, _MACRO_RE)
+    check("the undocumented gcd= encoding counts as a consent signal",
+          _consent_signalled(
+              "https://www.google-analytics.com/g/collect?v=2&gcd=13l3l3l3l1l1"))
+    check("so does the documented gcs=",
+          _consent_signalled("https://region1.google-analytics.com/g/"
+                             "collect?gcs=G100"))
+    check("a request carrying neither is not a consent signal",
+          not _consent_signalled("https://example.com/pixel?id=1"))
+    check("all tracking defaults denied reads as denied",
+          _defaults_all_denied({"ad_storage": "denied",
+                                "analytics_storage": "denied",
+                                "ad_user_data": "denied",
+                                "ad_personalization": "denied"}))
+    check("security_storage granted does not break it — it is not tracking",
+          _defaults_all_denied({"ad_storage": "denied",
+                                "analytics_storage": "denied",
+                                "security_storage": "granted",
+                                "functionality_storage": "granted"}))
+    check("one granted tracking type is not 'all denied'",
+          not _defaults_all_denied({"ad_storage": "granted",
+                                    "analytics_storage": "denied"}))
+    check("and no declared defaults at all is not 'all denied' either",
+          not _defaults_all_denied({}))
+    # The pairing is the safety: presence of a state alone must not be enough,
+    # because we deliberately do not decode gcd.
+    check("presence alone is never the whole test",
+          _consent_signalled("https://x.test/c?gcd=1") and
+          not _defaults_all_denied({"ad_storage": "granted"}))
+
+    print("\nAN UNREPLACED MACRO IS A CERTAIN DEFECT")
+    check("percent-encoded ${...} is caught",
+          bool(_MACRO_RE.search(
+              "https://ad.doubleclick.net/;gdpr_consent=$%7BGDPR_CONSENT_755%7D")))
+    check("so is a literal ${...}",
+          bool(_MACRO_RE.search("https://x.test/p?c=${GDPR_CONSENT_755}")))
+    check("so is an unfilled [SQUARE_BRACKET] placeholder",
+          bool(_MACRO_RE.search("https://x.test/p?id=[CLIENT_ID]")))
+    check("an ordinary tracking URL is not flagged",
+          not _MACRO_RE.search("https://www.google-analytics.com/g/collect?"
+                               "v=2&tid=G-ABC123&cid=1.2&gcd=13l3l3l3l1l1"))
+
+    print("\nCALIFORNIA IS OPT-OUT FOR ADULTS AND OPT-IN FOR MINORS")
+    from engine.consent.state_checks import STATE_CHECKS
+    check("the CA entry carries the opt-in half",
+          bool(STATE_CHECKS.get("CA", {}).get("optin_minors")))
+    check("and cites the statute it comes from",
+          "1798.120" in str(STATE_CHECKS.get("CA", {}).get("optin_cite", "")))
+    from engine.consent.scanner import state_checks_for
+    _r = {"cmps": [], "optout_link": "", "pre_consent": [],
+          "post_consent": [], "gpc_tested": False, "gpc_fires": False,
+          "privacy_policy_link": "", "state_checks": []}
+    state_checks_for(_r, ["CA"])
+    _optin = [c for c in _r["state_checks"] if c["check"] == "Under-16 opt-in"]
+    check("a CA scan says so out loud", len(_optin) == 1)
+    check("as a warn, because a scan cannot know the audience",
+          _optin and _optin[0]["status"] == "warn")
+    check("and names who has to affirm",
+          _optin and "parent under 13" in _optin[0]["detail"])
+    _r2 = {**_r, "state_checks": []}
+    state_checks_for(_r2, ["TX"])
+    check("a state without the opt-in half does not get the row",
+          not [c for c in _r2["state_checks"]
+               if c["check"] == "Under-16 opt-in"])
+
+    print("\nELEVEN VENDORS, NOT ONE HUNDRED AND EIGHTY-SEVEN CHIPS")
+    # post_consent is merged across every scanned page, so a clean 17-page
+    # site printed the same names sixteen times over.
+    from app.ui_consent import consent_html
+    _scan = {"ok": True, "cmps": [],
+             "mode": "full",
+             "post_consent": ([{"vendor": "Meta Pixel"}] * 17
+                              + [{"vendor": "Google Analytics"}] * 17
+                              + [{"vendor": "TikTok"}]),
+             "pre_consent": [], "state_checks": [], "products": [],
+             "pages": [], "gtm": {"found": False, "container_ids": []}}
+    _html = consent_html({"id": "t1", "target_url": "https://x.test",
+                          "client_name": "T"},
+                         {"scan": _scan, "pages": [], "requested": {}})
+    check("each vendor is named once", _html.count(">Meta Pixel") == 1)
+    check("the repetition survives as a count", "&times;17" in _html)
+    check("a vendor seen on one page carries no count",
+          "TikTok</span>" in _html.replace("<span style='opacity:.65;"
+                                           "font-weight:400'> &times;1</span>",
+                                           "XX"))
+
+    print("\nTHE WORK ORDER COMES BEFORE THE EVIDENCE")
+    # Action items used to close the page, below nine sections and a
+    # seventeen-row table — the one thing anybody has to DO was the furthest
+    # thing to scroll to.
+    _scan2 = {"ok": True, "mode": "full", "cmps": [],
+              "post_consent": [], "pre_consent": [],
+              "consent_mode_default": False,
+              "state_checks": [], "products": [], "pages": [],
+              "gtm": {"found": True, "container_ids": ["GTM-XXXX"]}}
+    _h2 = consent_html({"id": "t2", "target_url": "https://x.test",
+                        "client_name": "T"},
+                       {"scan": _scan2, "pages": [],
+                        "requested": {"implementation": "vici"}})
+    check("the section is there at all", "Action items" in _h2)
+    check("and it comes before the CMP evidence",
+          _h2.index("Action items") < _h2.index("Consent platform"),
+          f"{_h2.index('Action items')} vs {_h2.index('Consent platform')}")
+    check("its note points forward, not back", "evidence below" in _h2)
+
     print("\n" + "=" * 68)
     if FAILED:
         print(f"  {len(FAILED)} FAILED: {FAILED}")

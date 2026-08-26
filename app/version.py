@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-110"
-BUILD_NOTES = ("A scan can no longer go backwards: a row this run could not measure keeps the last real answer instead of publishing the shortfall as a gap. The build moved to the top right of every page and our own name left it, and the report page styles the tabs it was being handed")
+BUILD = "2026.08.20-112"
+BUILD_NOTES = ("A Google tag that pings under all-denied Consent Mode defaults now reads as correct rather than amber - the scanner only knew the documented gcs= parameter and current GA4 sends the undocumented gcd=, so eight right answers were being reported as questions. An unreplaced ${MACRO} in a tag URL is named wherever it appears, California gets its under-16 opt-in row, the post-consent vendor list is one chip per vendor with a page count, and Action items moved to the top of the page")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

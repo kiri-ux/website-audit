@@ -178,6 +178,52 @@ def _gcs_denied(url):
         return False
 
 
+def _consent_signalled(url):
+    """
+    Does this request carry a Consent Mode state at all?
+
+    `gcs=` was the only parameter this file knew about, and current GA4 sends
+    `gcd=` instead on a great many properties — so every Consent Mode ping
+    from those sites fell through to "verify state in GTM Preview", and a
+    correctly configured client got eight amber rows about behavior that was
+    exactly right.
+
+    Presence only. The two encodings are not decoded here, on purpose: `gcs`
+    is documented and `gcd` is not, and inventing a decoder for the second one
+    would be guessing about consent state in the section of the report where
+    guessing is least acceptable. Presence is enough when paired with the
+    declared defaults below — that pairing is what makes the call safe.
+    """
+    try:
+        qs = parse_qs(urlparse(url).query)
+    except Exception:  # noqa: BLE001
+        return False
+    return bool((qs.get("gcs") or [""])[0] or (qs.get("gcd") or [""])[0])
+
+
+# security_storage is granted on every site by design — it covers CSRF tokens
+# and the like, not tracking — so it must never count against "all denied".
+_NON_TRACKING_STORAGE = {"security_storage", "functionality_storage"}
+
+
+def _defaults_all_denied(defaults):
+    """
+    Is every tracking-relevant Consent Mode default set to denied?
+
+    THIS IS THE HALF WE CAN READ WITH CERTAINTY. The defaults come from the
+    dataLayer, before any tag ran; if all of them are denied then the first
+    request a Google tag makes is a cookieless ping by construction. That is
+    not an inference about the encoding of a URL parameter, it is what
+    "default denied" means.
+    """
+    d = {k: str(v).lower() for k, v in (defaults or {}).items()}
+    track = {k: v for k, v in d.items() if k not in _NON_TRACKING_STORAGE}
+    return bool(track) and all(v == "denied" for v in track.values())
+
+
+_MACRO_RE = re.compile(r"(\$%7B|\$\{|%5B[A-Za-z_]|\[[A-Za-z_][A-Za-z0-9_ -]*\])")
+
+
 def _empty_result(url):
     return {
         "url": url,
@@ -825,13 +871,35 @@ def _full_scan_impl(browser, url, products=None, states=None,
         elif tracker["google"] and _gcs_denied(req_url):
             severity, note = "info", ("Consent Mode cookieless ping in a "
                                       "denied state - expected behavior.")
+        elif (tracker["google"] and _consent_signalled(req_url)
+              and _defaults_all_denied(result.get("consent_defaults"))):
+            # DENIED DEFAULTS PLUS A CONSENT SIGNAL IS THE ANSWER, not a
+            # question. Every tracking default was declared denied before any
+            # tag ran and the request carries a Consent Mode state, so this
+            # is the cookieless ping the design calls for. Reporting it amber
+            # told a correctly configured client to go and check eight rows
+            # that were right.
+            severity, note = "info", ("Consent Mode ping under denied "
+                                      "defaults - expected behavior, no "
+                                      "identifier is sent.")
         elif tracker["google"] and result["consent_mode_default"] is True:
-            severity, note = "warn", ("Google request pre-consent; Consent "
-                                      "Mode defaults exist - verify state in "
-                                      "GTM Preview.")
+            severity, note = "warn", ("Google request pre-consent and Consent "
+                                      "Mode defaults are declared, but not "
+                                      "every tracking type defaults to "
+                                      "denied. Check ad_storage, "
+                                      "analytics_storage, ad_user_data and "
+                                      "ad_personalization in GTM Preview.")
         else:
             severity, note = "violation", "Fired before any consent interaction."
 
+        # AN UNREPLACED MACRO IS A CERTAIN DEFECT, wherever it appears.
+        # `gdpr_consent=${GDPR_CONSENT_755}` reaching the network means the
+        # tag template was pasted without filling its values — the product
+        # table already says so about the same tag, and the row a reader is
+        # looking at should not make them go and find it.
+        if _MACRO_RE.search(req_url or ""):
+            note = (note + " Unreplaced template macro in the URL - the tag "
+                           "was pasted without filling its values.").strip()
         result["pre_consent"].append({
             "vendor": tracker["vendor"],
             "url": req_url[:220],
@@ -1163,6 +1231,39 @@ def products_and_containers(result, html, raw_low, pre_urls, post_urls,
     corpora = _container_corpora(_cids)
     _gtm["containers_read"] = sorted(corpora)
     _gtm["containers_unread"] = [c for c in _cids[:3] if c not in corpora]
+
+    # THE PUBLISHED CONFIGURATION, WHERE WE HAVE THE KEYS.
+    #
+    # Everything above is inference from what the page fetched: the container
+    # JS is public, so we can fingerprint what is IN it, but not read the tag
+    # list, the triggers, or whether each tag waits for consent. The Tag
+    # Manager API answers all three — and answers the ownership question by
+    # existing, which is better than the form field it replaces: if one of our
+    # logins can read the container, we own it. A self-declared checkbox can
+    # be wrong; an API read cannot.
+    #
+    # OPTIONAL AND SILENT-FREE. With no credentials this reports "disabled"
+    # and the page falls back to fingerprint attribution exactly as before,
+    # which is the honest degradation — but a login that is configured and
+    # FAILING says so, because a container we could not read and one we never
+    # tried to read must not look the same.
+    _audits = {}
+    for _cid in _cids[:6]:
+        try:
+            from .gtm_api import audit as _gtm_audit
+            _audits[_cid] = _gtm_audit(_cid)
+        except Exception as exc:  # noqa: BLE001
+            _audits[_cid] = {"status": "error", "public_id": _cid,
+                             "detail": f"{type(exc).__name__}: {exc}"}
+    if _audits:
+        _gtm["audits"] = _audits
+        # Ownership is a fact about access, so it is derived once here rather
+        # than re-derived by every renderer.
+        _gtm["vici_owned"] = [c for c, a_ in _audits.items()
+                              if a_.get("status") == "ok"]
+        _gtm["tags_read"] = sum(len(a_.get("tags") or [])
+                                for a_ in _audits.values()
+                                if a_.get("status") == "ok")
     result["gtm"] = _gtm
 
     # Same container attribution for non-product trackers. These hit
@@ -1314,6 +1415,25 @@ def state_checks_for(result, states, site_checks=True):
                            "detected: " + ", ".join(bits) + ". Some "
                            f"accessible opt-out method is expected for "
                            f"{cfg['name']} targeting."})
+        # THE OPT-IN HALF, WHERE THE STATUTE HAS ONE.
+        #
+        # California is an opt-out regime for adults and an OPT-IN one for
+        # consumers known to be under 16 — and the check only ever spoke to
+        # the first. On a client whose audience includes families that is not
+        # a footnote, it is a different legal test with a different answer, so
+        # it gets said rather than left for somebody to remember.
+        if cfg.get("optin_minors"):
+            result["state_checks"].append(
+                {"state": s, "check": "Under-16 opt-in",
+                 "status": "warn",
+                 "detail": ("Opt-out is the standard for adults, but selling "
+                            "or sharing the data of a consumer known to be "
+                            "under 16 needs affirmative OPT-IN - from the "
+                            "consumer at 13-15, from a parent under 13. A "
+                            "scan cannot tell whether this audience includes "
+                            "minors; if it does, a reject-by-default banner "
+                            "is the floor and age signals need a human "
+                            "review. " + cfg.get("optin_cite", ""))})
         if cfg.get("optout_link"):
             if result["optout_link"]:
                 result["state_checks"].append(
