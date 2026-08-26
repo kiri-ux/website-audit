@@ -160,6 +160,11 @@ code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
  border-top-color:var(--navy);opacity:0;transition:opacity .12s;z-index:41}
 .tip:hover:after,.tip:hover:before,.tip:focus:after,.tip:focus:before{opacity:1}
 
+.pfilter{width:100%;margin:0 0 5px;padding:6px 10px;font-size:13px;
+ border:1px solid var(--line);border-radius:8px;background:#fff;
+ color:var(--ink);display:none}
+.pfilter:focus{outline:2px solid var(--blue);outline-offset:1px}
+
 /* ---- report tabs ---- */
 .ctabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:0 0 4px;
  flex-wrap:wrap}
@@ -825,6 +830,96 @@ def _del_form(audit_id, label="Delete", confirm="Delete this audit?"):
             f"<button class='del' type='submit'>{label}</button></form>")
 
 
+# ---------------------------------------------------------------------------
+# WHAT A RUN WAS ASKED TO DO, as one flat dict.
+#
+# At module level rather than nested inside the dashboard because it is now
+# the single definition of "the settings" for three readers: the panel that
+# shows them, the button that replays them, and the tests that guard against
+# a field being added to the form and forgotten here — which has happened
+# four times and cost a phase each time.
+# ---------------------------------------------------------------------------
+def settings_of(a):
+    """
+    The intake that is NOT recoverable from the crawl: vertical, markets,
+    conversion, page cap, and any hand-picked GA4 / Search Console
+    property. Someone re-auditing a client was reading these off an old
+    report and retyping them, which is how a re-run silently loses the
+    property you picked last month.
+    """
+    o = a.get("options") or {}
+    for _ in range(2):
+        if isinstance(o, str):
+            try: o = _json.loads(o)
+            except Exception: o = {}
+    return {
+        "target_url": a.get("target_url") or "",
+        "client_name": a.get("client_name") or "",
+        "vertical": a.get("vertical") or "",
+        "max_pages": o.get("max_pages") or 150,
+        "primary_markets": o.get("primary_markets") or "",
+        "primary_conversion": o.get("primary_conversion") or "",
+        "partner": o.get("partner") or "",
+        "gsc_property": o.get("gsc_property") or "",
+        "ga4_property_id": o.get("ga4_property_id") or "",
+        "gtm_container": o.get("gtm_container") or "",
+        # THE TWO FIELDS THAT WERE NOT SAVING.
+        #
+        # They were never in this dict, so "Settings used" never showed
+        # them and the prefill button never restored them. Every re-run
+        # started with a blank industry and blank states — and a blank
+        # states box means no state requirement is checked at all, so the
+        # cost of forgetting was a silently thinner audit rather than a
+        # visible gap.
+        "consent_states": " ".join(o.get("consent_states") or []),
+        "consent_industries": ", ".join(o.get("consent_industries") or []),
+        # Added to the form in ‑39 and never added here — so they were
+        # stored on the audit, invisible in "Settings used", and lost by
+        # the prefill. The same omission that cost states and industries
+        # five builds, repeated on three more fields two builds later.
+        "consent_products": ", ".join(o.get("consent_products") or []),
+        "conversion_urls": " ".join(o.get("conversion_urls") or []),
+        "implementation": o.get("implementation") or "",
+        "render_js": bool(o.get("render_js")),
+        "browser_ua": bool(o.get("user_agent")),
+        # THE PHASES. THE THIRD TIME THIS EXACT OMISSION HAS SHIPPED.
+        #
+        # Twice already a field was added to the form and never added to
+        # this dict, so "Settings used" did not show it and "Run again"
+        # silently reverted it - see the two notes above. The phase
+        # checkboxes made it three, and this one is the most expensive:
+        # the operator ticked "Ask the AI assistants", pressed Run again on
+        # a later run, and got a report with no AI section and a panel
+        # saying the phase was "not requested". They had requested it. The
+        # button un-ticked it on the way past.
+        #
+        # Opt-in phases (AI, reputation, consent) read as their own key.
+        # The three opt-OUT ones are stored inverted - `skip_judgment` is
+        # what gets written - so they are flipped back here, and an ABSENT
+        # skip key means the phase ran, which is why the default is True.
+        # THE JOB, NOT JUST THE PHASES INSIDE IT.
+        #
+        # "What to run" is two checkboxes above the phase list, and this
+        # dict knew about the phases but not about them — so Run again on
+        # a consent-only run came back with Full audit ticked, because
+        # that is the form's default and nothing had overridden it. The
+        # operator either noticed and un-ticked it, or got a 150-page
+        # crawl they did not ask for.
+        #
+        # A consent-only run is stored as `quick: "consent"`, which is the
+        # authority on which job ran. The phase keys underneath it are all
+        # forced off by that path and cannot answer the question.
+        "do_audit": str(o.get("quick") or "") != "consent",
+        "run_aivis": bool(o.get("run_aivis")),
+        "run_reputation": bool(o.get("run_reputation")),
+        "run_consent": bool(o.get("run_consent")),
+        "run_judgment": not o.get("skip_judgment"),
+        "run_collectors": not o.get("skip_collectors"),
+        "run_screenshots": not o.get("skip_screenshots"),
+        "reuse_crawl": bool(o.get("reuse_crawl")),
+    }
+
+
 def dashboard_html(audits, principal, queue_depth, caps=None):
     """
     Grouped by CLIENT, not one row per run.
@@ -839,72 +934,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
 
     import json as _json
 
-    def _settings(a):
-        """
-        The intake that is NOT recoverable from the crawl: vertical, markets,
-        conversion, page cap, and any hand-picked GA4 / Search Console
-        property. Someone re-auditing a client was reading these off an old
-        report and retyping them, which is how a re-run silently loses the
-        property you picked last month.
-        """
-        o = a.get("options") or {}
-        for _ in range(2):
-            if isinstance(o, str):
-                try: o = _json.loads(o)
-                except Exception: o = {}
-        return {
-            "target_url": a.get("target_url") or "",
-            "client_name": a.get("client_name") or "",
-            "vertical": a.get("vertical") or "",
-            "max_pages": o.get("max_pages") or 150,
-            "primary_markets": o.get("primary_markets") or "",
-            "primary_conversion": o.get("primary_conversion") or "",
-            "partner": o.get("partner") or "",
-            "gsc_property": o.get("gsc_property") or "",
-            "ga4_property_id": o.get("ga4_property_id") or "",
-            "gtm_container": o.get("gtm_container") or "",
-            # THE TWO FIELDS THAT WERE NOT SAVING.
-            #
-            # They were never in this dict, so "Settings used" never showed
-            # them and the prefill button never restored them. Every re-run
-            # started with a blank industry and blank states — and a blank
-            # states box means no state requirement is checked at all, so the
-            # cost of forgetting was a silently thinner audit rather than a
-            # visible gap.
-            "consent_states": " ".join(o.get("consent_states") or []),
-            "consent_industries": ", ".join(o.get("consent_industries") or []),
-            # Added to the form in ‑39 and never added here — so they were
-            # stored on the audit, invisible in "Settings used", and lost by
-            # the prefill. The same omission that cost states and industries
-            # five builds, repeated on three more fields two builds later.
-            "consent_products": ", ".join(o.get("consent_products") or []),
-            "conversion_urls": " ".join(o.get("conversion_urls") or []),
-            "implementation": o.get("implementation") or "",
-            "render_js": bool(o.get("render_js")),
-            "browser_ua": bool(o.get("user_agent")),
-            # THE PHASES. THE THIRD TIME THIS EXACT OMISSION HAS SHIPPED.
-            #
-            # Twice already a field was added to the form and never added to
-            # this dict, so "Settings used" did not show it and "Run again"
-            # silently reverted it - see the two notes above. The phase
-            # checkboxes made it three, and this one is the most expensive:
-            # the operator ticked "Ask the AI assistants", pressed Run again on
-            # a later run, and got a report with no AI section and a panel
-            # saying the phase was "not requested". They had requested it. The
-            # button un-ticked it on the way past.
-            #
-            # Opt-in phases (AI, reputation, consent) read as their own key.
-            # The three opt-OUT ones are stored inverted - `skip_judgment` is
-            # what gets written - so they are flipped back here, and an ABSENT
-            # skip key means the phase ran, which is why the default is True.
-            "run_aivis": bool(o.get("run_aivis")),
-            "run_reputation": bool(o.get("run_reputation")),
-            "run_consent": bool(o.get("run_consent")),
-            "run_judgment": not o.get("skip_judgment"),
-            "run_collectors": not o.get("skip_collectors"),
-            "run_screenshots": not o.get("skip_screenshots"),
-            "reuse_crawl": bool(o.get("reuse_crawl")),
-        }
+    _settings = settings_of
 
     def _settings_panel(a):
         st = _settings(a)
@@ -1186,7 +1216,8 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
            URL and asked for the vertical before the name. -->
       <div class='fgrid'>
         <div><label>Client name</label>
-          <input name='client_name' placeholder='Grand Furniture' required></div>
+          <input name='client_name' id='cname' placeholder='Grand Furniture'
+                 onblur='accessAuto()' required></div>
         <div><label>Client website</label>
           <input name='target_url' id='turl' onchange='accessAuto()'
                  onblur='accessAuto()'
@@ -1248,14 +1279,31 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
     <div id='pickers' style='display:none;margin-top:10px;
          grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:12px'>
       <div><label>Search Console property<span id='gscmark'></span></label>
+        <input class='pfilter' id='gscq' placeholder='Filter…' autocomplete='off'>
         <select name='gsc_property' id='gscsel' form='auditform'></select>
         <div class='anote' id='gscnote'></div></div>
       <div><label>GA4 property<span id='ga4mark'></span></label>
+        <input class='pfilter' id='ga4q' placeholder='Filter…' autocomplete='off'>
         <select name='ga4_property_id' id='ga4sel' form='auditform'></select>
         <div class='anote' id='ga4note'></div></div>
       <div><label>Tag Manager container<span id='gtmmark'></span></label>
+        <input class='pfilter' id='gtmq' placeholder='Filter…' autocomplete='off'>
         <select name='gtm_container' id='gtmsel' form='auditform'></select>
         <div class='anote' id='gtmnote'></div></div>
+      <!-- WHICH LOGIN, BY NAME.
+           A picker with nothing in it is a request to the client, and the
+           request needs an address. Two different ones, which is exactly why
+           nobody should be recalling them from memory at the moment they are
+           writing the email. Stated once, under the three fields it applies
+           to, so it is on screen before the check has even been run. -->
+      <div class='sm' style='grid-column:1/-1;color:var(--muted);
+           line-height:1.6;margin-top:2px'>
+        A property only appears here once a Vici login has been granted access
+        to it. For <b>Search Console</b> and <b>GA4</b> the client adds
+        <b>digital@reporting.zone</b>; for <b>Tag Manager</b> it is
+        <b>tagops1@reporting.zone</b>. Read-only is enough for the audit —
+        publishing a tag change needs Publish on the container.
+      </div>
     </div>
 
     <!-- WHAT TO RUN -------------------------------------------------------
@@ -1392,8 +1440,13 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
     function accessAuto() {{
       var el = document.getElementById('turl');
       var u = (el && el.value || '').trim();
-      if (!u || !/\.[a-z]{{2,}}/i.test(u) || u === _ckFor) return;
-      _ckFor = u;
+      var cn = (document.getElementById('cname') || {{value: ''}}).value.trim();
+      // KEYED ON BOTH, because the name is now part of the question. Typing
+      // the URL first and the client name second used to leave the check
+      // answered from the URL alone and never re-asked.
+      var k = u + '|' + cn;
+      if (!u || !/\.[a-z]{{2,}}/i.test(u) || k === _ckFor) return;
+      _ckFor = k;
       checkAccess();
     }}
 
@@ -1406,7 +1459,13 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
       btn.disabled = true; out.style.color = 'var(--muted)';
       out.textContent = 'Checking…';
       try {{
-        var r = await fetch('/api/access-check?target_url=' + encodeURIComponent(u));
+        // The client name travels with the check — a property named after
+        // the client rather than the URL is the common case, not the edge.
+        var cn = (document.getElementById('cname')
+                  || {{value: ''}}).value.trim();
+        var r = await fetch('/api/access-check?target_url='
+                            + encodeURIComponent(u)
+                            + (cn ? '&client_name=' + encodeURIComponent(cn) : ''));
         var d = await r.json();
         if (!r.ok) {{ throw new Error(d.detail || r.status); }}
         // THE STATUS IS WORN BY THE FIELD IT DESCRIBES.
@@ -1488,23 +1547,114 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
         return {{v: r.public_id,
                 t: r.account + '  ·  ' + r.container + '  ·  ' + r.public_id}};
       }}), (probe.gtm && probe.gtm.ok) ? probe.gtm.property : null);
+      applyPending();
+    }}
+
+    // A HAND-PICKED PROPERTY THAT WAS NEVER RE-APPLIED.
+    //
+    // `_pendingProps` has been set by Run again for several builds and read by
+    // nothing — so the operator's stored choice was carried all the way to the
+    // form and then dropped on the floor, and the pickers came back on the
+    // automatic match or on nothing. It looked exactly like the settings not
+    // being saved, because in the only sense that matters they were not.
+    //
+    // The operator's choice beats the automatic match on purpose: they made it
+    // BECAUSE the matcher was wrong, and a re-run that quietly reverts to the
+    // wrong answer is worse than one that never offered.
+    function applyPending() {{
+      var p = window._pendingProps;
+      if (!p) return;
+      var hit = [];
+      [['gsc', p.gsc], ['ga4', p.ga4], ['gtm', p.gtm]].forEach(function (x) {{
+        if (!x[1]) return;
+        var sel = document.getElementById(x[0] + 'sel');
+        if (!sel) return;
+        // Only if the value is actually in the list — a property that has
+        // since been revoked must not become a silently-selected blank.
+        var known = (sel._rows || []).some(function (r) {{ return r.v === x[1]; }});
+        if (!known) return;
+        sel._sel = x[1];
+        paint(x[0]);
+        sel.value = x[1];
+        hit.push(x[0].toUpperCase());
+        var m = document.getElementById(x[0] + 'mark');
+        if (m) {{ m.className = 'amark amark--ok';
+                 m.innerHTML = '<b>\\u2713</b>your pick'; }}
+        var n = document.getElementById(x[0] + 'note');
+        if (n) n.textContent = 'Kept from the last run for this client.';
+      }});
+      window._pendingProps = null;
+      var gn = document.getElementById('gonote');
+      if (gn && hit.length) {{
+        gn.textContent = 'Settings loaded — ' + hit.join(', ')
+          + ' kept from the last run. Change anything, then Scan site.';
+      }}
+    }}
+
+    // A NATIVE SELECT OF FOUR HUNDRED IS NOT A PICKER.
+    //
+    // When the matcher misses, the operator has to find one property among
+    // every property four Vici logins can see — and a <select> gives them
+    // type-ahead on the FIRST character only. "Belmont" finds nothing if the
+    // option starts with the account name. So each picker gets a filter that
+    // matches anywhere in the row, and the count says how much is hidden,
+    // because a list that silently shrank is worse than a long one.
+    function paint(which) {{
+      var sel = document.getElementById(which + 'sel');
+      var q = (document.getElementById(which + 'q').value || '')
+                .trim().toLowerCase();
+      var rows = sel._rows || [];
+      var keep = q ? rows.filter(function (r) {{
+        return (r.t || '').toLowerCase().indexOf(q) >= 0;
+      }}) : rows;
+      var cur = sel.value;
+      sel.innerHTML = '';
+      var none = document.createElement('option');
+      none.value = '';
+      none.textContent = q
+        ? (keep.length + ' of ' + rows.length + ' match “' + q + '”')
+        : (sel._sel ? 'Matched automatically — leave as is'
+                    : 'No match — pick one, or leave blank');
+      sel.appendChild(none);
+      keep.forEach(function (r) {{
+        var o = document.createElement('option');
+        o.value = r.v; o.textContent = r.t;
+        sel.appendChild(o);
+      }});
+      // Keep the current choice even when the filter would hide it — a filter
+      // that silently clears a selection is a filter that loses work.
+      if (cur && !keep.some(function (r) {{ return r.v === cur; }})) {{
+        var k = rows.filter(function (r) {{ return r.v === cur; }})[0];
+        if (k) {{
+          var o2 = document.createElement('option');
+          o2.value = k.v; o2.textContent = k.t + '  (selected)';
+          sel.appendChild(o2);
+        }}
+      }}
+      sel.value = cur || '';
+      // The select grows while filtering so the matches are visible at once
+      // rather than one at a time behind a scroll.
+      sel.size = q && keep.length > 1 ? Math.min(10, keep.length + 1) : 0;
     }}
 
     function fill(which, rows, selected) {{
       var sel = document.getElementById(which + 'sel');
-      sel.innerHTML = '';
-      var none = document.createElement('option');
-      none.value = '';
-      none.textContent = selected ? 'Matched automatically — leave as is'
-                                  : 'No match — pick one, or leave blank';
-      sel.appendChild(none);
       sel._rows = rows;
-      rows.forEach(function (r) {{
-        var o = document.createElement('option');
-        o.value = r.v; o.textContent = r.t;
-        if (selected && r.v === selected) {{ o.selected = true; }}
-        sel.appendChild(o);
-      }});
+      sel._sel = selected || '';
+      var q = document.getElementById(which + 'q');
+      q.style.display = rows.length > 8 ? 'block' : 'none';
+      if (!q._wired) {{
+        q._wired = true;
+        q.addEventListener('input', function () {{ paint(which); }});
+        // Escape clears rather than closing the form's focus trap.
+        q.addEventListener('keydown', function (ev) {{
+          if (ev.key === 'Escape') {{ q.value = ''; paint(which); }}
+        }});
+        // Picking collapses the expanded list back to one line.
+        document.getElementById(which + 'sel')
+          .addEventListener('change', function () {{ this.size = 0; }});
+      }}
+      paint(which);
       // A matched property is preselected but NOT forced: leaving the blank
       // option is the same as before this existed, and the audit re-matches.
       if (selected) {{ sel.value = selected; }}
@@ -1889,9 +2039,27 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
           var el = document.querySelector('[name=' + p[0] + ']');
           if (el) el.checked = !!p[1];
         }});
+      // WHICH JOB, NOT JUST WHICH PHASES.
+      //
+      // "Full audit" and "Consent check" sit ABOVE the phase list and were
+      // the two boxes this function never touched — so Run again on a
+      // consent-only run came back with Full audit ticked, because that is
+      // the form's default and nothing overrode it. Every re-run of a consent
+      // check was one unnoticed tick away from a 150-page crawl.
+      var da = document.getElementById('do_audit');
+      if (da && st.do_audit !== undefined) da.checked = !!st.do_audit;
+      var dc = document.getElementById('do_consent');
+      if (dc && st.run_consent !== undefined) dc.checked = !!st.run_consent;
+      jobSync();   // opens the right settings panel and rewrites the note
       // The chosen properties need the dropdowns populated first, so run the
       // access check and apply them when it returns.
-      window._pendingProps = {{ gsc: st.gsc_property, ga4: st.ga4_property_id }};
+      //
+      // GTM WAS NEVER IN HERE. Two of the three pickers were stashed and the
+      // third was not, so a hand-picked container was dropped on every
+      // re-run — and the operator had to find it again in a list of several
+      // hundred, having already done that once.
+      window._pendingProps = {{ gsc: st.gsc_property, ga4: st.ga4_property_id,
+                               gtm: st.gtm_container }};
       // Land on the form with the client's name in view, and say what
       // happened — a button that silently changes a form 800px up the page
       // reads as a button that did nothing.
@@ -1905,7 +2073,8 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
           + ' — change anything, then Scan site.';
         gn.style.color = 'var(--blue)';
       }}
-      if (st.gsc_property || st.ga4_property_id) checkAccess();
+      if (st.gsc_property || st.ga4_property_id || st.gtm_container)
+        checkAccess();
     }}
 
     function filterSel(which) {{
@@ -1936,6 +2105,15 @@ def audit_html(a):
     order = ["queued", "crawling", "checking", "scoring", "ready"]
     cur = a["status"]
     idx = order.index(cur) if cur in order else 0
+    # The rail keeps the same five stops for a consent-only run — the states
+    # are real — but "crawling" describes fetching one page in a browser, and
+    # naming it that had the reader waiting for 150.
+    try:
+        _oq = _json.loads(a.get("options") or "{}")
+        if isinstance(_oq, dict) and str(_oq.get("quick") or "") == "consent":
+            order = ["queued", "loading", "checking", "scoring", "ready"]
+    except Exception:  # noqa: BLE001
+        pass
     marks = "".join(
         f"<span class='{'on' if i == idx else ('done' if i < idx else '')}'>{s}</span>"
         for i, s in enumerate(order))
@@ -2132,18 +2310,45 @@ def audit_html(a):
                 since = (f"<span class='sm' style='color:var(--warning)'>"
                          f"updated {_m} minute{'s' if _m != 1 else ''} ago"
                          f"</span>")
+            # WHAT THIS RUN IS DOING, NOT WHAT A RUN DOES.
+            #
+            # "A full crawl of 150 pages typically takes 2-5 minutes" was
+            # printed under every run including the consent-only ones, which
+            # load one page in a browser and take well under a minute. A
+            # normal is the whole value of this line: quoting the wrong one
+            # makes a finished-in-40-seconds job look stalled and a genuinely
+            # slow one look early. The options say which job this is, so it
+            # says which job this is.
+            try:
+                _o = _json.loads(a.get("options") or "{}")
+                _o = _o if isinstance(_o, dict) else {}
+            except Exception:  # noqa: BLE001
+                _o = {}
+            _conly = str(_o.get("quick") or "") == "consent"
+            _mp = int(_o.get("max_pages") or 150)
+            if _conly:
+                _eta = ("A consent check loads the site in a browser, clicks "
+                        "the banner and watches what fires — usually under a "
+                        "minute, longer on a site with many pages to walk.")
+            else:
+                _eta = (f"A full crawl of {_mp} page{'s' if _mp != 1 else ''} "
+                        f"typically takes 2–5 minutes.")
             _slow = ("<p class='sub'>Steps that take a few minutes on their "
                      "own: the AI assistants, the reputation scan, and the "
                      "evidence screenshots. This page marks the run as "
                      "stopped if nothing moves for "
                      f"{STALE_AFTER_S // 60} minutes.</p>"
-                     if _age is not None and _age >= 120 else "")
+                     if _age is not None and _age >= 120 and not _conly else
+                     ("<p class='sub'>A consent check waits for each page to "
+                      "go quiet rather than counting seconds, so a slow site "
+                      "takes longer. This page marks the run as stopped if "
+                      f"nothing moves for {STALE_AFTER_S // 60} minutes.</p>"
+                      if _age is not None and _age >= 120 else ""))
             inner = (rail + f"<div class='marks'>{marks}</div>"
                      f"<div class='card' style='margin-top:16px'>"
                      f"<span class='spin'></span> <b>{e(a.get('progress') or cur)}</b>"
                      f"&nbsp; {since}"
-                     f"<p class='sub'>This page refreshes automatically. A full crawl "
-                     f"of 150 pages typically takes 2–5 minutes.</p>"
+                     f"<p class='sub'>This page refreshes automatically. {_eta}</p>"
                      f"{_slow}{act}</div>")
             # Six seconds, not four. Every refresh is a full page render and a
             # fresh database connection, and the phase this page is most often

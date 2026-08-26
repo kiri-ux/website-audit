@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-112"
-BUILD_NOTES = ("A Google tag that pings under all-denied Consent Mode defaults now reads as correct rather than amber - the scanner only knew the documented gcs= parameter and current GA4 sends the undocumented gcd=, so eight right answers were being reported as questions. An unreplaced ${MACRO} in a tag URL is named wherever it appears, California gets its under-16 opt-in row, the post-consent vendor list is one chip per vendor with a page count, and Action items moved to the top of the page")
+BUILD = "2026.08.20-113"
+BUILD_NOTES = ("Run again now replays the whole run, not most of it: the two job checkboxes are restored so a consent-only re-run stops arriving with Full audit ticked, and the hand-picked Search Console, GA4 and Tag Manager properties are actually re-applied - they had been stashed and read by nothing. A Tag Manager account we could not read is reported as ours to re-check rather than as the client withholding access, a container held under the client's name is named as a near miss, and every access miss says WHICH Vici login the client has to add. The progress page quotes this run's timing instead of a 150-page crawl's")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

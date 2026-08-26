@@ -978,6 +978,20 @@ def _find_ga4_property(site_url: str) -> tuple[str | None, str | None, str | Non
 # ----------------------------------------------------------------- Tag Manager
 GTM_ACCOUNT_CAP = 40          # per login; see _gtm_containers
 
+# WHICH ACCOUNT THE CLIENT HAS TO ADD, BY NAME.
+#
+# "Ask the client for access" is a sentence somebody then has to translate
+# into an email, and the translation needs one fact this file has and the
+# reader does not: WHICH Vici login. Getting it wrong costs a round trip with
+# the client, so it is stated rather than left as an exercise. They are
+# different addresses for the two estates, which is exactly why guessing fails.
+#
+# Overridable by environment because a login is an operational fact, not a
+# constant of the universe — but the defaults are the current answer.
+VICI_GSC_LOGIN = os.getenv("VICI_GSC_LOGIN", "digital@reporting.zone")
+VICI_GA4_LOGIN = os.getenv("VICI_GA4_LOGIN", "digital@reporting.zone")
+VICI_GTM_LOGIN = os.getenv("VICI_GTM_LOGIN", "tagops1@reporting.zone")
+
 
 def _scope_missing(exc) -> bool:
     """
@@ -1037,8 +1051,21 @@ def _gtm_containers(tok: str) -> list:
     `publicId` is the GTM-XXXXXX string that appears in the site's HTML. It is
     the only field that connects what we can administer to what is actually
     installed, and it is what the probe matches on.
+
+    AN ACCOUNT WE COULD NOT READ IS NOT AN ACCOUNT WITHOUT THE CONTAINER.
+    --------------------------------------------------------------------
+    This used to `continue` past a failed account, which turned a partial list
+    into a complete-looking one — and the caller then said "no Vici login can
+    see that container" about an estate it had only half enumerated. The Tag
+    Manager API is capped at 0.25 QPS per Cloud project and shared with the
+    standalone scanner, so on an agency login with a dozen accounts the
+    failures are not hypothetical: they are the normal case, arriving as 429.
+
+    So the misses are counted and handed back. One retry with a pause first,
+    because at a quarter of a request per second a single wait usually turns
+    the 429 into an answer rather than a caveat.
     """
-    out, truncated = [], False
+    out, truncated, unread = [], False, []
     accounts = (_api(f"{GTM_API}/accounts", tok, timeout=30).get("account") or [])
     if len(accounts) > GTM_ACCOUNT_CAP:
         truncated = True
@@ -1047,17 +1074,25 @@ def _gtm_containers(tok: str) -> list:
         path = a.get("path") or ""
         if not path:
             continue
-        try:
-            cs = (_api(f"{GTM_API}/{path}/containers", tok,
-                       timeout=30).get("container") or [])
-        except Exception:  # noqa: BLE001
-            continue          # one unreadable account must not hide the rest
-        for c in cs:
+        cs = None
+        for attempt in (0, 1):
+            try:
+                cs = (_api(f"{GTM_API}/{path}/containers", tok,
+                           timeout=30).get("container") or [])
+                break
+            except Exception as exc:  # noqa: BLE001
+                code = getattr(exc, "code", None)
+                if attempt == 0 and code in (429, 500, 502, 503):
+                    time.sleep(4.5)   # 0.25 QPS: one wait, then the answer
+                    continue
+                unread.append(a.get("name") or path)
+                break
+        for c in (cs or []):
             out.append({"public_id": c.get("publicId", ""),
                         "container": c.get("name", ""),
                         "account": a.get("name", ""),
                         "path": c.get("path", "")})
-    return out, truncated
+    return out, truncated, unread
 
 
 _GTM_ID_RE = None
@@ -1098,7 +1133,7 @@ def gtm_ids_on_page(site_url: str, timeout: int = 12) -> list:
     return ids
 
 
-def _gtm_probe(site_url: str, idx: dict) -> dict:
+def _gtm_probe(site_url: str, idx: dict, client_name: str = "") -> dict:
     """
     Do we administer the container this site is actually running?
 
@@ -1115,12 +1150,13 @@ def _gtm_probe(site_url: str, idx: dict) -> dict:
     """
     installed = gtm_ids_on_page(site_url)
     mine, truncated, scope_blocked, errors = [], False, None, []
+    unread = []
     for label, refresh in (idx or {}).items():
         tok = access_token(refresh)
         if not tok:
             continue
         try:
-            rows, trunc = _gtm_containers(tok)
+            rows, trunc, miss = _gtm_containers(tok)
         except Exception as exc:  # noqa: BLE001
             why = _scope_missing(exc)
             if why:
@@ -1129,6 +1165,7 @@ def _gtm_probe(site_url: str, idx: dict) -> dict:
                 errors.append(f"{label}: {_describe(exc)}")
             continue
         truncated = truncated or trunc
+        unread += [f"{label}: {m}" for m in miss]
         for r in rows:
             mine.append({**r, "login": label})
 
@@ -1163,10 +1200,60 @@ def _gtm_probe(site_url: str, idx: dict) -> dict:
     note = (" The list of containers we can see was capped at "
             f"{GTM_ACCOUNT_CAP} accounts per login, so this could be a miss "
             "rather than a no." if truncated else "")
+
+    # A NEAR MISS IS WORTH MORE THAN A NO.
+    #
+    # The same fix Search Console and GA4 got: an account named after the
+    # client, holding a container whose public id is not the one on the page,
+    # is the single most useful thing to print here. It means the client's
+    # estate IS in our logins and the page is running a container from
+    # somewhere else — a different property, an old install, a second GTM
+    # dropped in by a web team. That is a five-minute conversation, and it
+    # looks nothing like "ask them for access".
+    near = []
+    for key in _name_keys(site_url, client_name):
+        for r in mine:
+            hay = f"{r['account']} {r['container']}".lower()
+            if key in _squash(hay) and r not in near:
+                near.append(r)
+    if near:
+        named = "; ".join(f"{r['account']} · {r['container']} "
+                          f"({r['public_id']}, {r['login']})"
+                          for r in near[:4])
+        return {"ok": False, "partial": True, "installed": installed,
+                "near": [r["public_id"] for r in near[:4]],
+                "detail": (f"The page runs {', '.join(installed[:3])}, which is "
+                           f"not a container we hold — but we DO hold "
+                           f"{'containers' if len(near) != 1 else 'a container'} "
+                           f"under this client's name: {named}. Either the page "
+                           f"is running a second container, or the one we "
+                           f"administer is not the one installed. Pick below if "
+                           f"one of those is right." + note)}
+
+    # AN ACCOUNT WE COULD NOT READ IS NOT A NO, AND MUST NOT PRINT AS ONE.
+    #
+    # The Tag Manager API is 0.25 QPS per Cloud project, shared with the
+    # standalone scanner, so accounts drop out of the enumeration on a busy
+    # minute. Saying "no Vici login can see that container" off a list that
+    # quietly lost four accounts sends someone to email a client about access
+    # they already granted. This is ours until we have actually looked.
+    if unread:
+        return {"ok": False, "ours": True, "installed": installed,
+                "unread": unread,
+                "detail": (f"The page runs {', '.join(installed[:3])}. We could "
+                           f"not read {len(unread)} Tag Manager "
+                           f"account{'s' if len(unread) != 1 else ''} on this "
+                           f"check ({', '.join(unread[:3])}), so this is not yet "
+                           f"a no — the Tag Manager API is rate-limited and "
+                           f"shared. Run the check again, or pick the container "
+                           f"below." + note)}
+
     return {"ok": False, "installed": installed,
             "detail": (f"The site runs {', '.join(installed[:3])}, and no Vici "
-                       f"login can see that container. Publishing a tag change "
-                       f"needs the client to grant access." + note)}
+                       f"login can see that container. To make it visible, the "
+                       f"client adds {VICI_GTM_LOGIN} to the GTM "
+                       f"container; publishing a tag change needs that."
+                       + note)}
 
 
 _LIST_CACHE: dict = {"at": 0.0, "data": None}
@@ -1214,7 +1301,7 @@ def list_properties(max_age: float = 120.0) -> dict:
         except Exception as exc:  # noqa: BLE001
             out["errors"].append(f"{label} GA4: {type(exc).__name__}")
         try:
-            rows, trunc = _gtm_containers(tok)
+            rows, trunc, _miss = _gtm_containers(tok)
             for r in rows:
                 out["gtm"].append({**r, "login": label})
             if trunc:
@@ -1271,7 +1358,39 @@ def _token_for_ga4_property(pid: str):
     return None, None
 
 
-def probe(site_url: str, name_scan: int = 8) -> dict:
+def _name_keys(site_url: str, client_name: str = "") -> list:
+    """
+    Every string a property for this client might be NAMED after.
+
+    ONE SLUG WAS NOT ENOUGH. The matcher took the domain's first label —
+    `belmontpark` from www.belmontpark.com — and looked for it inside property
+    names. That finds "Belmont Park - www.belmontpark.com" and misses
+    "Belmont Park Racetrack", "BelmontPk", and every property an account
+    manager named after the client rather than the URL.
+    #
+    The client's name is on the form and was going unused, so it joins the
+    domain: both squashed, plus each word of the client name over three
+    letters. A short key would match half the estate, which is why "Park" on
+    its own is not in here.
+    """
+    host = _host(site_url)
+    keys = {_squash(host.split(".")[0]), _squash(host.replace(".", ""))}
+    cn = (client_name or "").strip()
+    if cn:
+        keys.add(_squash(cn))
+        # A SINGLE COMMON WORD MATCHES HALF THE ESTATE. "Belmont Park" would
+        # otherwise contribute "park", and "The Ooten Law Firm" would
+        # contribute "firm" — each of which appears in dozens of unrelated
+        # property names. Distinctive words only, and the full name always.
+        _STOP = {"the", "and", "for", "inc", "llc", "ltd", "corp", "group",
+                 "media", "law", "firm", "park", "auto", "home", "care",
+                 "center", "centre", "services", "service", "company", "co"}
+        keys |= {_squash(w) for w in cn.split()
+                 if len(w) > 4 and w.lower().strip(",.&") not in _STOP}
+    return sorted({k for k in keys if len(k) > 4}, key=len, reverse=True)
+
+
+def probe(site_url: str, name_scan: int = 8, client_name: str = "") -> dict:
     """
     Fast, read-only "do we have access?" check. Answers BEFORE an audit runs.
 
@@ -1306,23 +1425,53 @@ def probe(site_url: str, name_scan: int = 8) -> dict:
     idx = _token_index()
     try:
         tok, label, prop = _first_login_that_can_see(site_url)
-        out["gsc"] = ({"ok": True, "property": prop, "login": label} if tok else
-                      {"ok": False, "detail": f"No property matching this site "
-                                              f"in {len(idx)} login(s): "
-                                              f"{', '.join(idx)}."})
+        if tok:
+            out["gsc"] = {"ok": True, "property": prop, "login": label}
+        else:
+            # A SITE THAT IS THERE UNDER ANOTHER SPELLING IS NOT "NOT THERE".
+            # `_candidates` covers scheme and www; it cannot cover a property
+            # registered on a parent domain or a subdomain, which is common
+            # and is the difference between picking a row and writing an
+            # email. So the miss names whatever shares this domain.
+            _bare = _host(site_url)
+            _near = []
+            try:
+                for _l, _r in (idx or {}).items():
+                    _t = access_token(_r)
+                    if not _t:
+                        continue
+                    for _s in _api(f"{GSC_API}/sites", _t).get("siteEntry", []):
+                        _raw = _s.get("siteUrl", "")
+                        if _bare in _raw.lower() and _raw not in _near:
+                            _near.append(f"{_raw} ({_l})")
+            except Exception:  # noqa: BLE001
+                pass
+            out["gsc"] = {
+                "ok": False,
+                "partial": bool(_near),
+                "detail": (f"Not an exact match, but these cover "
+                           f"{_bare}: {', '.join(_near[:4])}. Pick one below."
+                           if _near else
+                           f"No property matching this site in {len(idx)} "
+                           f"login(s): {', '.join(idx)}. Filter the list "
+                           f"below to check under another name — and if it is "
+                           f"genuinely not there, the client adds "
+                           f"{VICI_GSC_LOGIN} to Search Console.")}
     except Exception as exc:  # noqa: BLE001
         out["gsc"] = {"ok": False, "detail": f"{type(exc).__name__}: {exc}"}
 
     want = _host(site_url)
-    slug = _squash(want.split(".")[0])
+    keys = _name_keys(site_url, client_name)
     try:
         found = None
+        near = []
         for lbl, refresh in idx.items():
             tok = access_token(refresh)
             if not tok:
                 continue
-            named = [p for p in _ga4_properties(tok)
-                     if slug and slug in _squash(p[1])][:name_scan]
+            props = _ga4_properties(tok)
+            named = [p for p in props
+                     if any(k in _squash(p[1]) for k in keys)][:name_scan]
             for pid, nm in named:
                 if want in _stream_hosts(tok, pid):
                     found = {"ok": True, "property": pid, "name": nm,
@@ -1330,12 +1479,24 @@ def probe(site_url: str, name_scan: int = 8) -> dict:
                     break
             if found:
                 break
+            # NAME THE NEAR MISSES. A property whose name matched but whose
+            # streams do not carry this host is the single most useful thing
+            # to tell somebody deciding between "pick the right row" and
+            # "email the client" — and it was being thrown away.
+            near += [f"{nm} ({lbl})" for _pid, nm in named]
         out["ga4"] = found or {
             "ok": False, "partial": True,
-            "detail": ("No property whose NAME resembles this domain also "
-                       "reports it. The audit still scans by data stream, "
-                       "which is slower and looks wider — this quick check "
-                       "can miss a property named unlike its site.")}
+            "detail": (("Named like this client but not reporting "
+                        + _host(site_url) + ": " + ", ".join(near[:4])
+                        + ". Pick one below if it is right, or leave blank.")
+                       if near else
+                       ("No property named after this client or domain. The "
+                        "audit still scans by data stream, which is slower "
+                        "and looks wider — this quick check can miss a "
+                        "property named unlike its site. Filter the list "
+                        "below to look; if it is genuinely not there, the "
+                        "client adds " + VICI_GA4_LOGIN + " to the GA4 "
+                        "property."))}
     except Exception as exc:  # noqa: BLE001
         out["ga4"] = {"ok": False, "detail": f"{type(exc).__name__}: {exc}"}
 
@@ -1343,7 +1504,7 @@ def probe(site_url: str, name_scan: int = 8) -> dict:
     # client's page as well as Google's API, and a slow site should not hold up
     # the two answers that were already in hand.
     try:
-        out["gtm"] = _gtm_probe(site_url, idx)
+        out["gtm"] = _gtm_probe(site_url, idx, client_name=client_name)
     except Exception as exc:  # noqa: BLE001
         out["gtm"] = {"ok": False, "detail": f"{type(exc).__name__}: {exc}"}
     return out

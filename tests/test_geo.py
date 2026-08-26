@@ -134,6 +134,42 @@ def main():
     check("and the server derives states from markets when none are sent",
           "from engine.geo import summarize" in src)
 
+    print("\nA PROPERTY NAMED AFTER THE CLIENT IS STILL A MATCH")
+    # An account manager names a property after the client, not the URL, far
+    # more often than not — and the matcher took only the domain's first
+    # label, so it reported "no property" about estates that held one.
+    from engine.collectors.analytics import _name_keys
+    _k = _name_keys("https://www.belmontpark.com/", "Belmont Park")
+    check("the domain still contributes its slug", "belmontpark" in _k)
+    check("and the client name contributes a distinctive word", "belmont" in _k)
+    check("but not a word that would match half the estate",
+          "park" not in _k and "firm" not in
+          _name_keys("https://ootenlawfirm.com/", "The Ooten Law Firm"))
+    check("a two-word client name yields its whole squashed form",
+          "junkbeegone" in _name_keys("https://junkbeegone.biz/", "Junk Bee Gone"))
+    check("and nothing under five characters gets through",
+          all(len(x) > 4 for x in _name_keys("https://a.com/", "A B Co")))
+    import inspect as _i2
+    from app import api as _api2
+    check("the form sends the client name with the access check",
+          "client_name" in _i2.signature(_api2.access_check).parameters)
+    check("and the probe accepts it",
+          "client_name" in _i2.signature(
+              __import__("engine.collectors.analytics", fromlist=["probe"])
+              .probe).parameters)
+
+    print("\nA LIST OF FOUR HUNDRED NEEDS A FILTER")
+    _h = ui.dashboard_html([], N(name="V", email="e"), 0,
+                           caps={"consent": True, "aivis": True})
+    for _w in ("gsc", "ga4", "gtm"):
+        check(f"the {_w} picker has a filter box", f"id='{_w}q'" in _h)
+    check("which matches anywhere in the row, not just the first letter",
+          ".toLowerCase().indexOf(q) >= 0" in _h)
+    check("and says how much it hid rather than shrinking silently",
+          "match \u201c' + q + '\u201d" in _h)
+    check("a selection the filter would hide is kept, not cleared",
+          "(selected)" in _h)
+
     print("\nEVERY CONSENT INPUT REACHES THE SERVER")
     # The rule this file exists to hold: an input the server drops is worse
     # than no input. `states` and `industries` sat on the scanner's signature
@@ -273,6 +309,78 @@ def main():
     import inspect as _in2
     check("the form builds its copy from the scanner's table",
           "ZIP3_RANGES" in _in2.getsource(_ui2.dashboard_html))
+
+    print("\nRUN AGAIN MEANS THE SAME RUN")
+    # "'full audit' keeps getting checked when i only did a consent check".
+    # The two job boxes sit above the phase list and prefill never touched
+    # them, so every re-run of a consent check was one unnoticed tick away
+    # from a 150-page crawl of the client's server.
+    from app.ui import settings_of as _st
+    import json as _j
+    _c = _st({"options": _j.dumps({"quick": "consent", "run_consent": True,
+                                   "max_pages": 1, "skip_judgment": True})})
+    check("a consent-only run reports the audit job as off",
+          _c["do_audit"] is False)
+    check("and the consent job as on", _c["run_consent"] is True)
+    _f = _st({"options": _j.dumps({"run_consent": True, "max_pages": 150})})
+    check("a full run reports the audit job as on", _f["do_audit"] is True)
+    _old = _st({"options": "{}"})
+    check("a run from before the two-job form still reads as a full audit",
+          _old["do_audit"] is True)
+    _src = _in2.getsource(_ui2.dashboard_html)
+    check("prefill restores the job checkboxes",
+          "do_audit'); \n" in _src or "getElementById('do_audit')" in _src)
+    check("and re-syncs the panels after it does", "jobSync();" in _src)
+
+    print("\nA HAND-PICKED PROPERTY SURVIVES THE RE-RUN")
+    # _pendingProps was set by Run again and read by nothing at all, so the
+    # operator's chosen property was carried to the form and dropped.
+    check("the stash is actually consumed", "function applyPending()" in _src)
+    check("and consumed where the dropdowns finish loading",
+          _src.index("applyPending();") < _src.index("function applyPending()"))
+    check("the container is stashed too, not just GSC and GA4",
+          "gtm: st.gtm_container" in _src)
+    check("a revoked property is not force-selected",
+          "if (!known) return;" in _src)
+
+    print("\nWHICH LOGIN THE CLIENT HAS TO ADD, BY NAME")
+    from engine.collectors import analytics as _an
+    check("Search Console names the login", "digital@" in _an.VICI_GSC_LOGIN)
+    check("GA4 names the same one", _an.VICI_GA4_LOGIN == _an.VICI_GSC_LOGIN)
+    check("Tag Manager names a different one",
+          "tagops1@" in _an.VICI_GTM_LOGIN
+          and _an.VICI_GTM_LOGIN != _an.VICI_GSC_LOGIN)
+    check("and the form says so before any check is run",
+          "digital@reporting.zone" in _src
+          and "tagops1@reporting.zone" in _src)
+
+    print("\nAN ACCOUNT WE COULD NOT READ IS NOT A NO")
+    # The GTM API is 0.25 QPS per project and shared, so accounts drop out of
+    # the enumeration routinely. Asserting "no Vici login can see that
+    # container" off a half-read list sends someone to email a client about
+    # access they already granted.
+    _probe_src = _in2.getsource(_an._gtm_probe)
+    check("the unreadable accounts reach the verdict", "unread" in _probe_src)
+    check("and make it ours rather than theirs",
+          '"ours": True,\n                "installed": installed,\n'
+          '                "unread": unread' in _probe_src
+          or ('"unread": unread' in _probe_src
+              and '"ours": True' in _probe_src))
+    check("a near-miss container under the client's name is named",
+          "near" in _probe_src and "_name_keys" in _probe_src)
+    _cont_src = _in2.getsource(_an._gtm_containers)
+    check("a rate-limited account is retried before being given up on",
+          "429" in _cont_src and "sleep" in _cont_src)
+    check("and counted when it still fails", "unread.append" in _cont_src)
+
+    print("\nTHE ETA DESCRIBES THIS RUN")
+    _psrc = _in2.getsource(_ui2.audit_html)
+    check("a consent-only run does not quote the 150-page crawl time",
+          'quick") or "") == "consent"' in _psrc)
+    check("the page count comes from the options, not a constant",
+          "_o.get(\"max_pages\") or 150" in _psrc)
+    check("and the rail does not call one browser page a crawl",
+          '"loading"' in _psrc)
 
     print("\n" + "=" * 68)
     if FAILED:
