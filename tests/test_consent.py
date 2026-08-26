@@ -472,6 +472,63 @@ def main():
     check("and the container line says who owns it",
           "Vici owned" in _ap and "Client owned" in _ap2)
 
+    print("\nTHE TAG MANAGER API IS OPTIONAL AND NEVER SILENT")
+    from engine.consent import gtm_api as _gapi
+    import os as _os
+    _saved = (_os.environ.pop("GTM_TOKENS", None),
+              _os.environ.pop("GTM_OAUTH_CLIENT", None))
+    try:
+        check("with no credentials it reports disabled, never an error",
+              _gapi.audit("GTM-ABC123")["status"] == "disabled")
+        check("and accessible_containers is empty rather than raising",
+              _gapi.accessible_containers() == [])
+    finally:
+        for _k, _v in zip(("GTM_TOKENS", "GTM_OAUTH_CLIENT"), _saved):
+            if _v is not None:
+                _os.environ[_k] = _v
+    check("both variables are required, not either",
+          not _gapi.enabled())
+
+    # OWNERSHIP IS ESTABLISHED, NOT DECLARED. If one of our logins can read
+    # the container, we own it — a self-declared form field can be wrong, an
+    # API read cannot.
+    _g = {"found": True, "container_ids": ["GTM-A1"],
+          "vici_owned": ["GTM-A1"], "tags_read": 29,
+          "audits": {"GTM-A1": {"status": "ok", "public_id": "GTM-A1",
+                                "account_name": "Vici Media", "tags": [
+              {"name": "Meta - PageView", "vendor": "Meta", "paused": False,
+               "consent_status": "NOT_SET", "firing_triggers": ["All Pages"],
+               "trigger_detail": [{"type": "PAGEVIEW"}]},
+              {"name": "GA4", "vendor": "Google Analytics 4", "paused": False,
+               "consent_status": "NEEDED", "firing_triggers": ["All Pages"],
+               "trigger_detail": [{"type": "PAGEVIEW"}]}]}}}
+    _gd = {"scan": {"mode": "full", "cmps": [], "gtm": _g,
+                    "consent_mode_default": True, "banner_visible": False,
+                    "reject_tested": True, "gpc_tested": True,
+                    "pre_consent": [], "post_reject": [], "gpc_fires": [],
+                    "products": [], "state_checks": []},
+           "pages": [], "requested": {"implementation": "client"}}
+    _gp = _ch({"id": "g1", "client_name": "C", "target_url": "https://x.com"}, _gd)
+    check("an API read beats the form field",
+          "Vici owned" in _gp and "Client owned" not in _gp)
+    check("and says how many tags it read", "29 tags read via API" in _gp)
+    check("the container configuration section appears",
+          "Container configuration" in _gp)
+    check("a tag with no consent check is called not gated",
+          "not gated" in _gp.lower())
+    check("and Consent Mode is not allowed to imply it covers everything",
+          "Consent Mode covers Google tags only" in _gp)
+    # Without an API read the stated value is used AND labelled as stated.
+    _gp2 = _ch({"id": "g1", "client_name": "C", "target_url": "https://x.com"},
+               {**_gd, "scan": {**_gd["scan"],
+                                "gtm": {"found": True,
+                                        "container_ids": ["GTM-A1"]}}})
+    check("with no API read the form value is used",
+          "Client owned" in _gp2)
+    check("and marked as stated rather than read", "(stated)" in _gp2)
+    check("with no container section invented from a guess",
+          "Container configuration" not in _gp2)
+
     print("\nTHE SAME TAG TWICE IS ONE FINDING")
     from app.ui_consent import _trackers as _tk
     _dupes = [{"vendor": "Meta Pixel", "severity": "high",
@@ -536,6 +593,34 @@ def main():
           "max_pages" in _ins2.signature(_api.rerun_audit).parameters)
     check("without reusing the crawl that was too small",
           'opts.pop("reuse_crawl"' in _ins2.getsource(_api.rerun_audit))
+
+    print("\nNO REPORT PAGE IS A DEAD END")
+    # THE LOOP I SHIPPED. A consent-only run redirects to the consent page,
+    # and the consent page's only way out pointed at the URL that redirects —
+    # so "Back to the audit" went back to the consent scan, forever. Worse, a
+    # client with a full audit AND a consent run had no route between them at
+    # all, because Open goes to the newest and the newest was the consent one.
+    from app.ui import client_tabs as _ct
+    import inspect as _ins3
+    _a = {"id": "aud1", "client_name": "C", "target_url": "https://x.com/",
+          "options": _json.dumps({"run_consent": True})}
+    _sib = [{"id": "aud0", "created_at": _t.time() - 90000,
+             "options": _json.dumps({"run_aivis": True})}]
+    _strip = _ct(_a, active="consent", has_consent=True, siblings=_sib)
+    check("the consent page offers the full audit",
+          "view=report" in _strip)
+    check("and the redirect lets that through",
+          'view != "report"' in _ins3.getsource(_api.audit_page))
+    check("the client's other runs are linked",
+          "/audits/aud0" in _strip and "Other runs" in _strip)
+    check("with what each one covered, not just a date",
+          ">AI</span>" in _strip, _strip[_strip.find("class='k'"):][:60])
+    check("a run with no consent detail is not offered a consent tab",
+          "Consent scan" not in _ct(_a, active="report", has_consent=False))
+    check("and the dead 'back to the audit' link is gone",
+          "Back to the audit" not in _ch(
+              {"id": "z", "client_name": "C", "target_url": "https://x.com"},
+              None))
 
     print("\nA CONSENT-ONLY RUN OPENS ON THE CONSENT PAGE")
     check("a run with only consent ticked is recognized as such",

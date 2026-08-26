@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-107"
-BUILD_NOTES = ("The consent page ends with the work order and says whose it is; the same tag fired three times is one row with a count instead of three identical ones; every fired list is page-tagged; the pages scanned open to show what fired on each; the container says who owns it; and the two short refusal lists sit side by side")
+BUILD = "2026.08.20-109"
+BUILD_NOTES = ("The consent-only redirect had made the consent page a room with no door - its way out pointed at the URL that redirected back. Both report pages now carry tabs for every report the run produced and links to the client's other runs, so a full audit and a consent scan reach each other")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

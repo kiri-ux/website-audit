@@ -35,6 +35,10 @@ from engine.report import extension_link as _ext_link
 # ordering and for the chip color; anything unrecognized sorts last and reads
 # as informational, because inventing a severity for a word we do not know is
 # how a scanner starts overstating its case.
+# A real middle dot, so it survives escaping. "&middot;" inside a string that
+# then goes through e() comes out as the literal five characters.
+_DOT = " \u00b7 "
+
 _SEV = {"critical": 0, "high": 1, "ungated": 1, "medium": 2, "warning": 2,
         "low": 3, "info": 4, "informational": 4}
 
@@ -528,7 +532,7 @@ def _capture_panel(aid, url, why, heading="This scan ran without a browser",
         f"}},400);}})();</script>")
 
 
-def consent_html(audit: dict, detail: dict | None) -> str:
+def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
     """Render the consent detail page for one audit."""
     aid = audit.get("id") or ""
     client = audit.get("client_name") or "—"
@@ -558,7 +562,7 @@ def consent_html(audit: dict, detail: dict | None) -> str:
                 "report.",
                 heading="Or capture it from your own browser",
                 extra_urls=_conv_urls(audit)))
-        return _shell(f"Consent — {client}", _PAGE_CSS + body,
+        return _shell(f"Consent — {client}", _PAGE_CSS + tabs + body,
                       heading="Consent scan", crumbs=crumbs)
 
     scan = detail.get("scan") or {}
@@ -675,7 +679,7 @@ def consent_html(audit: dict, detail: dict | None) -> str:
     ]
     head.append("<div class='stats'>" + "".join(tiles) + "</div>")
 
-    parts = [_PAGE_CSS, "".join(head)]
+    parts = [_PAGE_CSS, tabs, "".join(head)]
 
     # ONLY OFFER A RE-RUN THAT COULD CHANGE THE ANSWER.
     #
@@ -751,23 +755,44 @@ def consent_html(audit: dict, detail: dict | None) -> str:
     cfg_rows = []
     if gtm:
         ids = gtm.get("container_ids") or []
-        # WHOSE CONTAINER IT IS.
+        # WHOSE CONTAINER IT IS — ESTABLISHED, NOT DECLARED.
         #
-        # Whether Vici owns the GTM decides who does the work, and it is the
-        # first thing anybody wants to know about a container — the audit has
-        # recorded it on the form since implementation shipped, and the page
-        # never showed it. A pixel firing pre-consent in a container we own is
-        # our work queue; the same pixel in the client's is a conversation.
+        # This started as the Implementation field off the form, which is a
+        # person's answer to a question. With Tag Manager credentials it is a
+        # fact instead: if one of our logins can read the container through
+        # the API, we own it. The form value is the fallback for a run with no
+        # credentials configured, and it says which of the two you are looking
+        # at rather than presenting a guess as a reading.
+        _vici = set(gtm.get("vici_owned") or [])
         _impl = str(want.get("implementation") or "").lower()
-        _own = ""
-        if "vici" in _impl or _impl == "gtm":
-            _own = "<span class='vown vown--vici'>Vici owned</span>"
+        if _vici:
+            _own = ("<span class='vown vown--vici' title='One of our Google "
+                    "logins can read this container through the Tag Manager "
+                    "API'>Vici owned</span>")
+        elif gtm.get("audits"):
+            _own = ("<span class='vown vown--client' title='No authorized "
+                    "Vici login can see this container'>Client owned</span>")
+        elif "vici" in _impl or _impl == "gtm":
+            _own = ("<span class='vown vown--vici' title='From the "
+                    "Implementation field on the audit, not an API read'"
+                    ">Vici owned<span style='opacity:.7'> (stated)</span>"
+                    "</span>")
         elif "client" in _impl:
-            _own = "<span class='vown vown--client'>Client owned</span>"
+            _own = ("<span class='vown vown--client' title='From the "
+                    "Implementation field on the audit, not an API read'"
+                    ">Client owned<span style='opacity:.7'> (stated)</span>"
+                    "</span>")
+        else:
+            _own = ""
+        _read = int(gtm.get("tags_read") or 0)
+        _readbit = (f" <span class='vsrc' title='Read through the Tag Manager "
+                    f"API — this is the published configuration, not an "
+                    f"inference from the page'>&#10003; {_read} tags read via "
+                    f"API</span>" if _read else "")
         cfg_rows.append([
             "Google Tag Manager" + (f" {_own}" if _own else ""),
             _chip("found", "ok") if gtm.get("found") else _chip("not found", "hold"),
-            ", ".join(f"<code>{e(i)}</code>" for i in ids) or "—"])
+            ", ".join(f"<code>{e(i)}</code>" for i in ids) + _readbit or "—"])
     cfg_rows.append([
         "Consent Mode default",
         _chip("set", "ok") if cm is True else
@@ -880,6 +905,91 @@ def consent_html(audit: dict, detail: dict | None) -> str:
             + "</div></details>")
            if scan.get("unmatched_sample") else ""),
         "", tip="gtm"))
+
+    # -------------------------------------------------- container contents
+    #
+    # WHAT IS IN THE CONTAINER, not what the page happened to fetch.
+    #
+    # Every other section on this page is observation: we watched a page load
+    # and recorded what it contacted. This one is configuration — the tag
+    # list, the triggers, and whether each tag declares that it waits for
+    # consent. Those are different questions, and the gap between them is
+    # where the work is: a tag configured and never firing, a tag firing that
+    # nobody knew was there, a container where Consent Mode is set and twelve
+    # non-Google tags have no consent check at all.
+    #
+    # Only appears when the API answered. A fingerprint guess dressed up in
+    # this shape would be the worst of both.
+    _auds = [a_ for a_ in (gtm.get("audits") or {}).values()
+             if a_.get("status") == "ok"]
+    if _auds:
+        _ccards = []
+        for a_ in _auds:
+            _tags = a_.get("tags") or []
+            _gated = [t for t in _tags
+                      if str(t.get("consent_status")) == "NEEDED"]
+            _live = [t for t in _tags if not t.get("paused")]
+            # Group by vendor, because a work order is per vendor and a tag
+            # list of twenty-nine is not readable as a list of twenty-nine.
+            _byv = {}
+            for t in _tags:
+                _byv.setdefault(t.get("vendor") or "Unidentified", []).append(t)
+            _rows2 = []
+            for _v, _ts in sorted(_byv.items(),
+                                  key=lambda kv: (-len(kv[1]), kv[0])):
+                _g = [t for t in _ts if str(t.get("consent_status")) == "NEEDED"]
+                _p = [t for t in _ts if t.get("paused")]
+                _trigs = {}
+                for t in _ts:
+                    for d in t.get("trigger_detail") or []:
+                        _trigs[str(d.get("type") or "?").lower()] = \
+                            _trigs.get(str(d.get("type") or "?").lower(), 0) + 1
+                _kind, _lbl = (("ok", "gated") if _g and len(_g) == len(_ts)
+                               else ("warn", f"{len(_g)} of {len(_ts)} gated")
+                               if _g else ("bad", "not gated"))
+                _bits = [f"{len(_ts)} tag{'s' if len(_ts) != 1 else ''}"]
+                if _p:
+                    _bits.append(f"{len(_p)} paused")
+                _bits += [f"{n} {k}" for k, n in sorted(_trigs.items())]
+                _rows2.append(
+                    f"<li><span class='vb vb--{_kind}'>{e(_lbl)}</span>"
+                    f"<div><b>{e(_v)}</b> "
+                    f"<span class='vev'>{e(_DOT.join(_bits))}</span>"
+                    + "".join(
+                        f"<div class='vurl'>{e(t.get('name') or '?')}"
+                        + (" — paused" if t.get("paused") else "")
+                        + (f" — {e(', '.join(t.get('firing_triggers') or []))}"
+                           if t.get("firing_triggers") else "")
+                        + "</div>" for t in _ts[:12])
+                    + "</div></li>")
+            _ccards.append(
+                f"<div class='vprodc'><div class='vprodh'>"
+                f"<b>{e(a_.get('public_id') or '?')}</b>"
+                f"<span class='vcount'>{len(_tags)} tags</span>"
+                f"<span class='vb vb--{'ok' if len(_gated) == len(_tags) and _tags else ('warn' if _gated else 'bad')}'>"
+                f"{len(_gated)} with a consent check</span>"
+                + (f"<span class='vev'>{e(a_.get('account_name') or '')}"
+                   f"</span>" if a_.get("account_name") else "")
+                + f"</div><ul>{''.join(_rows2)}</ul></div>")
+        _cm_note = ""
+        if scan.get("consent_mode_default") is True:
+            _ungated_n = sum(1 for a_ in _auds for t in (a_.get("tags") or [])
+                             if str(t.get("consent_status")) != "NEEDED")
+            if _ungated_n:
+                _cm_note = (
+                    f"<div class='card' style='margin-top:9px;border-left:"
+                    f"3px solid var(--gold);color:#8a5d05'>Consent Mode covers "
+                    f"Google tags only. {_ungated_n} other tag"
+                    f"{'s' if _ungated_n != 1 else ''} in "
+                    f"{'these containers' if len(_auds) != 1 else 'this container'} "
+                    f"have no per-tag consent check, so the defaults do not "
+                    f"gate them.</div>")
+        parts.append(_sec(
+            "Container configuration",
+            "".join(_ccards) + _cm_note,
+            "The published configuration, read through the Tag Manager API — "
+            "what is set up, as against what the page was observed doing.",
+            tip="gtm"))
 
     # ----------------------------------------------------------- the trackers
     # Built once, at the top, so the tile and this table cannot disagree.
@@ -1210,10 +1320,6 @@ def consent_html(audit: dict, detail: dict | None) -> str:
             f"<div class='card'>Matched: <b>{e(scan['optout_link'])}</b></div>",
             "Presence only — whether the link actually works is a human "
             "check.", tip="optout"))
-
-    parts.append(
-        f"<div style='margin-top:34px'><a class='btn ghost' "
-        f"href='/audits/{e(aid)}'>Back to the audit</a></div>")
 
     return _shell(f"Consent — {client}", "".join(parts),
                   heading="Consent scan", crumbs=crumbs)

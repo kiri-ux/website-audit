@@ -7,6 +7,7 @@ bundler. The finished report itself is rendered by engine/report.py.
 """
 from __future__ import annotations
 import html as _h
+import json as _json
 import os
 import time as _time
 
@@ -155,6 +156,23 @@ code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
  border:5px solid transparent;
  border-top-color:var(--navy);opacity:0;transition:opacity .12s;z-index:41}
 .tip:hover:after,.tip:hover:before,.tip:focus:after,.tip:focus:before{opacity:1}
+
+/* ---- report tabs ---- */
+.ctabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:0 0 4px;
+ flex-wrap:wrap}
+.ctab{padding:8px 15px;font-size:13.5px;font-weight:500;color:var(--ink2);
+ border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;
+ position:relative;top:1px}
+.ctab:hover{text-decoration:none;color:var(--blue);background:var(--surface)}
+.ctab.on{background:#fff;border-color:var(--line);color:var(--ink);
+ font-weight:600}
+.csibs{display:flex;gap:8px;flex-wrap:wrap;align-items:baseline;
+ font-size:12.5px;color:var(--muted);margin:8px 0 14px}
+.csibs > span{margin-right:2px}
+.csibs a{color:var(--ink2);border:1px solid var(--line);border-radius:14px;
+ padding:2px 10px;background:var(--surface)}
+.csibs a:hover{text-decoration:none;border-color:var(--blue);color:var(--blue)}
+.csibs .k{color:var(--muted)}
 
 /* ---- audit form layout ---- */
 .fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
@@ -656,6 +674,57 @@ def _tab(mode):
         return ""
     import json as _j
     return _TAB_JS % _j.dumps(mode)
+
+
+def client_tabs(a: dict, active: str = "report", has_consent: bool = False,
+                siblings: list | None = None) -> str:
+    """
+    Every report this run produced, and every other run for this client.
+
+    THE PAGE THAT CANNOT BE LEFT.
+
+    A consent-only run opens on the consent page, which was right — and its
+    only way out was "Back to the audit", which pointed at a URL that
+    redirected straight back to the consent page. A loop. Worse, a client with
+    a full audit AND a consent run had no route from one to the other at all:
+    Open went to the newest, and the newest was the consent scan.
+    #
+    Tabs on both pages fix both. The report a run did not produce is not
+    offered — a tab that leads to an empty page is the same dead end wearing a
+    different label.
+    """
+    aid = a.get("id") or ""
+    tabs = [("report", "Full audit", f"/audits/{aid}?view=report")]
+    if has_consent:
+        tabs.append(("consent", "Consent scan", f"/audits/{aid}/consent"))
+    tabs += [("pdf", "Client PDF", f"/audits/{aid}.pdf"),
+             ("snapshot", "Snapshot", f"/audits/{aid}.snapshot.pdf")]
+    out = ["<div class='ctabs'>"]
+    for key, label, href in tabs:
+        _ext = " target='_blank' rel='noopener'" if key in ("pdf", "snapshot") else ""
+        out.append(f"<a class='ctab{' on' if key == active else ''}' "
+                   f"href='{e(href)}'{_ext}>{e(label)}</a>")
+    out.append("</div>")
+    # OTHER RUNS, because "the audit we did for them" is usually a different
+    # row. A consent-only re-run is a new audit, so the full one it descends
+    # from is only reachable through the list — or through this.
+    sib = [r for r in (siblings or []) if r.get("id") != aid][:6]
+    if sib:
+        out.append("<div class='csibs'><span>Other runs for this client</span>")
+        for r in sib:
+            _bits = []
+            try:
+                _o = _json.loads(r.get("options") or "{}") or {}
+            except Exception:  # noqa: BLE001
+                _o = {}
+            _bits.append("consent" if _o.get("run_consent") else "")
+            _bits.append("AI" if _o.get("run_aivis") else "")
+            _kind = " · ".join(x for x in _bits if x) or "audit"
+            out.append(
+                f"<a href='/audits/{e(r['id'])}'>{_fmt_when(r.get('created_at'))}"
+                f" <span class='k'>{e(_kind)}</span></a>")
+        out.append("</div>")
+    return "".join(out)
 
 
 def _shell(title, body, refresh=None, heading=None, crumbs=None, tab=None):

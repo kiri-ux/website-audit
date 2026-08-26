@@ -119,9 +119,25 @@ def healthz():
         pass
     goog["ready"] = all((goog["client_id"], goog["client_secret"],
                          goog["tokens"]))
+    # TAG MANAGER, REPORTED WITHOUT CALLING IT.
+    #
+    # Setting this up is two environment variables and a token mint, and the
+    # only way to tell whether it took was to run a scan and see whether a
+    # badge appeared. `enabled()` is a pure env read — no network, so it is
+    # safe on the route Render polls — and `logins` names each label so a
+    # token that was pasted wrong is visible as a label with nothing behind
+    # it rather than as a silently missing badge weeks later.
+    try:
+        from engine.consent import gtm_api as _gtm
+        _gtm_state = {"configured": _gtm.enabled(),
+                      "logins": sorted(_gtm._tokens()) if _gtm.enabled() else []}
+    except Exception as exc:  # noqa: BLE001
+        _gtm_state = {"configured": False,
+                      "error": f"{type(exc).__name__}: {exc}"}
     return {"ok": True, "mode": cfg.mode, "queue_depth": depth,
             "oauth_setup": bool(os.getenv("OAUTH_SETUP_TOKEN")),
             "google": goog,
+            "gtm": _gtm_state,
             # Kept so anything already watching this key keeps working.
             "google_client": goog["client_id"],
             **version.info()}
@@ -925,7 +941,10 @@ def consent_page(audit_id: str, x_api_key: str | None = Header(None)):
         except Exception:  # noqa: BLE001
             detail = None
     from .ui_consent import consent_html
-    return consent_html(a, detail)
+    from .ui import client_tabs as _ctabs
+    return consent_html(a, detail,
+                        tabs=_ctabs(a, active="consent", has_consent=True,
+                                    siblings=_siblings(a, p)))
 
 
 @app.get("/api/audits/{audit_id}/consent")
@@ -938,6 +957,18 @@ def consent_detail(audit_id: str, x_api_key: str | None = Header(None)):
     if not blob:
         raise HTTPException(404, "no consent detail stored for this audit")
     return Response(blob, media_type="application/json")
+
+
+def _siblings(a: dict, p) -> list:
+    """Other runs of the same URL, newest first — the client's other reports."""
+    url = (a.get("target_url") or "").rstrip("/").lower()
+    try:
+        rows = db.list_audits(p.scope)
+    except Exception:  # noqa: BLE001
+        return []
+    return [r for r in rows
+            if (r.get("target_url") or "").rstrip("/").lower() == url
+            and r.get("status") == "ready"]
 
 
 def _consent_only(a: dict) -> bool:
@@ -956,7 +987,8 @@ def _consent_only(a: dict) -> bool:
 
 
 @app.get("/audits/{audit_id}", response_class=HTMLResponse)
-def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
+def audit_page(audit_id: str, view: str = "",
+               x_api_key: str | None = Header(None)):
     p = principal(x_api_key)
     a = db.get_audit(audit_id, p.scope)
     if not a:
@@ -973,7 +1005,14 @@ def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
     # Only when consent is the ONLY phase asked for, and only when there is
     # something to show: a redirect to a page that says "no consent detail was
     # stored" would be worse than the report.
-    if _consent_only(a) and get_artifact(audit_id, "consent_scan.json"):
+    # ...AND `view=report` IS THE WAY BACK.
+    #
+    # Without it this redirect was a trap: the consent page's own link out
+    # pointed here, and here pointed straight back. The tab strip on both
+    # pages asks for the report explicitly, so the shortcut stays and the
+    # loop does not.
+    if (view != "report" and _consent_only(a)
+            and get_artifact(audit_id, "consent_scan.json")):
         return RedirectResponse(f"/audits/{audit_id}/consent", status_code=303)
     findings = db.get_findings(audit_id)
     scores = db.get_scores(audit_id)
@@ -990,6 +1029,20 @@ def audit_page(audit_id: str, x_api_key: str | None = Header(None)):
         meta["consent_url"] = f"/audits/{audit_id}/consent"
     html = render_html(meta, scores, findings, cat,
                        summary=build_summary(findings, scores, cat, meta))
+    # THE TABS GO IN AS THE FIRST THING INSIDE THE CONTENT.
+    #
+    # The report is rendered by the engine, which knows nothing about which
+    # other runs exist for this client — that is an app-level fact, so it is
+    # spliced in here rather than threaded through a renderer that should not
+    # have to care.
+    from .ui import client_tabs as _ctabs
+    _strip = _ctabs(a, active="report",
+                    has_consent=bool(get_artifact(audit_id, "consent_scan.json")),
+                    siblings=_siblings(a, p))
+    if "<div class='wrap'>" in html:
+        html = html.replace("<div class='wrap'>", "<div class='wrap'>" + _strip, 1)
+    elif "<body>" in html:
+        html = html.replace("<body>", "<body>" + _strip, 1)
     # THE GREEN DOT, ON THE PAGE THAT MEANS IT IS DONE.
     #
     # The running page pulses amber in the tab; this is the other half. Only
