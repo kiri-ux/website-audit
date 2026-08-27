@@ -1124,7 +1124,7 @@ def render_html(meta, sc, findings, catalog, summary=None):
          # A way back. This page is a dead end otherwise — the only routes off
          # it are the browser's back button and editing the URL, and after a
          # rerun the back button lands on a stale status page.
-         "<div style='margin-bottom:18px'>"
+         "<div class='rpt-standalone' style='margin-bottom:18px'>"
          "<a href='/' style='display:inline-flex;align-items:center;gap:7px;"
          "font-size:13.5px;padding:7px 16px;border:1px solid var(--line);"
          "border-radius:20px;background:var(--surface);color:var(--ink2);"
@@ -1164,7 +1164,12 @@ def render_html(meta, sc, findings, catalog, summary=None):
             "or from an allowlisted IP.</div>")
 
     from app import version as _ver
-    P.append(f"<div class='bstamp' title='Build that produced this report'>"
+    # `rpt-standalone` marks the chrome this document needs only when it is
+    # opened on its own — the build stamp and the way back to the dashboard.
+    # Inside the app shell both already exist in the frame, and printing them
+    # twice is how the page stopped looking like the rest of the tool.
+    P.append(f"<div class='bstamp rpt-standalone' "
+             f"title='Build that produced this report'>"
              f"{e(_ver.label())}</div>")
     P.append(f"<header><h1>SEO &amp; Generative Engine Optimization Audit</h1>"
              f"<div class='sub'>{e(meta['client'])} · <code>{e(meta['url'])}</code><br>"

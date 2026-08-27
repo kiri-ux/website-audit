@@ -1634,11 +1634,23 @@ def main():
                                       "fired": 0, "pixels": []}]},
                "pages": [], "requested": {"products": ["Mobile", "PMax"]}}))
 
-    print("\nTHREE STATE CARDS TO A ROW")
-    check("the grid is pinned to three, not left to auto-fit",
-          "repeat(3,minmax(0,1fr))" in _h6)
-    check("and it steps down rather than squeezing on a narrow screen",
-          "max-width:1080px" in _h6 and "max-width:720px" in _h6)
+    print("\nTHREE CARDS TO A ROW, IN BOTH PANELS")
+    # Full-width rows put one short sentence across 1900 pixels and pushed
+    # the fifth item off the bottom of the screen, so five problems read as a
+    # scroll rather than as a set you can take in at once.
+    check("the work order is a three-column grid",
+          ".vissues{display:grid" in _h6
+          and "repeat(3,minmax(0,1fr))" in _h6.split(".vissues{")[1][:200])
+    check("so is the state-law panel",
+          "repeat(3,minmax(0,1fr))" in _h6.split(".vlaws{")[1][:200])
+    check("both step down rather than squeezing on a narrow screen",
+          _h6.count("max-width:1080px") >= 2
+          and _h6.count("max-width:720px") >= 2)
+    check("cards in a row share a height, so the rails line up",
+          ".vi{" in _h6 and "height:100%" in _h6.split(".vi{")[1][:220])
+    check("the owner badge is above the title, not stranded to its right",
+          _h6.index("<div class='vi-h'>") < _h6.index("vown vown--client")
+          < _h6.index("<div class='vi-t'>"))
 
     print("\nA DEFINITION MUST ANSWER THE THING IT IS ATTACHED TO")
     # "Banner on load" borrowed the CMP definition, so hovering it explained

@@ -188,6 +188,9 @@ code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
 .ctab:hover{text-decoration:none;color:var(--blue);background:var(--surface)}
 .ctab.on{background:#fff;border-color:var(--line);color:var(--ink);
  font-weight:600}
+.ctab--file{display:inline-flex;align-items:center;gap:6px}
+.ctab-dl{opacity:.5;flex:none}
+.ctab--file:hover .ctab-dl{opacity:1}
 .csibs{display:flex;gap:8px;flex-wrap:wrap;align-items:baseline;
  font-size:12.5px;color:var(--muted);margin:8px 0 14px}
 .csibs > span{margin-right:2px}
@@ -733,11 +736,27 @@ def client_tabs(a: dict, active: str = "report", has_consent: bool = False,
         tabs.append(("consent", "Consent scan", f"/audits/{aid}/consent"))
     tabs += [("pdf", "Client PDF", f"/audits/{aid}.pdf"),
              ("snapshot", "Snapshot", f"/audits/{aid}.snapshot.pdf")]
+    # TWO OF THESE FOUR ARE NOT PAGES.
+    #
+    # "Full audit / Consent scan / Client PDF / Snapshot" read as four tabs of
+    # one document, so the last two looked like somewhere the tab strip would
+    # take you — and instead a PDF opened in a new tab, or downloaded, with no
+    # warning that clicking was going to leave. An arrow into a tray is the
+    # convention for that, and it costs twelve pixels.
+    _DL = ("<svg viewBox='0 0 24 24' width='12' height='12' fill='none' "
+           "stroke='currentColor' stroke-width='2.2' stroke-linecap='round' "
+           "stroke-linejoin='round' aria-hidden='true' class='ctab-dl'>"
+           "<path d='M12 3v11'/><path d='m7.5 10.5 4.5 4 4.5-4'/>"
+           "<path d='M4 20h16'/></svg>")
     out = ["<div class='ctabs'>"]
     for key, label, href in tabs:
-        _ext = " target='_blank' rel='noopener'" if key in ("pdf", "snapshot") else ""
-        out.append(f"<a class='ctab{' on' if key == active else ''}' "
-                   f"href='{e(href)}'{_ext}>{e(label)}</a>")
+        _file = key in ("pdf", "snapshot")
+        _ext = " target='_blank' rel='noopener'" if _file else ""
+        out.append(f"<a class='ctab{' on' if key == active else ''}"
+                   f"{' ctab--file' if _file else ''}' "
+                   f"href='{e(href)}'{_ext}"
+                   + (" title='Opens a PDF'" if _file else "")
+                   + f">{e(label)}{_DL if _file else ''}</a>")
     out.append("</div>")
     # OTHER RUNS, because "the audit we did for them" is usually a different
     # row. A consent-only re-run is a new audit, so the full one it descends
@@ -761,7 +780,8 @@ def client_tabs(a: dict, active: str = "report", has_consent: bool = False,
     return "".join(out)
 
 
-def _shell(title, body, refresh=None, heading=None, crumbs=None, tab=None):
+def _shell(title, body, refresh=None, heading=None, crumbs=None, tab=None,
+           extra_css=""):
     """
     adtini chrome: fixed navy rail, white top bar, breadcrumb, content.
 
@@ -806,7 +826,13 @@ def _shell(title, body, refresh=None, heading=None, crumbs=None, tab=None):
             f"<meta name='viewport' content='width=device-width,initial-scale=1'>{r}"
             f"{_tab(tab)}"
             f"{HEAD}"
-            f"<title>{e(title)}</title><style>{CSS}</style></head>"
+            f"<title>{e(title)}</title><style>{CSS}</style>"
+            # AFTER the shell's, so a page that brings its own stylesheet wins
+            # for its own content. The chrome — rail, topbar, breadcrumb,
+            # tabs — is stripped from it by the caller, so the frame stays the
+            # frame no matter which page is inside it.
+            + (f"<style>{extra_css}</style>" if extra_css else "")
+            + "</head>"
             f"<body class='viz-root'>{RAIL}"
             f"<header class='topbar'><span class='burger'>\u2630</span>"
             f"<h1>{e(heading or title)}</h1>"

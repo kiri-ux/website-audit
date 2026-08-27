@@ -9,6 +9,7 @@ Run:  uvicorn app.api:app --host 0.0.0.0 --port 8000
 from __future__ import annotations
 import json
 import os
+import re
 import sys
 import time
 
@@ -300,7 +301,7 @@ def _redirect_uri(request: Request) -> str:
 
 
 @app.get("/api/access-check")
-def access_check(target_url: str = ""):
+def access_check(target_url: str = "", client_name: str = ""):
     """
     Preflight: do we have Search Console and Analytics for this site?
 
@@ -312,7 +313,12 @@ def access_check(target_url: str = ""):
     """
     if not target_url.startswith(("http://", "https://")):
         raise HTTPException(400, "target_url must include a scheme")
-    return _ga.probe(target_url)
+    # THE CLIENT'S NAME WAS ON THE FORM AND GOING UNUSED.
+    #
+    # An account manager names a property after the client, not the URL, far
+    # more often than not. Matching on the domain alone missed every one of
+    # them and reported "no property" about an estate that held it.
+    return _ga.probe(target_url, client_name=client_name)
 
 
 @app.get("/extension.zip")
@@ -1029,26 +1035,49 @@ def audit_page(audit_id: str, view: str = "",
         meta["consent_url"] = f"/audits/{audit_id}/consent"
     html = render_html(meta, scores, findings, cat,
                        summary=build_summary(findings, scores, cat, meta))
-    # THE TABS GO IN AS THE FIRST THING INSIDE THE CONTENT.
+    # ONE PAGE, ONE FRAME. The report renders INSIDE the app shell.
     #
-    # The report is rendered by the engine, which knows nothing about which
-    # other runs exist for this client — that is an app-level fact, so it is
-    # spliced in here rather than threaded through a renderer that should not
-    # have to care.
-    from .ui import client_tabs as _ctabs
+    # "all pages should have matching styling" — and they could not, because
+    # the report was a whole separate document: its own <head>, its own body,
+    # no navy rail, no topbar, no breadcrumb, and a second copy of the tab CSS
+    # that had already drifted from the shell's. Clicking Full audit did not
+    # feel like a tab; it felt like leaving.
+    #
+    # So the engine keeps rendering a complete document — it is also written
+    # to disk as an artifact and mailed around, and it has to stand alone —
+    # and the app unwraps it: takes the stylesheet and the contents of .wrap,
+    # and hands both to the same _shell every other page uses. The engine is
+    # not made to know about the shell, which is the boundary that keeps the
+    # report portable.
+    from .ui import client_tabs as _ctabs, _shell as _sh
     _strip = _ctabs(a, active="report",
                     has_consent=bool(get_artifact(audit_id, "consent_scan.json")),
                     siblings=_siblings(a, p))
-    if "<div class='wrap'>" in html:
-        html = html.replace("<div class='wrap'>", "<div class='wrap'>" + _strip, 1)
-    elif "<body>" in html:
-        html = html.replace("<body>", "<body>" + _strip, 1)
-    # THE GREEN DOT, ON THE PAGE THAT MEANS IT IS DONE.
+    _m = re.search(r"<style>(.*?)</style>", html, re.S)
+    _css = _m.group(1) if _m else ""
+    # THE CHROME RULES COME OUT OF THE INJECTED COPY.
     #
-    # The running page pulses amber in the tab; this is the other half. Only
-    # for a run that finished in the last ten minutes - somebody who left the
-    # tab open and came back. On a report from last week a green dot would be
-    # decoration, and a tab full of them says nothing.
+    # Two definitions of `.ctab` on one page is how they drifted apart in the
+    # first place. The frame belongs to the shell; whatever the report says
+    # about tabs, breadcrumbs or the build stamp is dropped on the way in.
+    _css = re.sub(r"\.(ctabs?|ctab[^{,\s]*|csibs[^{,\s]*|bstamp|topbar|"
+                  r"crumb|wrap)\b[^{]*\{[^}]*\}", "", _css)
+    _body = html
+    if "<div class='wrap'>" in _body:
+        _body = _body.split("<div class='wrap'>", 1)[1]
+        _body = _body.rsplit("</div></body>", 1)[0]
+    # The standalone-only chrome comes out: the report's own build stamp and
+    # its "back to Site Scanner" button both already exist in the frame, and
+    # printing them twice is most of what made this page look like a
+    # different product.
+    _body = re.sub(r"<div class='[^']*\brpt-standalone\b[^']*'[^>]*>.*?</div>"
+                   r"\s*", "", _body, flags=re.S)
+    if _strip:
+        _body = _strip + _body
+    html = _sh(f"{a['client_name']} — audit", _body,
+               heading=a["client_name"],
+               crumbs=[("Audits", "/"), (a["client_name"], None)],
+               extra_css=_css)
     done_at = a.get("completed_at") or 0
     if done_at and time.time() - float(done_at) < 600:
         from .ui import _tab

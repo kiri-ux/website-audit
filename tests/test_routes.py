@@ -439,6 +439,49 @@ def main():
     except ImportError:
         print("  SKIP  pdfplumber not installed")
 
+    print("\nTHE FULL AUDIT LIVES IN THE SAME FRAME AS EVERY OTHER PAGE")
+    # "all pages should have matching styling" — and they could not, because
+    # the report was a whole separate document: its own head, its own body, no
+    # rail, no topbar, no breadcrumb, and a second copy of the tab CSS that
+    # had already drifted from the shell's. Clicking Full audit did not feel
+    # like a tab, it felt like leaving.
+    _st, _ct, _raw = GET(f"/audits/{aid}")
+    _rp = _raw.decode("utf-8", "replace")
+    check("the report page still renders", _st == 200, str(_st))
+    check("inside the app rail", "viz-root" in _rp)
+    check("under the app topbar", "class='topbar'" in _rp)
+    check("with the app breadcrumb", "class='crumb'" in _rp)
+    check("and the tab strip", "class='ctabs'" in _rp)
+    check("there is exactly one build stamp on the page",
+          _rp.count("class='bstamp'") == 1,
+          str(_rp.count("class='bstamp'")))
+    check("the report's standalone chrome is stripped",
+          "rpt-standalone" not in _rp)
+    check("its own stylesheet still comes along",
+          _rp.count("<style>") >= 2, str(_rp.count("<style>")))
+    check("but not its copy of the tab rules — that is how they drifted",
+          _rp.count(".ctab{") == 1, str(_rp.count(".ctab{")))
+    check("the shared tooltip positioner reaches it too", "tipbox" in _rp)
+    # And the engine's document still stands on its own, because it is also
+    # written to disk and mailed around.
+    from engine.report import render_html as _rh
+    import inspect as _insp
+    check("the engine still renders a complete document",
+          "<!doctype html>" in _insp.getsource(_rh))
+    check("carrying the chrome it needs when opened alone",
+          "rpt-standalone" in _insp.getsource(_rh))
+
+    print("\nA TAB THAT DOWNLOADS SAYS SO")
+    check("the PDF tabs carry a download glyph", "ctab-dl" in _rp)
+    # Count the anchors, not the string — it appears in the stylesheet too.
+    _files = _rp.count("title='Opens a PDF'")
+    check("one glyph per file tab, none on the page tabs",
+          _rp.count("class='ctab-dl'") == _files,
+          f"{_rp.count(chr(39).join(['class=', 'ctab-dl', '']))} vs {_files}")
+    check("and there are two of them — Client PDF and Snapshot",
+          _files == 2, str(_files))
+    check("the file tabs still open in a new tab", "target='_blank'" in _rp)
+
     print("=" * 68 + "\n")
     return 1 if FAILURES else 0
 

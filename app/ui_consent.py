@@ -465,28 +465,45 @@ _PAGE_CSS = ("<style>"
              # THE ONE BLOCK SOMEBODY WHO KNOWS NOTHING CAN READ.
              #
              # Severity as a colored rail down the left, the problem in a
-             # plain sentence, who fixes it as a badge on the right, and the
-             # technical detail behind a disclosure. Nobody has to know what a
-             # container or a pre-consent fire is to work out what is wrong
-             # and whose job it is — which is the entire ask.
-             ".vissues{display:flex;flex-direction:column;gap:8px;"
-             "margin-top:9px}"
+             # plain sentence, who fixes it as a badge, and the technical
+             # detail behind a disclosure. Nobody has to know what a container
+             # or a pre-consent fire is to work out what is wrong and whose
+             # job it is — which is the entire ask.
+             #
+             # THREE TO A ROW. Full-width rows put one short sentence across
+             # 1900 pixels and pushed the fifth item off the bottom of the
+             # screen, so a list of five problems read as a scroll rather than
+             # as a set you can take in at once. Three columns fit the whole
+             # work order above the fold and give each sentence a comfortable
+             # measure instead of a 200-character line.
+             ".vissues{display:grid;gap:10px;margin-top:9px;align-items:start;"
+             "grid-template-columns:repeat(3,minmax(0,1fr))}"
+             "@media (max-width:1080px){.vissues{"
+             "grid-template-columns:repeat(2,minmax(0,1fr))}}"
+             "@media (max-width:720px){.vissues{grid-template-columns:1fr}}"
              ".vi{border:1px solid var(--line);border-left:4px solid "
-             "var(--line-2);border-radius:9px;background:#fff;padding:0}"
+             "var(--line-2);border-radius:9px;background:#fff;padding:0;"
+             "display:flex;flex-direction:column;height:100%}"
              ".vi--bad{border-left-color:var(--critical)}"
              ".vi--warn{border-left-color:var(--gold)}"
              ".vi--info{border-left-color:var(--blue)}"
-             ".vi-h{display:flex;gap:11px;align-items:flex-start;"
-             "padding:11px 14px}"
-             ".vi-x{flex:1 1 auto;min-width:0}"
+             # The owner badge sat to the RIGHT of the text, which works on a
+             # full-width row and strands it in a card. It goes above the
+             # title now: who owns this is the first thing to know about an
+             # item, and it is the only part of the card that is the same
+             # shape every time, so it reads as a column when they line up.
+             ".vi-h{display:flex;flex-direction:column;align-items:flex-start;"
+             "gap:0;padding:11px 14px;flex:1 1 auto}"
+             ".vi-h .vown{margin-bottom:7px}"
+             ".vi-x{min-width:0;width:100%}"
              ".vi-t{font-size:14.5px;font-weight:700;line-height:1.35;"
-             "color:var(--ink)}"
+             "color:var(--ink);text-wrap:balance}"
              ".vi-s{font-size:13px;color:var(--ink2);line-height:1.55;"
              "margin-top:3px}"
              ".vi-w{font-size:13px;line-height:1.55;margin-top:6px;"
              "color:var(--ink)}"
              ".vi-w b{font-weight:700}"
-             ".vi-d{margin:0 14px 11px;font-size:12.5px}"
+             ".vi-d{margin:0 14px 11px;font-size:12.5px;flex:none}"
              ".vi-d > summary{cursor:pointer;color:var(--blue);"
              "font-weight:600;list-style:none;padding:2px 0}"
              ".vi-d > summary::-webkit-details-marker{display:none}"
@@ -890,10 +907,11 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
         `detail`  the technical evidence, folded away
         """
         _issues.append(
-            f"<div class='vi vi--{kind}'><div class='vi-h'><div class='vi-x'>"
+            f"<div class='vi vi--{kind}'><div class='vi-h'>{owner}"
+            f"<div class='vi-x'>"
             f"<div class='vi-t'>{title}</div>"
             f"<div class='vi-s'>{plain}</div>"
-            f"<div class='vi-w'><b>Fix:</b> {fix}</div></div>{owner}</div>"
+            f"<div class='vi-w'><b>Fix:</b> {fix}</div></div></div>"
             + (f"<details class='vi-d'><summary>Show the evidence</summary>"
                f"<div class='vi-dd'>{detail}</div></details>" if detail else "")
             + "</div>")
