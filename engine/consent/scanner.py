@@ -30,6 +30,8 @@ SCANNER_REV = "0.15.58"
 print(f"[scanner] rev {SCANNER_REV} loaded", flush=True)
 
 from .state_checks import (STATE_CHECKS, OPTOUT_LINK_PHRASES,
+                           SENSITIVE_LINK_PHRASES,
+                           NOTICE_AT_COLLECTION_PHRASES,
                           LAST_REVIEWED, REVIEW_INTERVAL_DAYS)
 from .signatures import (CMP_SIGNATURES, TRACKER_ENDPOINTS, PRODUCT_PIXELS, CODE_HINTS,
                         ACCEPT_SELECTORS, GENERIC_ACCEPT_TEXT,
@@ -221,7 +223,19 @@ def _defaults_all_denied(defaults):
     return bool(track) and all(v == "denied" for v in track.values())
 
 
-_MACRO_RE = re.compile(r"(\$%7B|\$\{|%5B[A-Za-z_]|\[[A-Za-z_][A-Za-z0-9_ -]*\])")
+# THE MACRO FLAG IS GONE, AND IT WAS WRONG RATHER THAN NOISY.
+#
+# It flagged `[ORDER]`, `{INSERT_MACRO_HERE}`, `[Revenue]`, `{orderid}` and
+# `${GDPR_CONSENT_755}` as a tag pasted without its values filled in. They are
+# not.
+# Beeswax, Yahoo, Floodlight and The Trade Desk all ship placeholders that the
+# ad server or a downstream system fills at conversion time, and a page-view
+# fire legitimately carries them empty. Flagging all five put a red sentence
+# on every correctly installed tag in the container.
+#
+# A false positive in the legal section is more expensive than a missing
+# check: it sends someone to "fix" a tag that works, and it teaches the reader
+# that the red text on this page can be ignored.
 
 
 def _empty_result(url):
@@ -244,6 +258,11 @@ def _empty_result(url):
         "gpc_tested": False,        # did a GPC-signal page load run
         "gpc_fires": [],            # ad trackers contacted despite GPC
         "optout_link": None,        # matched opt-out link text, or None
+        # The other two California links. Absent is unknown-shaped here only
+        # in the sense that a basic scan never looks; a full scan that looked
+        # and found nothing writes None, and the check reads that as a miss.
+        "sensitive_link": None,     # "limit the use of my sensitive PI" text
+        "notice_at_collection": None,   # notice-at-collection text
         "state_checks": [],         # [{state, check, status, detail}]
         "check_map_reviewed": LAST_REVIEWED,
         "post_consent": [],         # tracker vendors that fired only after accept
@@ -650,6 +669,10 @@ def _full_scan_impl(browser, url, products=None, states=None,
         low_html = html.lower()
         result["optout_link"] = next(
             (p for p in OPTOUT_LINK_PHRASES if p in low_html), None)
+        result["sensitive_link"] = next(
+            (p for p in SENSITIVE_LINK_PHRASES if p in low_html), None)
+        result["notice_at_collection"] = next(
+            (p for p in NOTICE_AT_COLLECTION_PHRASES if p in low_html), None)
 
         # --- privacy policy link (universal FTC-baseline check input)
         result["privacy_policy_link"] = next(
@@ -892,14 +915,6 @@ def _full_scan_impl(browser, url, products=None, states=None,
         else:
             severity, note = "violation", "Fired before any consent interaction."
 
-        # AN UNREPLACED MACRO IS A CERTAIN DEFECT, wherever it appears.
-        # `gdpr_consent=${GDPR_CONSENT_755}` reaching the network means the
-        # tag template was pasted without filling its values — the product
-        # table already says so about the same tag, and the row a reader is
-        # looking at should not make them go and find it.
-        if _MACRO_RE.search(req_url or ""):
-            note = (note + " Unreplaced template macro in the URL - the tag "
-                           "was pasted without filling its values.").strip()
         result["pre_consent"].append({
             "vendor": tracker["vendor"],
             "url": req_url[:220],
@@ -1322,11 +1337,12 @@ def products_and_containers(result, html, raw_low, pre_urls, post_urls,
                 "containers": in_containers,
                 "severity": severity,
                 "severity_note": severity_note,
-                # Unreplaced trafficking macros like [ORDER] or {orderid}
-                # mean the template was pasted without filling values.
-                "macro_warning": bool(re.search(
-                    r"(\[[A-Za-z_][A-Za-z0-9_ -]+\]|"
-                    r"(?<!\$)\{[A-Za-z_][A-Za-z0-9_ -]+\})", hit_url)),
+                # `macro_warning` was here and is deliberately gone. See the
+                # note above _consent_signalled: [ORDER], {orderid},
+                # [Revenue] and {INSERT_MACRO_HERE} are what Beeswax, Yahoo,
+                # Floodlight and The Trade Desk ship, resolved downstream or
+                # at conversion time. Flagging them put a red line on every
+                # correctly installed tag in the container.
             })
         fired = sum(1 for p in pixels if p["fired_pre"] or p["fired_post"])
         if detect_any and fired == 0:
@@ -1446,6 +1462,40 @@ def state_checks_for(result, states, site_checks=True):
                      "detail": "No recognizable opt-out link text found on "
                                "this page. An accessible opt-out method is "
                                f"expected for {cfg['name']} targeting."})
+        # THREE OBLIGATIONS, NOT ONE.
+        #
+        # "Do Not Sell or Share" is the famous link and it was the only one
+        # checked, so a California report said a site was missing one thing
+        # when it was missing three. These are separate sections of the
+        # statute with separate link text, and a CMP that delivers the
+        # opt-out does not automatically deliver either of them.
+        if cfg.get("sensitive_link"):
+            _sl = result.get("sensitive_link")
+            result["state_checks"].append(
+                {"state": s, "check": "Sensitive info link",
+                 "status": "pass" if _sl else "fail",
+                 "detail": (f'Found "{_sl}" on the page.' if _sl else
+                            "No 'Limit the Use of My Sensitive Personal "
+                            "Information' link found. This is a SEPARATE "
+                            "right from the opt-out and needs its own link "
+                            "where the site uses sensitive personal "
+                            "information — precise location, race or "
+                            "ethnicity, health, or the contents of messages. "
+                            + cfg.get("sensitive_cite", ""))})
+        if cfg.get("notice_at_collection"):
+            _nc = result.get("notice_at_collection")
+            result["state_checks"].append(
+                {"state": s, "check": "Notice at collection",
+                 "status": "pass" if _nc else "fail",
+                 "detail": (f'Found "{_nc}" on the page. Presence check only '
+                            "— whether it lists the right categories and "
+                            "purposes needs human review." if _nc else
+                            "No notice-at-collection text found on this page. "
+                            "The categories collected and the purposes have "
+                            "to be disclosed AT or before the point of "
+                            "collection; a privacy policy in the footer is "
+                            "not by itself that notice. "
+                            + cfg.get("notice_cite", ""))})
 
 
 def _category_checks(result, category):

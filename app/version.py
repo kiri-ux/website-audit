@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-113"
-BUILD_NOTES = ("Run again now replays the whole run, not most of it: the two job checkboxes are restored so a consent-only re-run stops arriving with Full audit ticked, and the hand-picked Search Console, GA4 and Tag Manager properties are actually re-applied - they had been stashed and read by nothing. A Tag Manager account we could not read is reported as ours to re-check rather than as the client withholding access, a container held under the client's name is named as a near miss, and every access miss says WHICH Vici login the client has to add. The progress page quotes this run's timing instead of a 150-page crawl's")
+BUILD = "2026.08.20-114"
+BUILD_NOTES = ("The consent page is rewritten around one question: what is wrong, and who fixes it. That list opens the page in plain sentences with an owner badge and a folded evidence trail on each row; the nine tables of evidence below it are closed by default and say how much is inside. California is checked against all three of its obligations rather than only the famous one - the sensitive-information link and the notice at collection were never tested - and the state results are one card per state with the law, the citation and the review date. The tooltip left the marker: as a CSS bubble inside a scrolling table wrapper it grew a scrollbar, reflowed the row and flickered several times a second. The vendor-macro flag is gone; [ORDER] and {orderid} are what those tags ship")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

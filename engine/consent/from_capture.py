@@ -159,6 +159,15 @@ def result_from_capture(cap: dict, states=None, products=None,
     # The universal FTC-baseline input. Same four phrases the Playwright path
     # looks for, in the same rendered HTML.
     low = (html or "").lower()
+    # ONE CLASSIFIER, TWO SOURCES. The extension path reads the same phrase
+    # tables off the same HTML, or California means something different
+    # depending on which browser did the looking.
+    from .state_checks import (SENSITIVE_LINK_PHRASES,
+                               NOTICE_AT_COLLECTION_PHRASES)
+    r["sensitive_link"] = next(
+        (p for p in SENSITIVE_LINK_PHRASES if p in low), None)
+    r["notice_at_collection"] = next(
+        (p for p in NOTICE_AT_COLLECTION_PHRASES if p in low), None)
     r["privacy_policy_link"] = next(
         (p for p in ("privacy policy", "privacy notice", "privacy statement",
                      "privacy center") if p in low), None)

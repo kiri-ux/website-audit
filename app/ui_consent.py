@@ -152,9 +152,20 @@ def _sev_kind(sev):
     return "neutral"
 
 
-def _sec(title, body, note="", tip=None):
+def _sec(title, body, note="", tip=None, fold=False, count=""):
     """
     One section. Empty body means the section is not rendered at all.
+
+    `fold=True` renders the whole thing as a closed <details>. THIS IS THE
+    PAGE'S ORGANIZING RULE, not a styling option: everything below the work
+    order is EVIDENCE — the URLs, the per-page walk, the container contents —
+    and evidence is what you open when you doubt a conclusion, not what you
+    read on the way to one. Nine tables printed flat made a reader who knows
+    nothing about tag management scroll past all of it looking for "so what do
+    I do", which is the only question they came with.
+
+    A folded section still says how many rows are inside, because a closed box
+    with an unknown quantity behind it is a box nobody opens.
 
     The note is ONE LINE now. Each of these was a short paragraph explaining
     both what the table is and why it matters, and stacked down the page they
@@ -172,6 +183,14 @@ def _sec(title, body, note="", tip=None):
     # page of nine sections that is most of the scrolling. They are one block
     # now, with the air on the OUTSIDE of it where it does the job headings
     # need air to do.
+    if fold:
+        return (f"<details class='cfold'><summary>"
+                f"<span class='cfold-t'>{e(title)}</span>"
+                + (f"<span class='cfold-n'>{e(count)}</span>" if count else "")
+                + (_t(tip) if tip else "")
+                + "</summary><div class='cfold-b'>"
+                + (f"<div class='csec-note'>{note}</div>" if note else "")
+                + body + "</div></details>")
     return (f"<div class='csec'><h2>{e(title)}"
             + (_t(tip) if tip else "") + "</h2>"
             + (f"<div class='csec-note'>{note}</div>" if note else "")
@@ -410,6 +429,101 @@ _PAGE_CSS = ("<style>"
              # "heading", and the emptiness stops reading as missing data.
              "tr:has(.vprod) td{background:#f4f7fb;font-size:13px}"
              "tr:has(.vprod):hover td{background:#eef3f9}"
+             # ---- folded evidence sections --------------------------------
+             #
+             # A closed section has to look like a thing you can open, and it
+             # has to say how much is behind it. A bare triangle next to a
+             # heading reads as decoration.
+             ".cfold{border:1px solid var(--line);border-radius:9px;"
+             "background:#fff;margin:9px 0}"
+             ".cfold > summary{cursor:pointer;padding:11px 14px;display:flex;"
+             "align-items:center;gap:9px;list-style:none;font-size:12px;"
+             "font-weight:700;letter-spacing:.07em;text-transform:uppercase;"
+             "color:var(--ink2)}"
+             ".cfold > summary::-webkit-details-marker{display:none}"
+             ".cfold > summary::before{content:'\\25b8';color:var(--muted);"
+             "font-size:11px;transition:transform .12s;flex:none}"
+             ".cfold[open] > summary::before{transform:rotate(90deg)}"
+             ".cfold[open] > summary{border-bottom:1px solid var(--line-2)}"
+             ".cfold > summary:hover{background:#f7f9fc}"
+             ".cfold-t{flex:1 1 auto;min-width:0}"
+             ".cfold-n{font-weight:600;font-size:11px;letter-spacing:.02em;"
+             "text-transform:none;color:var(--muted);background:var(--bg-2);"
+             "border-radius:20px;padding:2px 9px;flex:none}"
+             ".cfold-b{padding:10px 14px 13px}"
+             ".cfold-b > .csec-note{margin:0 0 8px}"
+             # ---- the issue list ------------------------------------------
+             #
+             # THE ONE BLOCK SOMEBODY WHO KNOWS NOTHING CAN READ.
+             #
+             # Severity as a colored rail down the left, the problem in a
+             # plain sentence, who fixes it as a badge on the right, and the
+             # technical detail behind a disclosure. Nobody has to know what a
+             # container or a pre-consent fire is to work out what is wrong
+             # and whose job it is — which is the entire ask.
+             ".vissues{display:flex;flex-direction:column;gap:8px;"
+             "margin-top:9px}"
+             ".vi{border:1px solid var(--line);border-left:4px solid "
+             "var(--line-2);border-radius:9px;background:#fff;padding:0}"
+             ".vi--bad{border-left-color:var(--critical)}"
+             ".vi--warn{border-left-color:var(--gold)}"
+             ".vi--info{border-left-color:var(--blue)}"
+             ".vi-h{display:flex;gap:11px;align-items:flex-start;"
+             "padding:11px 14px}"
+             ".vi-x{flex:1 1 auto;min-width:0}"
+             ".vi-t{font-size:14.5px;font-weight:700;line-height:1.35;"
+             "color:var(--ink)}"
+             ".vi-s{font-size:13px;color:var(--ink2);line-height:1.55;"
+             "margin-top:3px}"
+             ".vi-w{font-size:13px;line-height:1.55;margin-top:6px;"
+             "color:var(--ink)}"
+             ".vi-w b{font-weight:700}"
+             ".vi-d{margin:0 14px 11px;font-size:12.5px}"
+             ".vi-d > summary{cursor:pointer;color:var(--blue);"
+             "font-weight:600;list-style:none;padding:2px 0}"
+             ".vi-d > summary::-webkit-details-marker{display:none}"
+             ".vi-d > summary::before{content:'\\25b8 ';font-size:10px}"
+             ".vi-d[open] > summary::before{content:'\\25be '}"
+             ".vi-d .vi-dd{color:var(--ink2);line-height:1.6;padding:6px 0 2px;"
+             "border-top:1px solid var(--line-2);margin-top:5px}"
+             ".vi-d code{font-size:11.5px;word-break:break-all}"
+             ".vi-none{border:1px solid var(--line);border-left:4px solid "
+             "var(--good);border-radius:9px;background:#fff;padding:13px 15px;"
+             "font-size:13.5px;line-height:1.6;margin-top:9px}"
+             # ---- the state-law panel -------------------------------------
+             #
+             # One card per state rather than one flat table of every row for
+             # every state. A reader asks "are we OK in California", and the
+             # answer to that question is a card, not four rows they have to
+             # gather themselves out of twenty.
+             ".vlaws{display:grid;gap:10px;margin-top:9px;"
+             "grid-template-columns:repeat(auto-fit,minmax(310px,1fr))}"
+             ".vlaw{border:1px solid var(--line);border-radius:10px;"
+             "background:#fff;overflow:hidden}"
+             ".vlaw-h{padding:10px 13px;border-bottom:1px solid var(--line-2);"
+             "display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}"
+             ".vlaw-h b{font-size:14.5px}"
+             ".vlaw-h .law{font-size:12px;color:var(--ink2);flex:1 1 auto;"
+             "min-width:0}"
+             ".vlaw--bad .vlaw-h{background:#fdf1f0}"
+             ".vlaw--warn .vlaw-h{background:#fdf6ec}"
+             ".vlaw--ok .vlaw-h{background:#f0f8f2}"
+             ".vlaw ul{list-style:none;margin:0;padding:4px 13px 9px}"
+             ".vlaw li{display:flex;gap:9px;align-items:flex-start;"
+             "font-size:13px;padding:6px 0;border-bottom:1px dashed "
+             "var(--line-2);line-height:1.5}"
+             ".vlaw li:last-child{border-bottom:none}"
+             ".vlaw .m{flex:none;width:15px;font-weight:700;text-align:center}"
+             ".vlaw .m--ok{color:var(--good)}"
+             ".vlaw .m--no{color:var(--critical)}"
+             ".vlaw .m--w{color:var(--gold)}"
+             ".vlaw .m--u{color:var(--muted)}"
+             ".vlaw .rq{flex:1 1 auto;min-width:0}"
+             ".vlaw .rq i{font-style:normal;color:var(--ink2);display:block;"
+             "font-size:12px;margin-top:1px}"
+             ".vlaw-f{padding:8px 13px;border-top:1px solid var(--line-2);"
+             "background:var(--bg-2);font-size:11.5px;color:var(--muted);"
+             "line-height:1.5}"
              "</style>")
 
 
@@ -718,87 +832,256 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
                      else "Some of this was never tested"),
             extra_urls=want.get("conversion_urls") or []))
 
-    # ------------------------------------------------------- action items
+    # ------------------------------------------------- what is wrong, and whose
     #
-    # FIRST, NOT LAST.
+    # THE ONE BLOCK FOR SOMEBODY WHO KNOWS NOTHING ABOUT ANY OF THIS.
     #
-    # This was the closing section, which put the work order below nine
-    # sections of evidence and a seventeen-row page table — so the one thing
-    # anybody actually has to DO was the thing you had to scroll furthest to
-    # reach. The evidence is why; the items are what. What goes first.
+    # This page is written for a reader who does not know what a container is,
+    # has never heard of Consent Mode, and needs to leave knowing three
+    # things: what is wrong, what has to happen, and who does it. Everything
+    # else on the page is the evidence behind those three, and evidence is
+    # what you open when you doubt a conclusion — not what you wade through on
+    # the way to one. So this is first, it is in plain sentences, and every
+    # technical fact behind it is one disclosure triangle away.
     #
-    # THE PAGE ENDED WITHOUT SAYING WHAT TO DO.
-    #
-    # Everything above is evidence, and evidence is what this page is for —
-    # but a reader who has just been told there is no banner, no opt-out link
-    # and a pixel firing on four pages still has to assemble the work order
-    # themselves. The standalone tool ends with the list, so this does too.
-    #
-    # OWNERSHIP IS THE POINT, not the wording. "A pixel fires pre-consent" is
+    # THE FIX AND THE OWNER TRAVEL TOGETHER. "A pixel fires pre-consent" is
     # our work queue in a container we own and a conversation in the client's,
-    # and the badge is what tells the two apart before anybody starts typing.
-    # The facts this section reads are established further down the page —
-    # hoisted here, not duplicated, so there is still one definition of each.
+    # and the badge is what tells those apart before anybody starts typing.
+    # The facts read here are established further down the page — hoisted, not
+    # duplicated, so there is still one definition of each.
     gtm = scan.get("gtm") or {}
     bought = {str(x) for x in (want.get("products") or [])}
     _impl = str(want.get("implementation") or "").lower()
     _ours = ("vici" in _impl or _impl == "gtm")
-    _owner = ("<span class='vown vown--vici'>Vici</span>" if _ours
-              else "<span class='vown vown--client'>Client</span>")
-    _acts = []
+    VICI = "<span class='vown vown--vici'>Vici does this</span>"
+    CLIENT = "<span class='vown vown--client'>Client does this</span>"
+    _owner = VICI if _ours else CLIENT
+    _issues = []
 
-    def _act(owner, text):
-        _acts.append(f"<li>{owner}<div>{text}</div></li>")
+    def _issue(kind, title, plain, fix, owner, detail=""):
+        """
+        One problem, in four parts a non-specialist can act on.
 
-    # Ordered by dependency: the mechanism has to exist before anything can
-    # be gated on it, and gating has to exist before Consent Mode means
-    # anything.
+        `title`   what is wrong, as a sentence, no jargon
+        `plain`   why it matters, in the terms a business owner thinks in
+        `fix`     the thing that has to happen
+        `owner`   who does it
+        `detail`  the technical evidence, folded away
+        """
+        _issues.append(
+            f"<div class='vi vi--{kind}'><div class='vi-h'><div class='vi-x'>"
+            f"<div class='vi-t'>{title}</div>"
+            f"<div class='vi-s'>{plain}</div>"
+            f"<div class='vi-w'><b>Fix:</b> {fix}</div></div>{owner}</div>"
+            + (f"<details class='vi-d'><summary>Show the evidence</summary>"
+               f"<div class='vi-dd'>{detail}</div></details>" if detail else "")
+            + "</div>")
+
+    # Ordered by dependency, because that is the order the work has to happen
+    # in: a mechanism has to exist before anything can be gated on it, and
+    # gating has to exist before Consent Mode means anything.
     _mech_fail = [c for c in (scan.get("state_checks") or [])
                   if str(c.get("check")) == "Opt-out mechanism"
                   and str(c.get("status", "")).lower() == "fail"]
     if _mech_fail and not basic:
         _sts = sorted({str(c.get("state")) for c in _mech_fail})
-        _act("<span class='vown vown--client'>Client</span>",
-             f"Give residents a working opt-out method — required for "
-             f"{e(', '.join(_sts))} targeting and currently absent. The "
-             f"recommended fix is a consent banner (CMP), which delivers the "
-             f"opt-out link, GPC handling and pixel gating in one install; "
-             f"the law requires the opt-out, not the banner itself."
-             + (" Once one is in place, Vici applies the consent procedure "
-                "in the GTM." if _ours else ""))
+        _issue("bad",
+               "Visitors have no way to opt out of tracking",
+               f"Residents of {e(', '.join(_sts))} have a legal right to tell "
+               f"this site to stop selling or sharing their data. There is "
+               f"nothing on the site that lets them.",
+               "Install a consent banner (a CMP). One install delivers the "
+               "opt-out link, the browser opt-out signal and the ability to "
+               "hold tags back until someone chooses. The law asks for the "
+               "opt-out, not the banner — the banner is just the cheapest way "
+               "to deliver all of it at once."
+               + (" Once it is in, Vici wires the tags to it." if _ours else ""),
+               CLIENT,
+               "No CMP signature matched, no opt-out link text was found on "
+               "the page, and " + ("the GPC signal was ignored"
+                                   if scan.get("gpc_fires") else
+                                   "this state has no universal-signal rule "
+                                   "to fall back on") + ".")
+    # EVERY FAILING STATE REQUIREMENT GETS A LINE OF ITS OWN.
+    #
+    # California asks for three separate things and the page reported one, so
+    # a site missing all three read as a site missing the famous one. Each is
+    # a different section of the statute with a different fix, and lumping
+    # them loses which is which.
+    _law_titles = {
+        "Opt-out link": ("There is no \u201cDo Not Sell or Share\u201d link",
+                         "Certain states require a clearly labeled link "
+                         "letting visitors refuse the sale or sharing of "
+                         "their data. The scan could not find one.",
+                         "Add a footer link reading \u201cYour Privacy "
+                         "Choices\u201d or \u201cDo Not Sell or Share My "
+                         "Personal Information\u201d that opens a working "
+                         "opt-out. A CMP normally provides it."),
+        "Sensitive info link": ("There is no sensitive-information link",
+                                "This is a SEPARATE right from the opt-out "
+                                "above and needs its own link. It covers "
+                                "precise location, health, race or ethnicity "
+                                "and message contents.",
+                                "Add a \u201cLimit the Use of My Sensitive "
+                                "Personal Information\u201d link, or a "
+                                "combined \u201cYour Privacy Choices\u201d "
+                                "page that offers both rights."),
+        "Notice at collection": ("There is no notice at the point of "
+                                 "collection",
+                                 "The categories of data collected and what "
+                                 "they are used for have to be disclosed "
+                                 "where the collecting happens \u2014 a "
+                                 "privacy policy in the footer is not by "
+                                 "itself that notice.",
+                                 "Add a short notice at collection (often a "
+                                 "line plus a link inside the banner and on "
+                                 "forms) listing the categories collected and "
+                                 "the purposes."),
+        "GPC signal": ("The browser's opt-out signal is being ignored",
+                       "Some browsers send an automatic \u201cdo not sell my "
+                       "data\u201d signal. Several states treat ignoring it "
+                       "the same as ignoring a person who clicked opt out.",
+                       "Configure the CMP to read Global Privacy Control and "
+                       "suppress advertising tags when it is present."),
+        "Under-16 opt-in": ("Under-16 visitors need to opt IN, not opt out",
+                            "For adults the rule is opt-out. For a visitor "
+                            "known to be under 16 it flips: their data cannot "
+                            "be sold or shared unless they say yes first "
+                            "\u2014 the visitor at 13\u201315, a parent "
+                            "under 13.",
+                            "If this audience includes families or minors, "
+                            "the banner has to default to REJECT rather than "
+                            "accept, and any age signal the site collects "
+                            "needs a human review."),
+        "Privacy policy link": ("There is no privacy policy link",
+                                "Every US site that tracks visitors is "
+                                "expected to have an accessible privacy "
+                                "policy. The scan could not find a link to "
+                                "one.",
+                                "Publish a privacy policy and link it in the "
+                                "footer of every page."),
+    }
+    _seen_law = set()
+    # Failures before warnings. A "check whether your audience includes
+    # minors" note printed above three outright missing links reads as the
+    # most urgent thing on the page, and it is not.
+    _law_order = {"fail": 0, "unknown": 1, "warn": 2}
+    # WITHIN A SEVERITY, THE ORDER IS THE STATUTE'S, NOT THE ALPHABET'S.
+    # Sorting the failures by name put "Notice at collection" above "Do Not
+    # Sell or Share", which is the one everybody has heard of and the one a
+    # CMP install fixes first.
+    _law_rank = {"Privacy policy link": 0, "Opt-out link": 1,
+                 "Sensitive info link": 2, "Notice at collection": 3,
+                 "GPC signal": 4, "Under-16 opt-in": 5}
+    for c in sorted((scan.get("state_checks") or []),
+                    key=lambda x: (_law_order.get(
+                        str(x.get("status") or "").lower(), 3),
+                        _law_rank.get(str(x.get("check") or ""), 9),
+                        str(x.get("check") or ""))):
+        _ck = str(c.get("check") or "")
+        _stt = str(c.get("status") or "").lower()
+        if _ck == "Opt-out mechanism" or _stt in ("pass", "ok", "met"):
+            continue
+        if _ck not in _law_titles or _ck in _seen_law:
+            continue
+        _seen_law.add(_ck)
+        _states_for = sorted({str(x.get("state")) for x in
+                              (scan.get("state_checks") or [])
+                              if str(x.get("check")) == _ck
+                              and str(x.get("status") or "").lower()
+                              not in ("pass", "ok", "met")})
+        _ttl, _pl, _fx = _law_titles[_ck]
+        _issue("warn" if _stt in ("warn", "unknown") else "bad", _ttl,
+               _pl + " Applies here because this client targets "
+               + e(", ".join(_states_for)) + ".",
+               _fx, CLIENT,
+               "<br>".join(e(str(x.get("detail") or "")) for x in
+                           (scan.get("state_checks") or [])
+                           if str(x.get("check")) == _ck
+                           and str(x.get("status") or "").lower()
+                           not in ("pass", "ok", "met")))
+    # THE OBSERVED FACT, not only the statute row.
+    #
+    # Trackers contacted on a GPC page load is something the scan WATCHED
+    # happen. The per-state rows say which states care; this says it occurred.
+    # Reading it only off the state rows meant a scan whose states were never
+    # recorded watched the signal being ignored and said nothing.
+    if (scan.get("gpc_tested") and scan.get("gpc_fires")
+            and "GPC signal" not in _seen_law):
+        _gv = sorted({str(f.get("vendor")) for f in scan["gpc_fires"]})
+        _issue("bad",
+               "The browser's opt-out signal is being ignored",
+               f"Some browsers send an automatic \u201cdo not sell my "
+               f"data\u201d signal on every page. {e(_listy(_gv))} "
+               f"{'were' if len(_gv) != 1 else 'was'} contacted anyway. "
+               f"Several states treat that the same as ignoring somebody who "
+               f"clicked opt out.",
+               "Configure the consent platform to read Global Privacy Control "
+               "and hold advertising tags back when it is present.",
+               CLIENT,
+               _trackers(scan["gpc_fires"][:10]))
+        _seen_law.add("GPC signal")
     if _no_cmp and _pre_real and not basic:
         _vend = sorted({str(h.get("vendor")) for h in _pre_real})
-        _act(_owner,
-             f"Gate {e(_listy(_vend))} behind consent once a banner exists — "
-             f"{'they fire' if len(_vend) != 1 else 'it fires'} on every page "
-             f"load today with no mechanism to decline."
-             + ("" if _ours else " Vici supplies the procedure; the client's "
-                                 "team applies it in their container."))
-    if scan.get("gpc_tested") and scan.get("gpc_fires"):
-        _act("<span class='vown vown--client'>Client</span>",
-             "Honor the Global Privacy Control signal — ad trackers were "
-             "contacted on a page load that sent it. A consent banner "
-             "delivers this once installed.")
+        _issue("bad",
+               f"{len(_vend)} tracking tag{'s' if len(_vend) != 1 else ''} "
+               f"fire{'' if len(_vend) != 1 else 's'} before anyone agrees",
+               f"{e(_listy(_vend))} "
+               f"{'start' if len(_vend) != 1 else 'starts'} collecting the "
+               f"moment a page loads, and there is no way for a visitor to "
+               f"decline first. This is the pattern state regulators have "
+               f"actually brought cases about.",
+               "Hold these tags behind the consent banner so they only fire "
+               "after someone accepts."
+               + ("" if _ours else " Vici supplies the exact procedure; the "
+                                   "client's team applies it in their "
+                                   "container."),
+               _owner,
+               _trackers(_pre_real[:12], page_col=any(
+                   t.get("_page") for t in _pre_real)))
     if scan.get("consent_mode_default") is False and (gtm or {}).get("found"):
-        _act(_owner,
-             "Set Google Consent Mode defaults to denied — with no defaults "
-             "declared, Google tags run at full capability before anyone "
-             "chooses, and the banner has nothing to flip.")
+        _issue("warn",
+               "Google tags are not told to wait",
+               "Google Consent Mode is the switch that tells Google's tags to "
+               "run in a limited, cookieless way until someone chooses. It is "
+               "not set here, so Google tags run at full capability from the "
+               "first page load and the banner has nothing to flip.",
+               "Declare Consent Mode defaults as denied in the container, "
+               "then let the banner grant them.",
+               _owner,
+               "No <code>gtag('consent','default',...)</code> call was seen "
+               "in the dataLayer before the first tag fired.")
     _miss = [p.get("product") for p in (scan.get("products") or [])
              if not int(p.get("fired") or 0)]
     _miss += sorted(bought - {p.get("product") for p in (scan.get("products") or [])})
+    _miss = sorted(set(x for x in _miss if x))
     if _miss and not basic:
-        _act(_owner,
-             f"Install or repair the {e(_listy(sorted(set(_miss))))} "
-             f"pixel{'s' if len(set(_miss)) != 1 else ''} — bought on the "
-             f"account and not seen firing on any page scanned.")
-    if _acts:
+        _issue("warn",
+               f"{e(_listy(_miss))} "
+               f"{'are' if len(_miss) != 1 else 'is'} paid for but not firing",
+               "These products are on the account, and their tracking pixel "
+               "was not seen on any page the scan visited — so the campaign "
+               "is running without the data it is supposed to collect.",
+               "Install or repair the pixel, then re-run this scan to "
+               "confirm it fires.",
+               _owner,
+               "Checked every page in the scan for each product's known "
+               "pixel signatures; none matched.")
+    if _issues:
         parts.append(_sec(
-            "Action items",
-            f"<div class='vprodc'><ul>{''.join(_acts)}</ul></div>",
-            "Every item is drawn from the evidence below, ordered the way the "
-            "work has to happen — a mechanism before gating, gating before "
-            "Consent Mode."))
+            "What needs fixing",
+            f"<div class='vissues'>{''.join(_issues)}</div>",
+            "In the order the work has to happen \u2014 a way to opt out "
+            "first, then gating the tags, then Consent Mode. Open "
+            "<b>Show the evidence</b> on any row for the technical detail "
+            "behind it."))
+    else:
+        parts.append(_sec(
+            "What needs fixing",
+            "<div class='vi-none'><b>Nothing outstanding from this scan.</b> "
+            "A consent platform was found, tags waited for a choice, and "
+            "every state requirement the scan can test came back clean. The "
+            "sections below are the evidence for that.</div>"))
 
     # ------------------------------------------------------- CMP + container
     cmp_rows = []
@@ -821,7 +1104,8 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
                                       ["26%", "26%", "48%"]),
             "The evidence column is what it matched on, so a wrong "
             "identification is checkable rather than taken on trust.",
-            tip="cmp"))
+            tip="cmp", fold=True,
+            count=e(", ".join(c.get("name") or "?" for c in _cmps))))
     else:
         parts.append(_sec(
             "Consent platform",
@@ -829,7 +1113,8 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
             "<div class='sm' style='color:var(--ink2);margin-top:6px'>"
             "Either there is none, or the banner is custom-built and carries "
             "no signature the scanner knows. Worth thirty seconds in a "
-            "browser before it goes in a deck.</div></div>"))
+            "browser before it goes in a deck.</div></div>",
+            fold=True, count="none found"))
 
     cm = scan.get("consent_mode_default")
     defaults = scan.get("consent_defaults") or {}
@@ -985,7 +1270,9 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
                       for u in (scan.get("unmatched_sample") or []))
             + "</div></details>")
            if scan.get("unmatched_sample") else ""),
-        "", tip="gtm"))
+        "", tip="gtm", fold=True,
+        count=(e(", ".join((scan.get("gtm") or {}).get("container_ids") or []))
+               or "no container")))
 
     # -------------------------------------------------- container contents
     #
@@ -1052,6 +1339,7 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
                 + (f"<span class='vev'>{e(a_.get('account_name') or '')}"
                    f"</span>" if a_.get("account_name") else "")
                 + f"</div><ul>{''.join(_rows2)}</ul></div>")
+        _tags_total = sum(len(a_.get("tags") or []) for a_ in _auds)
         _cm_note = ""
         if scan.get("consent_mode_default") is True:
             _ungated_n = sum(1 for a_ in _auds for t in (a_.get("tags") or [])
@@ -1070,7 +1358,8 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
             "".join(_ccards) + _cm_note,
             "The published configuration, read through the Tag Manager API — "
             "what is set up, as against what the page was observed doing.",
-            tip="gtm"))
+            tip="gtm", fold=True,
+            count=f"{_tags_total} tag{'s' if _tags_total != 1 else ''}"))
 
     # ----------------------------------------------------------- the trackers
     # Built once, at the top, so the tile and this table cannot disagree.
@@ -1093,7 +1382,12 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
                          "var(--good)'><b>Nothing fired.</b> The scan ran "
                          "this step and watched nothing happen, which is the "
                          "result being asked for.</div>")
-        return _sec(title, body, note, tip=tip)
+        # EVERY ONE OF THESE IS EVIDENCE, so it folds. The count on the
+        # closed summary is what makes that safe: "Fired before consent (0)"
+        # is an answer, and nobody has to open it to get one.
+        return _sec(title, body, note, tip=tip, fold=True,
+                    count=(f"{len(items)} tag{'s' if len(items) != 1 else ''}"
+                           if tested else "not tested"))
 
     parts.append(fired(
         "Fired before consent", pre, not basic,
@@ -1168,7 +1462,9 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
             + "</div></div>",
             f"{len(after)} vendor{'s' if len(after) != 1 else ''} waited for a "
             f"choice, which is the behavior being asked for. The count is how "
-            f"many scanned pages each was seen on."))
+            f"many scanned pages each was seen on.",
+            fold=True,
+            count=f"{len(after)} vendor{'s' if len(after) != 1 else ''}"))
 
     # ------------------------------------------------------------- products
     #
@@ -1219,10 +1515,6 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
                     bits.append(f"<span class='vsrc' title='Found in this "
                                 f"published GTM container'>"
                                 f"{e(', '.join(px['containers']))}</span>")
-                if px.get("macro_warning"):
-                    bits.append("<span class='vev' style='color:var(--critical)'>"
-                                "unreplaced template macro — pasted without "
-                                "filling its values</span>")
                 if px.get("severity_note"):
                     bits.append(f"<span class='vev'>{e(px['severity_note'])}"
                                 f"</span>")
@@ -1262,29 +1554,103 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
             "".join(cards),
             "Starts from what was bought, so a pixel they pay for that never "
             "fires is visible — a scan that only reports what it found cannot "
-            "show you that.", tip="product"))
+            "show you that.", tip="product", fold=True,
+            count=f"{len(cards)} product{'s' if len(cards) != 1 else ''}"))
 
-    # ---------------------------------------------------------- state checks
+    # ---------------------------------------------------------- state laws
+    #
+    # ONE CARD PER STATE, NOT ONE TABLE OF EVERY ROW FOR EVERY STATE.
+    #
+    # The question a reader arrives with is "are we OK in California" — and
+    # the answer to that is a card: the law's name, what it asks for, and how
+    # each requirement came out. As a flat four-column table sorted by state
+    # they had to gather four rows out of twenty themselves, and the state
+    # column repeated the same two letters down the page while the thing that
+    # differed sat in a 60%-wide Detail cell.
+    #
+    # This is also where the count comes from. California asks for three
+    # separate things and the old table gave each of them a row indistinguish-
+    # able from Colorado's one, so a site failing all three CA requirements
+    # and passing everywhere else looked like a site with a scattering of
+    # problems rather than one state going badly wrong.
     st = scan.get("state_checks") or []
     if st:
-        rows = []
-        for c in sorted(st, key=lambda x: (str(x.get("state") or ""),
-                                           str(x.get("check") or ""))):
-            ok = str(c.get("status") or "").lower() in ("pass", "ok", "met")
-            rows.append([e(c.get("state") or "—"),
-                         e(c.get("check") or "—"),
-                         _chip(c.get("status") or "?", "ok" if ok else "bad"),
-                         e(c.get("detail") or "")])
-        parts.append(_sec(
-            "State law checks", _rows([f"State{_t('state')}", "Requirement",
-                                       "Result", "Detail"], rows,
-                                      ["9%", "20%", "11%", "60%"]),
-            f"Only the states this client sells in"
-            + (f" — {e(', '.join(want.get('states') or []))}."
-               if want.get("states") else "."), tip="state"))
+        from engine.consent.state_checks import (STATE_CHECKS as _SC,
+                                                 LAST_REVIEWED as _REV)
+        _by_state = {}
+        for c in st:
+            _by_state.setdefault(str(c.get("state") or "—"), []).append(c)
+        _MARK = {"pass": ("m--ok", "\u2713"), "fail": ("m--no", "\u2717"),
+                 "warn": ("m--w", "!"), "unknown": ("m--u", "?")}
+        cards = []
+        # US first — it is the baseline everything else sits on top of — then
+        # the worst-off states, because a card that is all ticks is not the
+        # one anybody needs to read first.
+        def _rank(k):
+            rows = _by_state[k]
+            bad = sum(1 for r in rows
+                      if str(r.get("status") or "").lower() == "fail")
+            return (0 if k == "US" else 1, -bad, k)
+        for stt in sorted(_by_state, key=_rank):
+            rows = _by_state[stt]
+            cfg = _SC.get(stt) or {}
+            _n_bad = sum(1 for r in rows
+                         if str(r.get("status") or "").lower() == "fail")
+            _n_warn = sum(1 for r in rows
+                          if str(r.get("status") or "").lower() == "warn")
+            kind = "bad" if _n_bad else ("warn" if _n_warn else "ok")
+            lis = []
+            for c in sorted(rows, key=lambda x: (
+                    {"fail": 0, "warn": 1, "unknown": 2}.get(
+                        str(x.get("status") or "").lower(), 3),
+                    str(x.get("check") or ""))):
+                cls, sym = _MARK.get(str(c.get("status") or "").lower(),
+                                     ("m--u", "?"))
+                lis.append(f"<li><span class='m {cls}'>{sym}</span>"
+                           f"<span class='rq'>{e(c.get('check') or '—')}"
+                           f"<i>{e(c.get('detail') or '')}</i></span></li>")
+            _nm = cfg.get("name") or ("Every US site" if stt == "US" else stt)
+            _lw = cfg.get("law") or ("FTC Act \u00a75 baseline"
+                                     if stt == "US" else "")
+            _head = (f"<b>{e(_nm)}</b>"
+                     f"<span class='law'>{e(_lw)}</span>"
+                     + (f"<span class='vb vb--bad'>{_n_bad} failing</span>"
+                        if _n_bad else
+                        (f"<span class='vb vb--hold'>{_n_warn} to check</span>"
+                         if _n_warn else
+                         "<span class='vb vb--ok'>clear</span>")))
+            _foot = ""
+            if cfg.get("cite") or cfg.get("verify") or cfg.get("notes"):
+                _bits = []
+                if cfg.get("notes"):
+                    _bits.append(e(cfg["notes"]))
+                if cfg.get("verify"):
+                    _bits.append("Sources conflicted on the effective date at "
+                                 "last review \u2014 confirm with counsel.")
+                if cfg.get("cite"):
+                    _bits.append(e(cfg["cite"]))
+                _foot = f"<div class='vlaw-f'>{' '.join(_bits)}</div>"
+            cards.append(f"<div class='vlaw vlaw--{kind}'>"
+                         f"<div class='vlaw-h'>{_head}</div>"
+                         f"<ul>{''.join(lis)}</ul>{_foot}</div>")
+        # A STATE WE DO NOT CHECK MUST BE SAID OUT LOUD, or a client in
+        # Georgia cannot tell "we looked and there is nothing to check" from
+        # "we forgot to look".
+        _asked = [x for x in (want.get("states") or [])]
+        _unchecked = [x for x in _asked if x not in _by_state]
+        _note = ("Checked against the states this client targets"
+                 + (f" \u2014 {e(', '.join(_asked))}." if _asked else ".")
+                 + (f" No comprehensive law in our map for "
+                    f"{e(', '.join(_unchecked))}, so nothing was tested "
+                    f"there." if _unchecked else "")
+                 + f" Law map last reviewed {e(_REV)}. These are technical "
+                   f"checks, not legal advice.")
+        parts.append(_sec("State privacy law",
+                          f"<div class='vlaws'>{''.join(cards)}</div>",
+                          _note, tip="state"))
     elif want.get("states"):
         parts.append(_sec(
-            "State law checks",
+            "State privacy law",
             f"<div class='card'>No per-state results were recorded for "
             f"{e(', '.join(want['states']))}.</div>"))
 
@@ -1339,7 +1705,8 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
             "".join(cards),
             "A conversion page is where conversion pixels actually fire, so "
             "it is the page most likely to carry an ungated one. Open one to "
-            "see what fired on it."))
+            "see what fired on it.",
+            fold=True, count=f"{len(pages)} pages"))
 
     # ------------------------------------------------------------ opt-out
     if scan.get("optout_link"):

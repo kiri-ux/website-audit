@@ -146,19 +146,33 @@ code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
  margin-left:6px;cursor:help;position:relative;vertical-align:1px;
  background:var(--surface);letter-spacing:0;text-transform:none}
 .tip:hover{border-color:var(--blue);color:var(--blue)}
-/* LEFT-ALIGNED TO THE MARKER, not centered on it. Centering put half the
-   bubble off the left edge of the viewport for every field in the first
-   column — readable in the middle of the form and clipped everywhere it
-   mattered. */
-.tip:after{content:attr(data-tip);position:absolute;left:-10px;bottom:calc(100% + 8px);
- width:270px;max-width:min(270px,70vw);padding:9px 12px;border-radius:12px;
- background:var(--navy);color:#fff;font-size:12.5px;font-weight:400;
- line-height:1.5;text-align:left;opacity:0;pointer-events:none;
- transition:opacity .12s;z-index:40;box-shadow:0 6px 20px rgba(11,29,51,.22)}
-.tip:before{content:'';position:absolute;left:2px;bottom:calc(100% + 3px);
- border:5px solid transparent;
- border-top-color:var(--navy);opacity:0;transition:opacity .12s;z-index:41}
-.tip:hover:after,.tip:hover:before,.tip:focus:after,.tip:focus:before{opacity:1}
+/* THE BUBBLE LEFT THE MARKER. HERE IS WHY IT HAD TO.
+   ---------------------------------------------------
+   It was an ::after on .tip, absolutely positioned, 270px wide — and half
+   the markers on the consent page sit inside `overflow-x:auto` table
+   wrappers. Two things went wrong there, both invisible in isolation:
+
+     1. FLICKER. The 270px bubble overflowed the scroll container, which
+        grew a horizontal scrollbar, which reflowed the row, which moved the
+        marker out from under the pointer, which hid the bubble, which
+        removed the scrollbar, which moved the marker back. The cursor
+        flipped between arrow and question mark several times a second. It
+        was not a hover that failed to work; it was a hover working twice a
+        frame.
+     2. CLIPPING. `overflow-x:auto` makes overflow-y a scroll container too,
+        so a bubble rendered ABOVE a table header was cut off at the top of
+        the wrapper — the one place a header tooltip has to appear.
+
+   No amount of z-index fixes either: an element cannot escape an ancestor
+   that scrolls. So there is exactly one bubble, it lives on <body>, it is
+   position:fixed, and JS moves it. It cannot reflow anything, cannot be
+   clipped by anything, and cannot be hovered — which is what kills the loop. */
+#tipbox{position:fixed;z-index:200;max-width:300px;padding:9px 12px;
+ border-radius:12px;background:var(--navy);color:#fff;font-size:12.5px;
+ font-weight:400;line-height:1.5;text-align:left;pointer-events:none;
+ opacity:0;transition:opacity .1s;box-shadow:0 6px 20px rgba(11,29,51,.22);
+ letter-spacing:0;text-transform:none;font-style:normal}
+#tipbox.on{opacity:1}
 
 .pfilter{width:100%;margin:0 0 5px;padding:6px 10px;font-size:13px;
  border:1px solid var(--line);border-radius:8px;background:#fff;
@@ -795,7 +809,55 @@ def _shell(title, body, refresh=None, heading=None, crumbs=None, tab=None):
             f"<div class='right'><span class='bstamp' "
             f"title='Build running on this server'>{e(version.label())}"
             f"</span></div></header>"
-            f"{trail}<div class='wrap'>{body}</div></body></html>")
+            f"{trail}<div class='wrap'>{body}</div>{TIP_JS}</body></html>")
+
+
+# ONE BUBBLE ON THE BODY, MOVED BY SCRIPT.
+#
+# Delegated from the document, so it covers every [data-tip] on every page
+# including ones rendered after load. It reads the marker's position from
+# getBoundingClientRect and places the bubble in FIXED coordinates, which is
+# what makes it immune to the scroll containers that broke the CSS version:
+# a fixed element is positioned against the viewport, not against whichever
+# ancestor happens to scroll.
+#
+# Above the marker when there is room, below it when there is not, and always
+# clamped inside the viewport — the old bubble hung off the left edge for
+# every marker in a first column, which is exactly where the form's are.
+TIP_JS = """<div id='tipbox' role='tooltip' aria-hidden='true'></div>
+<script>(function(){
+  var box = document.getElementById('tipbox'), cur = null;
+  function place(el){
+    var t = el.getAttribute('data-tip'); if (!t) return;
+    box.textContent = t; box.classList.add('on');
+    box.setAttribute('aria-hidden', 'false');
+    var r = el.getBoundingClientRect(), b = box.getBoundingClientRect();
+    var left = Math.min(Math.max(8, r.left - 10),
+                        window.innerWidth - b.width - 8);
+    var top = r.top - b.height - 8;
+    if (top < 8) { top = r.bottom + 8; }   // no room above: go below
+    box.style.left = left + 'px'; box.style.top = top + 'px';
+    cur = el;
+  }
+  function hide(){
+    cur = null; box.classList.remove('on');
+    box.setAttribute('aria-hidden', 'true');
+  }
+  document.addEventListener('mouseover', function(ev){
+    var el = ev.target.closest && ev.target.closest('[data-tip]');
+    if (el) { if (el !== cur) place(el); } else if (cur) { hide(); }
+  });
+  document.addEventListener('focusin', function(ev){
+    var el = ev.target.closest && ev.target.closest('[data-tip]');
+    if (el) place(el); else hide();
+  });
+  document.addEventListener('focusout', hide);
+  // A bubble left behind by a scroll points at nothing.
+  window.addEventListener('scroll', function(){ if (cur) hide(); }, true);
+  document.addEventListener('keydown', function(ev){
+    if (ev.key === 'Escape') hide();
+  });
+})();</script>"""
 
 
 def _stalled(a) -> bool:

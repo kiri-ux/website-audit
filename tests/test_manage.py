@@ -455,8 +455,14 @@ def main():
     # so it runs here rather than in someone's memory.
     import re as _re, subprocess as _sp, shutil as _sh, tempfile as _tf
     _scripts = _re.findall(r"<script[^>]*>(.*?)</script>", _h, _re.S)
-    check("the dashboard ships exactly one inline script", len(_scripts) == 1,
-          f"{len(_scripts)} found")
+    # Two now: the page's own script, and the shell's tooltip positioner that
+    # every page carries. The count is pinned rather than dropped because an
+    # unexpected THIRD script means something started injecting one, and the
+    # node check below is only as good as the list it is handed.
+    check("the dashboard ships the two inline scripts it should",
+          len(_scripts) == 2, f"{len(_scripts)} found")
+    check("one of which is the shared tooltip positioner",
+          any("tipbox" in _s for _s in _scripts))
     if _sh.which("node"):
         _bad = []
         for _i, _s in enumerate(_scripts):

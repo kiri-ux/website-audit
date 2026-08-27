@@ -43,6 +43,36 @@ OPTOUT_LINK_PHRASES = [
     "opt-out of sale",
 ]
 
+# THE OTHER TWO LINKS CALIFORNIA ASKS FOR.
+#
+# The opt-out link is the famous one and was the only one checked, so a CA
+# report said "missing one thing" about a site missing three. These are
+# separate statutory obligations with separate link text, and a CMP that
+# delivers the first does not automatically deliver the others.
+#
+# 1798.121 - the right to LIMIT the use and disclosure of sensitive personal
+# information. Its own link, its own wording, and it applies whenever the site
+# uses sensitive PI for anything beyond what the statute permits.
+SENSITIVE_LINK_PHRASES = [
+    "limit the use of my sensitive personal information",
+    "limit the use of my sensitive information",
+    "limit use of sensitive personal information",
+    "limit the use and disclosure of my sensitive personal information",
+    "your privacy choices",          # a combined-choices page satisfies both
+    "privacy choices",
+]
+
+# 1798.100(a) - notice AT OR BEFORE the point of collection. A privacy policy
+# buried in the footer is not a notice at collection; the statute wants the
+# categories and purposes disclosed where the data is collected.
+NOTICE_AT_COLLECTION_PHRASES = [
+    "notice at collection",
+    "notice of collection",
+    "categories of personal information we collect",
+    "information we collect",
+    "at or before the point of collection",
+]
+
 STATE_CHECKS = {
     "CA": {"name": "California", "law": "CCPA/CPRA + CCPA Regulations",
            "gpc": True, "gpc_effective": "2021 (regs; enforced, e.g. Sephora)",
@@ -61,6 +91,13 @@ STATE_CHECKS = {
            "optin_minors": True,
            "optin_cite": "Cal. Civ. Code 1798.120(c) (under-16 opt-in); "
                          "1798.121 (right to limit sensitive PI)",
+           # The two obligations that are NOT the opt-out link, and were not
+           # being checked at all — so a site missing three CA requirements
+           # was reported as missing one.
+           "sensitive_link": True,
+           "sensitive_cite": "Cal. Civ. Code 1798.121; CCPA Regs 7027",
+           "notice_at_collection": True,
+           "notice_cite": "Cal. Civ. Code 1798.100(a); CCPA Regs 7012",
            "notes": "Active enforcement incl. 2025-26 CA/CO/CT sweep. 2026 "
                     "regs add opt-out status display expectations."},
     "CO": {"name": "Colorado", "law": "Colorado Privacy Act",

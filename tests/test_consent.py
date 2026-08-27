@@ -451,15 +451,15 @@ def main():
                                            "implementation": "gtm"}}
     _ap = _ch({"id": "z9", "client_name": "C", "target_url": "https://x.com"},
               _act_det)
-    check("the page ends with action items", "Action items" in _ap)
+    check("the page opens with the work order", "What needs fixing" in _ap)
     check("the opt-out mechanism is the client's",
-          "Give residents a working opt-out method" in _ap)
+          "Visitors have no way to opt out of tracking" in _ap)
     check("gating a pre-consent pixel is ours in a container we own",
-          "Gate Meta Pixel behind consent" in _ap)
+          "Meta Pixel" in _ap and "fires before anyone agrees" in _ap)
     check("GPC gets its own item when trackers ignored it",
-          "Honor the Global Privacy Control signal" in _ap)
+          "opt-out signal is being ignored" in _ap)
     check("and a bought pixel nobody saw is named",
-          "Install or repair the Meta pixel" in _ap)
+          "Meta is paid for but not firing" in _ap)
     check("every item carries an owner badge",
           _ap.count("vown--vici") + _ap.count("vown--client") >= 4)
     # In a CLIENT-owned container the same evidence is a conversation, not a
@@ -1370,7 +1370,7 @@ def main():
     # Preview" because this file only knew `gcs=`, and current GA4 sends
     # `gcd=`. Amber is the wrong color for behavior that is exactly right.
     from engine.consent.scanner import (
-        _consent_signalled, _defaults_all_denied, _MACRO_RE)
+        _consent_signalled, _defaults_all_denied)
     check("the undocumented gcd= encoding counts as a consent signal",
           _consent_signalled(
               "https://www.google-analytics.com/g/collect?v=2&gcd=13l3l3l3l1l1"))
@@ -1400,17 +1400,21 @@ def main():
           _consent_signalled("https://x.test/c?gcd=1") and
           not _defaults_all_denied({"ad_storage": "granted"}))
 
-    print("\nAN UNREPLACED MACRO IS A CERTAIN DEFECT")
-    check("percent-encoded ${...} is caught",
-          bool(_MACRO_RE.search(
-              "https://ad.doubleclick.net/;gdpr_consent=$%7BGDPR_CONSENT_755%7D")))
-    check("so is a literal ${...}",
-          bool(_MACRO_RE.search("https://x.test/p?c=${GDPR_CONSENT_755}")))
-    check("so is an unfilled [SQUARE_BRACKET] placeholder",
-          bool(_MACRO_RE.search("https://x.test/p?id=[CLIENT_ID]")))
-    check("an ordinary tracking URL is not flagged",
-          not _MACRO_RE.search("https://www.google-analytics.com/g/collect?"
-                               "v=2&tid=G-ABC123&cid=1.2&gcd=13l3l3l3l1l1"))
+    print("\nA VENDOR MACRO IS NOT A DEFECT")
+    import inspect as _in2
+    # This flagged [ORDER], {orderid}, [Revenue] and {INSERT_MACRO_HERE} as
+    # "pasted without filling its values" — which put a red sentence on every
+    # correctly installed Beeswax, Yahoo, Floodlight and Trade Desk tag in the
+    # container. A false positive in the legal section is worse than a missing
+    # check: it teaches the reader that the red text here can be ignored.
+    import engine.consent.scanner as _sc
+    check("the macro pattern is gone from the scanner",
+          not hasattr(_sc, "_MACRO_RE"))
+    check("and no pre-consent note claims a macro is a defect",
+          "pasted without filling" not in _in2.getsource(_sc))
+    from app import ui_consent as _uc
+    check("and the page no longer renders the flag",
+          "macro_warning" not in _in2.getsource(_uc))
 
     print("\nCALIFORNIA IS OPT-OUT FOR ADULTS AND OPT-IN FOR MINORS")
     from engine.consent.state_checks import STATE_CHECKS
@@ -1459,7 +1463,7 @@ def main():
     print("\nTHE WORK ORDER COMES BEFORE THE EVIDENCE")
     # Action items used to close the page, below nine sections and a
     # seventeen-row table — the one thing anybody has to DO was the furthest
-    # thing to scroll to.
+    # thing to scroll to. It is now "What needs fixing", and it opens.
     _scan2 = {"ok": True, "mode": "full", "cmps": [],
               "post_consent": [], "pre_consent": [],
               "consent_mode_default": False,
@@ -1469,11 +1473,148 @@ def main():
                         "client_name": "T"},
                        {"scan": _scan2, "pages": [],
                         "requested": {"implementation": "vici"}})
-    check("the section is there at all", "Action items" in _h2)
+    check("the section is there at all", "What needs fixing" in _h2)
     check("and it comes before the CMP evidence",
-          _h2.index("Action items") < _h2.index("Consent platform"),
-          f"{_h2.index('Action items')} vs {_h2.index('Consent platform')}")
-    check("its note points forward, not back", "evidence below" in _h2)
+          _h2.index("What needs fixing") < _h2.index("Consent platform"),
+          f"{_h2.index('What needs fixing')} vs {_h2.index('Consent platform')}")
+
+    print("\nCALIFORNIA ASKS FOR THREE THINGS, NOT ONE")
+    # "they are missing multiple things for CA" — and the page said one,
+    # because the opt-out link was the only CA requirement ever checked.
+    from engine.consent.state_checks import (STATE_CHECKS as _SC2,
+                                             SENSITIVE_LINK_PHRASES,
+                                             NOTICE_AT_COLLECTION_PHRASES)
+    check("CA declares the sensitive-information link requirement",
+          bool(_SC2["CA"].get("sensitive_link")))
+    check("and the notice-at-collection requirement",
+          bool(_SC2["CA"].get("notice_at_collection")))
+    check("each cites its own section, not the opt-out's",
+          "1798.121" in _SC2["CA"]["sensitive_cite"]
+          and "1798.100" in _SC2["CA"]["notice_cite"])
+    _r3 = {"cmps": [{"name": "Termly"}], "optout_link": "", "pre_consent": [],
+           "sensitive_link": None, "notice_at_collection": None,
+           "post_consent": [], "gpc_tested": True, "gpc_fires": [],
+           "privacy_policy_link": "privacy policy", "mode": "full",
+           "ok": True, "state_checks": []}
+    state_checks_for(_r3, ["CA"])
+    _ca_fail = [c["check"] for c in _r3["state_checks"]
+                if c["state"] == "CA" and c["status"] == "fail"]
+    check("a CA site missing all three reports all three",
+          sorted(_ca_fail) == ["Notice at collection", "Opt-out link",
+                               "Sensitive info link"], str(_ca_fail))
+    check("a state without those requirements does not grow them",
+          not [c for c in _r3["state_checks"]
+               if c["state"] == "CO"])
+    # Found = pass, on both paths, off the same phrase tables.
+    _r4 = {**_r3, "state_checks": [],
+           "sensitive_link": "your privacy choices",
+           "notice_at_collection": "notice at collection"}
+    state_checks_for(_r4, ["CA"])
+    check("finding them is a pass, not silence",
+          [c["status"] for c in _r4["state_checks"]
+           if c["check"] in ("Sensitive info link",
+                             "Notice at collection")] == ["pass", "pass"])
+    from engine.consent import from_capture as _fc
+    _fcsrc = _in2.getsource(_fc)
+    check("the extension path reads the same two tables",
+          "SENSITIVE_LINK_PHRASES" in _fcsrc
+          and "NOTICE_AT_COLLECTION_PHRASES" in _fcsrc)
+    check("the phrase tables are not empty",
+          len(SENSITIVE_LINK_PHRASES) > 2
+          and len(NOTICE_AT_COLLECTION_PHRASES) > 2)
+
+    print("\nTHE PAGE OPENS WITH WHAT IS WRONG AND WHO FIXES IT")
+    _scan3 = {"ok": True, "mode": "full", "cmps": [{"name": "Termly"}],
+              "banner_visible": True, "consent_mode_default": True,
+              "consent_defaults": {}, "pre_consent": [], "post_consent": [],
+              "post_reject": [], "reject_tested": True, "gpc_tested": True,
+              "gpc_fires": [], "optout_link": None, "sensitive_link": None,
+              "notice_at_collection": None, "privacy_policy_link": None,
+              "state_checks": [], "products": [], "pages": [],
+              "gtm": {"found": True, "container_ids": ["GTM-X"]}}
+    state_checks_for(_scan3, ["CA"])
+    _h3 = consent_html({"id": "t3", "target_url": "https://x.test",
+                        "client_name": "T"},
+                       {"scan": _scan3, "pages": [],
+                        "requested": {"states": ["CA"]}})
+    check("every CA gap gets its own plain-English row",
+          _h3.count("class='vi vi--") == 5, str(_h3.count("class='vi vi--")))
+    check("in the order the statute matters, not the alphabet",
+          _h3.index("Do Not Sell or Share") < _h3.index("notice at the point"))
+    check("failures come before the things to check",
+          _h3.index("Do Not Sell or Share") < _h3.index("need to opt IN"))
+    check("each row says who does the work",
+          "Client does this" in _h3 or "CLIENT" in _h3.upper())
+    check("each row carries a fix, not just a complaint",
+          _h3.count("<b>Fix:</b>") == 5)
+    check("the technical detail is folded behind a disclosure",
+          _h3.count("Show the evidence") >= 4,
+          str(_h3.count("Show the evidence")))
+    check("and it opens the page, above the evidence",
+          _h3.index("What needs fixing") < _h3.index("Consent platform"))
+    _clean = {**_scan3, "state_checks": [], "optout_link": "your privacy "
+              "choices", "sensitive_link": "your privacy choices",
+              "notice_at_collection": "notice at collection",
+              "privacy_policy_link": "privacy policy"}
+    state_checks_for(_clean, [])
+    _h4 = consent_html({"id": "t4", "target_url": "https://x.test",
+                        "client_name": "T"},
+                       {"scan": _clean, "pages": [], "requested": {}})
+    check("a clean scan says so rather than showing an empty box",
+          "Nothing outstanding from this scan" in _h4)
+
+    print("\nEVIDENCE FOLDS AWAY; THE COUNT STAYS OUT")
+    check("the evidence sections are closed by default",
+          _h3.count("<details class='cfold'>") >= 5,
+          str(_h3.count("<details class='cfold'>")))
+    check("none of them ships open",
+          "<details class='cfold' open" not in _h3)
+    check("a closed section still says how much is inside",
+          "cfold-n" in _h3)
+    check("but what needs fixing is never folded",
+          _h3.index("What needs fixing")
+          < _h3.index("<details class='cfold'>"))
+
+    print("\nONE CARD PER STATE, LIKE THE STANDALONE TOOL")
+    check("the panel is there", "vlaws" in _h3 and "vlaw--" in _h3)
+    check("California gets its own card", "California" in _h3)
+    check("headed with the law it is checking against",
+          "CCPA/CPRA" in _h3)
+    check("and a count of what is failing", "3 failing" in _h3)
+    check("the US baseline is a card too, not a stray row",
+          "Every US site" in _h3)
+    check("the citation travels with the card", "1798.135" in _h3)
+    check("and the review date is stated, because the map goes stale",
+          "Law map last reviewed" in _h3)
+    _h5 = consent_html({"id": "t5", "target_url": "https://x.test",
+                        "client_name": "T"},
+                       {"scan": _scan3, "pages": [],
+                        "requested": {"states": ["CA", "GA"]}})
+    check("a state we have no checks for is named, not dropped",
+          "comprehensive law in our map for ga" in _h5.lower(),
+          _h5[_h5.index("Checked against"):][:200])
+
+    print("\nA TOOLTIP CANNOT FIGHT THE BOX IT LIVES IN")
+    # The bubble was an ::after inside `overflow-x:auto` table wrappers: it
+    # overflowed, the wrapper grew a scrollbar, the row reflowed, the marker
+    # moved out from under the pointer, the bubble hid, the scrollbar went.
+    # The cursor flipped between arrow and question mark several times a
+    # second. It was a hover working twice a frame, not a hover failing.
+    from app import ui as _ui3
+    check("the marker no longer carries its own bubble",
+          ".tip:after" not in _ui3.CSS and ".tip:hover:after" not in _ui3.CSS)
+    check("there is exactly one bubble, on the body",
+          _ui3.TIP_JS.count("id='tipbox'") == 1)
+    check("positioned against the viewport, not an ancestor",
+          "position:fixed" in _ui3.CSS.split("#tipbox")[1][:120])
+    check("and unhoverable, which is what kills the loop",
+          "pointer-events:none" in _ui3.CSS.split("#tipbox")[1][:400])
+    check("it is clamped inside the viewport",
+          "window.innerWidth" in _ui3.TIP_JS)
+    check("flips below the marker when there is no room above",
+          "r.bottom + 8" in _ui3.TIP_JS)
+    check("keyboard focus opens it too", "focusin" in _ui3.TIP_JS)
+    check("and every page gets it", "{TIP_JS}" in _in2.getsource(_ui3._shell))
 
     print("\n" + "=" * 68)
     if FAILED:
