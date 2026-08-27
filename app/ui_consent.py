@@ -75,6 +75,14 @@ _DEFS = {
     "cmp": "Consent Management Platform — the software behind the cookie "
            "banner. OneTrust, Cookiebot, Osano and the rest. It is what "
            "records a visitor's choice and tells the tags about it.",
+    # THE TILE ASKED A DIFFERENT QUESTION FROM THE ONE THE DEFINITION
+    # ANSWERED. "Banner on load" borrowed the CMP definition, so hovering it
+    # explained what a consent platform is — true, already said one tile to
+    # the left, and not the thing the number under the cursor means.
+    "banner": "Whether a consent banner was actually VISIBLE when the page "
+              "finished loading. A platform can be installed and still show "
+              "nobody a banner — wrong trigger, a geo rule, a broken "
+              "script — and a banner nobody sees gates nothing.",
     "gtm": "Google Tag Manager. One container script on the page that loads "
            "every other tag, so gating the container is how you gate them "
            "all at once.",
@@ -487,6 +495,13 @@ _PAGE_CSS = ("<style>"
              ".vi-d .vi-dd{color:var(--ink2);line-height:1.6;padding:6px 0 2px;"
              "border-top:1px solid var(--line-2);margin-top:5px}"
              ".vi-d code{font-size:11.5px;word-break:break-all}"
+             # The state, as a pill, at the head of the sentence it is the
+             # subject of. "Certain states require…" made the reader ask
+             # which, when the answer was three words away.
+             ".vstate{display:inline-block;font-weight:700;font-size:11px;"
+             "letter-spacing:.07em;background:var(--navy);color:#fff;"
+             "border-radius:4px;padding:1px 7px;margin-right:5px;"
+             "vertical-align:1px}"
              ".vi-none{border:1px solid var(--line);border-left:4px solid "
              "var(--good);border-radius:9px;background:#fff;padding:13px 15px;"
              "font-size:13.5px;line-height:1.6;margin-top:9px}"
@@ -496,8 +511,14 @@ _PAGE_CSS = ("<style>"
              # every state. A reader asks "are we OK in California", and the
              # answer to that question is a card, not four rows they have to
              # gather themselves out of twenty.
+             # THREE PER ROW. auto-fit gave two fat cards on a wide screen
+             # and pushed the third onto a row of its own, so the panel read
+             # as "two states matter and one is an afterthought".
              ".vlaws{display:grid;gap:10px;margin-top:9px;"
-             "grid-template-columns:repeat(auto-fit,minmax(310px,1fr))}"
+             "grid-template-columns:repeat(3,minmax(0,1fr))}"
+             "@media (max-width:1080px){.vlaws{"
+             "grid-template-columns:repeat(2,minmax(0,1fr))}}"
+             "@media (max-width:720px){.vlaws{grid-template-columns:1fr}}"
              ".vlaw{border:1px solid var(--line);border-radius:10px;"
              "background:#fff;overflow:hidden}"
              ".vlaw-h{padding:10px 13px;border-bottom:1px solid var(--line-2);"
@@ -772,7 +793,7 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
         _tile("yes" if scan.get("banner_visible") is True else
               ("no" if scan.get("banner_visible") is False else _untested()),
               "banner on load",
-              _t("cmp"),
+              _t("banner"),
               _GREEN if scan.get("banner_visible") is True else
               (_RED if scan.get("banner_visible") is False else _GREY)),
         _tile(_untested() if basic else e(len(_pre_real)),
@@ -908,28 +929,57 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
     # a site missing all three read as a site missing the famous one. Each is
     # a different section of the statute with a different fix, and lumping
     # them loses which is which.
+    # NAME THE STATE, DO NOT SAY "CERTAIN STATES".
+    #
+    # "Certain states require a clearly labeled link" makes the reader ask
+    # which — and the answer is sitting three words away in the same object.
+    # The states go in as a pill, colored, where the eye lands first, and the
+    # sentence that used to append "Applies here because this client targets
+    # CA" comes out, because that is the pill saying itself again.
+    #
+    # And "The scan could not find one" comes out of every row. The heading
+    # already says there is no link; a scan reporting an absence it did not
+    # observe is not a thing that happens here.
+    def _sp(states):
+        return "".join(f"<span class='vstate'>{e(x)}</span>" for x in states)
+
+    def _subj(states, verb):
+        """
+        The pills, then a verb that agrees with how many of them there are.
+
+        "CA CO TX requires a clearly labeled link" is the sentence this
+        produced before the pills went in, and it is the kind of thing a
+        client notices in a document about their legal exposure. The verbs
+        are stored singular and bent here, because the caller does not know
+        how many states will end up on the row.
+        """
+        one = len(states) == 1
+        if not one:
+            verb = {"requires": "require", "gives": "give", "flips": "flip",
+                    "expects": "expect", "treats": "treat"}.get(verb, verb)
+        return _sp(states) + " " + verb
+
     _law_titles = {
         "Opt-out link": ("There is no \u201cDo Not Sell or Share\u201d link",
-                         "Certain states require a clearly labeled link "
-                         "letting visitors refuse the sale or sharing of "
-                         "their data. The scan could not find one.",
+                         "requires", "a clearly labeled link letting visitors "
+                         "refuse the sale or sharing of their data.",
                          "Add a footer link reading \u201cYour Privacy "
                          "Choices\u201d or \u201cDo Not Sell or Share My "
                          "Personal Information\u201d that opens a working "
                          "opt-out. A CMP normally provides it."),
         "Sensitive info link": ("There is no sensitive-information link",
-                                "This is a SEPARATE right from the opt-out "
-                                "above and needs its own link. It covers "
-                                "precise location, health, race or ethnicity "
-                                "and message contents.",
+                                "gives", "visitors a SEPARATE right from the "
+                                "opt-out above, needing its own link. It "
+                                "covers precise location, health, race or "
+                                "ethnicity and message contents.",
                                 "Add a \u201cLimit the Use of My Sensitive "
                                 "Personal Information\u201d link, or a "
                                 "combined \u201cYour Privacy Choices\u201d "
                                 "page that offers both rights."),
         "Notice at collection": ("There is no notice at the point of "
                                  "collection",
-                                 "The categories of data collected and what "
-                                 "they are used for have to be disclosed "
+                                 "requires", "the categories of data collected "
+                                 "and what they are used for to be disclosed "
                                  "where the collecting happens \u2014 a "
                                  "privacy policy in the footer is not by "
                                  "itself that notice.",
@@ -938,26 +988,23 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
                                  "forms) listing the categories collected and "
                                  "the purposes."),
         "GPC signal": ("The browser's opt-out signal is being ignored",
-                       "Some browsers send an automatic \u201cdo not sell my "
-                       "data\u201d signal. Several states treat ignoring it "
-                       "the same as ignoring a person who clicked opt out.",
+                       "treats", "ignoring the automatic \u201cdo not sell my "
+                       "data\u201d signal some browsers send as the same "
+                       "thing as ignoring somebody who clicked opt out.",
                        "Configure the CMP to read Global Privacy Control and "
                        "suppress advertising tags when it is present."),
         "Under-16 opt-in": ("Under-16 visitors need to opt IN, not opt out",
-                            "For adults the rule is opt-out. For a visitor "
-                            "known to be under 16 it flips: their data cannot "
-                            "be sold or shared unless they say yes first "
-                            "\u2014 the visitor at 13\u201315, a parent "
-                            "under 13.",
+                            "flips", "the rule for a visitor known to be under "
+                            "16: their data cannot be sold or shared unless "
+                            "they say yes first \u2014 the visitor at "
+                            "13\u201315, a parent under 13.",
                             "If this audience includes families or minors, "
                             "the banner has to default to REJECT rather than "
                             "accept, and any age signal the site collects "
                             "needs a human review."),
         "Privacy policy link": ("There is no privacy policy link",
-                                "Every US site that tracks visitors is "
-                                "expected to have an accessible privacy "
-                                "policy. The scan could not find a link to "
-                                "one.",
+                                "expects", "every site that tracks visitors to "
+                                "have an accessible privacy policy.",
                                 "Publish a privacy policy and link it in the "
                                 "footer of every page."),
     }
@@ -990,10 +1037,12 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
                               if str(x.get("check")) == _ck
                               and str(x.get("status") or "").lower()
                               not in ("pass", "ok", "met")})
-        _ttl, _pl, _fx = _law_titles[_ck]
+        _ttl, _vb, _pl, _fx = _law_titles[_ck]
+        # The pill IS the subject of the sentence: "CA requires a clearly
+        # labeled link…". Nothing has to be appended to explain why the row
+        # is on the page.
         _issue("warn" if _stt in ("warn", "unknown") else "bad", _ttl,
-               _pl + " Applies here because this client targets "
-               + e(", ".join(_states_for)) + ".",
+               _subj(_states_for, _vb) + " " + _pl,
                _fx, CLIENT,
                "<br>".join(e(str(x.get("detail") or "")) for x in
                            (scan.get("state_checks") or [])
@@ -1058,10 +1107,11 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
     if _miss and not basic:
         _issue("warn",
                f"{e(_listy(_miss))} "
-               f"{'are' if len(_miss) != 1 else 'is'} paid for but not firing",
-               "These products are on the account, and their tracking pixel "
-               "was not seen on any page the scan visited — so the campaign "
-               "is running without the data it is supposed to collect.",
+               f"{'products are' if len(_miss) != 1 else 'product is'} "
+               f"running but not firing",
+               "The campaign is live on the account and its tracking pixel "
+               "was not seen on any page the scan visited, so it is running "
+               "without the data it is supposed to collect.",
                "Install or repair the pixel, then re-run this scan to "
                "confirm it fires.",
                _owner,

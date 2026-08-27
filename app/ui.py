@@ -437,6 +437,18 @@ td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .hist[open] summary:before{content:"▾";margin-right:5px}
 
 /* ---- progress ---- */
+/* AN INDETERMINATE BAR, because the run has no percentage to report.
+   A progress page's only job between refreshes is to look alive, and a bar
+   that sweeps does that in no words at all — which is why the paragraph
+   explaining how long a consent check takes could simply go. */
+.glide{height:3px;border-radius:3px;background:var(--track);overflow:hidden;
+ margin:11px 0 3px}
+.glide > i{display:block;width:32%;height:100%;border-radius:3px;
+ background:linear-gradient(90deg,transparent,var(--blue),transparent);
+ animation:glide 1.5s ease-in-out infinite}
+@keyframes glide{0%{transform:translateX(-105%)}100%{transform:translateX(320%)}}
+@media (prefers-reduced-motion:reduce){
+ .glide > i{animation:none;width:100%;opacity:.35}}
 .spin{display:inline-block;width:11px;height:11px;border:2px solid var(--track);
  border-top-color:var(--blue);border-radius:50%;animation:s .8s linear infinite;
  vertical-align:-1px}
@@ -1338,8 +1350,14 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
       <div id='ckout' class='sm'
            style='color:var(--muted);margin-top:8px;line-height:1.6'></div>
     </div>
+    <!-- EVEN THIRDS ACROSS THE FULL WIDTH.
+         auto-fit with a 255px minimum packed the three pickers into the left
+         half of a wide screen, so each note wrapped to eleven lines in a
+         narrow column while the right half sat empty. The notes are the
+         longest thing here; giving them the width they need is what makes
+         them short. -->
     <div id='pickers' style='display:none;margin-top:10px;
-         grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:12px'>
+         grid-template-columns:repeat(3,minmax(0,1fr));gap:18px'>
       <div><label>Search Console property<span id='gscmark'></span></label>
         <input class='pfilter' id='gscq' placeholder='Filter…' autocomplete='off'>
         <select name='gsc_property' id='gscsel' form='auditform'></select>
@@ -2388,29 +2406,36 @@ def audit_html(a):
                 _o = {}
             _conly = str(_o.get("quick") or "") == "consent"
             _mp = int(_o.get("max_pages") or 150)
-            if _conly:
-                _eta = ("A consent check loads the site in a browser, clicks "
-                        "the banner and watches what fires — usually under a "
-                        "minute, longer on a site with many pages to walk.")
-            else:
-                _eta = (f"A full crawl of {_mp} page{'s' if _mp != 1 else ''} "
-                        f"typically takes 2–5 minutes.")
+            # A SENTENCE NOBODY READS TWICE.
+            #
+            # "A consent check loads the site in a browser, clicks the banner
+            # and watches what fires — usually under a minute, longer on a
+            # site with many pages to walk" is true, and it is three lines of
+            # explanation under a status line that already says what is
+            # happening. Somebody watching a progress page wants one thing:
+            # to know it is alive. The bar below says that in no words.
+            _eta = ("This page refreshes automatically."
+                    if _conly else
+                    f"This page refreshes automatically. A full crawl of "
+                    f"{_mp} page{'s' if _mp != 1 else ''} typically takes "
+                    f"2–5 minutes.")
             _slow = ("<p class='sub'>Steps that take a few minutes on their "
                      "own: the AI assistants, the reputation scan, and the "
                      "evidence screenshots. This page marks the run as "
                      "stopped if nothing moves for "
                      f"{STALE_AFTER_S // 60} minutes.</p>"
                      if _age is not None and _age >= 120 and not _conly else
-                     ("<p class='sub'>A consent check waits for each page to "
-                      "go quiet rather than counting seconds, so a slow site "
-                      "takes longer. This page marks the run as stopped if "
+                     ("<p class='sub'>Still going. A consent check waits for "
+                      "each page to fall quiet rather than counting seconds, "
+                      "so a slow site takes longer. Marked as stopped if "
                       f"nothing moves for {STALE_AFTER_S // 60} minutes.</p>"
                       if _age is not None and _age >= 120 else ""))
             inner = (rail + f"<div class='marks'>{marks}</div>"
                      f"<div class='card' style='margin-top:16px'>"
                      f"<span class='spin'></span> <b>{e(a.get('progress') or cur)}</b>"
                      f"&nbsp; {since}"
-                     f"<p class='sub'>This page refreshes automatically. {_eta}</p>"
+                     f"<div class='glide'><i></i></div>"
+                     f"<p class='sub'>{_eta}</p>"
                      f"{_slow}{act}</div>")
             # Six seconds, not four. Every refresh is a full page render and a
             # fresh database connection, and the phase this page is most often

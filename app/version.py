@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-114"
-BUILD_NOTES = ("The consent page is rewritten around one question: what is wrong, and who fixes it. That list opens the page in plain sentences with an owner badge and a folded evidence trail on each row; the nine tables of evidence below it are closed by default and say how much is inside. California is checked against all three of its obligations rather than only the famous one - the sensitive-information link and the notice at collection were never tested - and the state results are one card per state with the law, the citation and the review date. The tooltip left the marker: as a CSS bubble inside a scrolling table wrapper it grew a scrollbar, reflowed the row and flickered several times a second. The vendor-macro flag is gone; [ORDER] and {orderid} are what those tags ship")
+BUILD = "2026.08.20-115"
+BUILD_NOTES = ("Copy and layout pass on the consent page. A row now opens with the states it applies to as pills - CA CO TX require... - instead of \"certain states\", and the two sentences that restated the heading are gone. A missing pixel reads as a campaign running without its data. State cards are three to a row, the Google pickers take the full width in even thirds so their notes are three lines instead of eleven, and the progress page shows a sweeping bar rather than a paragraph explaining how long a consent check takes. The banner tile stops borrowing the consent-platform definition and gets one about whether a banner was actually visible")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

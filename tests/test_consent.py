@@ -459,7 +459,7 @@ def main():
     check("GPC gets its own item when trackers ignored it",
           "opt-out signal is being ignored" in _ap)
     check("and a bought pixel nobody saw is named",
-          "Meta is paid for but not firing" in _ap)
+          "Meta product is running but not firing" in _ap)
     check("every item carries an owner badge",
           _ap.count("vown--vici") + _ap.count("vown--client") >= 4)
     # In a CLIENT-owned container the same evidence is a conversation, not a
@@ -1593,6 +1593,97 @@ def main():
     check("a state we have no checks for is named, not dropped",
           "comprehensive law in our map for ga" in _h5.lower(),
           _h5[_h5.index("Checked against"):][:200])
+
+    print("\nNAME THE STATE, DO NOT SAY \u201cCERTAIN STATES\u201d")
+    _multi = {**_scan3, "state_checks": []}
+    state_checks_for(_multi, ["CA", "CO", "TX"])
+    _h6 = consent_html({"id": "t6", "target_url": "https://x.test",
+                        "client_name": "T"},
+                       {"scan": _multi, "pages": [],
+                        "requested": {"states": ["CA", "CO", "TX"]}})
+    check("the state is a pill, not the words 'certain states'",
+          "vstate" in _h6 and "Certain states" not in _h6)
+    check("every state the row applies to is named",
+          "<span class='vstate'>CA</span><span class='vstate'>CO</span>"
+          "<span class='vstate'>TX</span>" in _h6)
+    check("the verb agrees with three states", "TX</span> require a" in _h6)
+    check("and with one", "CA</span> gives visitors" in _h6)
+    check("the trailing 'applies here because' is gone",
+          "Applies here because" not in _h6)
+    check("and so is 'the scan could not find one'",
+          "could not find one" not in _h6)
+
+    print("\nA PIXEL THAT IS BOUGHT IS A CAMPAIGN THAT IS RUNNING")
+    _prod = {**_scan3, "state_checks": [],
+             "products": [{"product": "Mobile", "expected": 1, "fired": 0,
+                           "pixels": []}]}
+    _h7 = consent_html({"id": "t7", "target_url": "https://x.test",
+                        "client_name": "T"},
+                       {"scan": _prod, "pages": [],
+                        "requested": {"products": ["Mobile"]}})
+    check("it is phrased as running, not as paid for",
+          "Mobile product is running but not firing" in _h7)
+    check("and the plural agrees when there are two",
+          "products are running but not firing" in consent_html(
+              {"id": "t8", "target_url": "https://x.test",
+               "client_name": "T"},
+              {"scan": {**_prod, "state_checks": [],
+                        "products": [{"product": "Mobile", "expected": 1,
+                                      "fired": 0, "pixels": []},
+                                     {"product": "PMax", "expected": 1,
+                                      "fired": 0, "pixels": []}]},
+               "pages": [], "requested": {"products": ["Mobile", "PMax"]}}))
+
+    print("\nTHREE STATE CARDS TO A ROW")
+    check("the grid is pinned to three, not left to auto-fit",
+          "repeat(3,minmax(0,1fr))" in _h6)
+    check("and it steps down rather than squeezing on a narrow screen",
+          "max-width:1080px" in _h6 and "max-width:720px" in _h6)
+
+    print("\nA DEFINITION MUST ANSWER THE THING IT IS ATTACHED TO")
+    # "Banner on load" borrowed the CMP definition, so hovering it explained
+    # what a consent platform is — true, already said one tile to the left,
+    # and not what the word under the cursor meant.
+    from app.ui_consent import _DEFS as _D
+    check("the banner tile has a definition of its own", "banner" in _D)
+    check("which is about visibility, not about software",
+          "visible" in _D["banner"].lower())
+    check("and it is not the consent-platform one",
+          _D["banner"] != _D["cmp"])
+    check("the tile actually uses it",
+          '_t("banner")' in _in2.getsource(consent_html))
+
+    print("\nTHE PROGRESS PAGE SHOWS A BAR, NOT A PARAGRAPH")
+    from app import ui as _ui4
+    import json as _js4
+    _run = _ui4.audit_html({"id": "r1", "client_name": "C",
+                            "target_url": "https://x.test", "status": "checking",
+                            "progress": "checking consent", "heartbeat_at": None,
+                            "options": _js4.dumps({"quick": "consent",
+                                                   "max_pages": 1})})
+    check("the explanation of what a consent check does is gone",
+          "clicks the banner and watches" not in _run)
+    check("an indeterminate bar says it is alive instead",
+          "class='glide'" in _run)
+    check("which respects a reduced-motion preference",
+          "prefers-reduced-motion" in _ui4.CSS
+          and ".glide > i{animation:none" in _ui4.CSS)
+    check("a full crawl still quotes its own page count",
+          "40 pages" in _ui4.audit_html(
+              {"id": "r2", "client_name": "C", "target_url": "https://x.test",
+               "status": "crawling", "progress": "crawling",
+               "heartbeat_at": None,
+               "options": _js4.dumps({"max_pages": 40})}))
+
+    print("\nTHE THREE PICKERS TAKE THE WHOLE WIDTH")
+    # Packed into the left half by auto-fit, each note wrapped to eleven lines
+    # in a narrow column while the right half of the screen sat empty.
+    from types import SimpleNamespace as _N4
+    _dash = _ui4.dashboard_html([], _N4(name="V", email="e"), 0,
+                                caps={"consent": True, "aivis": True})
+    check("even thirds, pinned", "repeat(3,minmax(0,1fr));gap:18px" in _dash)
+    check("not auto-fit at a 255px minimum",
+          "minmax(255px,1fr)" not in _dash)
 
     print("\nA TOOLTIP CANNOT FIGHT THE BOX IT LIVES IN")
     # The bubble was an ::after inside `overflow-x:auto` table wrappers: it
