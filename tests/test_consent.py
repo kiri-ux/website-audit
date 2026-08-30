@@ -1491,14 +1491,19 @@ def main():
     check("each cites its own section, not the opt-out's",
           "1798.121" in _SC2["CA"]["sensitive_cite"]
           and "1798.100" in _SC2["CA"]["notice_cite"])
+    # GPC IGNORED on purpose. Honoring it is a statutory alternative to the
+    # links (1798.135(b)(1)) and is asserted separately below; this fixture is
+    # the plain case where all three obligations are genuinely unmet.
     _r3 = {"cmps": [{"name": "Termly"}], "optout_link": "", "pre_consent": [],
            "sensitive_link": None, "notice_at_collection": None,
-           "post_consent": [], "gpc_tested": True, "gpc_fires": [],
+           "post_consent": [], "gpc_tested": True,
+           "gpc_fires": [{"vendor": "Meta Pixel"}],
            "privacy_policy_link": "privacy policy", "mode": "full",
            "ok": True, "state_checks": []}
     state_checks_for(_r3, ["CA"])
     _ca_fail = [c["check"] for c in _r3["state_checks"]
-                if c["state"] == "CA" and c["status"] == "fail"]
+                if c["state"] == "CA" and c["status"] == "fail"
+                and c["check"] != "GPC signal"]
     check("a CA site missing all three reports all three",
           sorted(_ca_fail) == ["Notice at collection", "Opt-out link",
                                "Sensitive info link"], str(_ca_fail))
@@ -1528,7 +1533,10 @@ def main():
               "banner_visible": True, "consent_mode_default": True,
               "consent_defaults": {}, "pre_consent": [], "post_consent": [],
               "post_reject": [], "reject_tested": True, "gpc_tested": True,
-              "gpc_fires": [], "optout_link": None, "sensitive_link": None,
+              # GPC ignored, so the link rows are real failures rather than
+              # the 1798.135(b)(1) alternative — that case has its own block.
+              "gpc_fires": [{"vendor": "Meta Pixel"}],
+              "optout_link": None, "sensitive_link": None,
               "notice_at_collection": None, "privacy_policy_link": None,
               "state_checks": [], "products": [], "pages": [],
               "gtm": {"found": True, "container_ids": ["GTM-X"]}}
@@ -1537,8 +1545,10 @@ def main():
                         "client_name": "T"},
                        {"scan": _scan3, "pages": [],
                         "requested": {"states": ["CA"]}})
+    # Five statute rows plus the ignored GPC signal, which the page states as
+    # an observed fact rather than only as a per-state row.
     check("every CA gap gets its own plain-English row",
-          _h3.count("class='vi vi--") == 5, str(_h3.count("class='vi vi--")))
+          _h3.count("class='vi vi--") == 6, str(_h3.count("class='vi vi--")))
     check("in the order the statute matters, not the alphabet",
           _h3.index("Do Not Sell or Share") < _h3.index("notice at the point"))
     check("failures come before the things to check",
@@ -1546,13 +1556,14 @@ def main():
     check("each row says who does the work",
           "Client does this" in _h3 or "CLIENT" in _h3.upper())
     check("each row carries a fix, not just a complaint",
-          _h3.count("<b>Fix:</b>") == 5)
+          _h3.count("<b>Fix:</b>") == 6, str(_h3.count("<b>Fix:</b>")))
     check("the technical detail is folded behind a disclosure",
           _h3.count("Show the evidence") >= 4,
           str(_h3.count("Show the evidence")))
     check("and it opens the page, above the evidence",
           _h3.index("What needs fixing") < _h3.index("Consent platform"))
-    _clean = {**_scan3, "state_checks": [], "optout_link": "your privacy "
+    _clean = {**_scan3, "state_checks": [], "gpc_fires": [],
+              "optout_link": "your privacy "
               "choices", "sensitive_link": "your privacy choices",
               "notice_at_collection": "notice at collection",
               "privacy_policy_link": "privacy policy"}
@@ -1562,6 +1573,49 @@ def main():
                        {"scan": _clean, "pages": [], "requested": {}})
     check("a clean scan says so rather than showing an empty box",
           "Nothing outstanding from this scan" in _h4)
+
+    print("\nWHOSE CONTAINER, ON THE LINE THAT NAMES IT")
+    # Ownership decides who does the work and was only visible after opening
+    # the section, so the collapsed line gave an id and left the one
+    # operational question about it unanswered.
+    _gt = {**_scan3, "state_checks": [],
+           "gtm": {"found": True, "container_ids": ["GTM-NXQ32Q5"],
+                   "audits": {"GTM-NXQ32Q5": {}}, "vici_owned": []}}
+    state_checks_for(_gt, ["CA"])
+    _h9 = consent_html({"id": "t9", "target_url": "https://x.test",
+                        "client_name": "T"},
+                       {"scan": _gt, "pages": [],
+                        "requested": {"states": ["CA"]}})
+    import re as _re9
+    _sum = _re9.search(r"<span class='cfold-t'>Container and configuration"
+                       r"</span><span class='cfold-n'>(.*?)</span></span>",
+                       _h9) or _re9.search(
+                           r"Container and configuration</span>"
+                           r"<span class='cfold-n'>(.*?)</span>", _h9)
+    check("the collapsed line carries the container id",
+          _sum and "GTM-NXQ32Q5" in _sum.group(1))
+    check("and the ownership badge beside it",
+          _sum and "vown--client" in _sum.group(1), _sum.group(1) if _sum else "")
+    check("the badge is markup, not escaped into the summary",
+          "&lt;span class=&#x27;vown" not in _h9
+          and "&lt;span class='vown" not in _h9)
+    _vg = {**_gt, "state_checks": [],
+           "gtm": {"found": True, "container_ids": ["GTM-NXQ32Q5"],
+                   "audits": {"GTM-NXQ32Q5": {}},
+                   "vici_owned": ["GTM-NXQ32Q5"]}}
+    state_checks_for(_vg, ["CA"])
+    _h10 = consent_html({"id": "ta", "target_url": "https://x.test",
+                         "client_name": "T"},
+                        {"scan": _vg, "pages": [],
+                         "requested": {"states": ["CA"]}})
+    check("a container our login can read reads as ours",
+          "vown--vici" in _h10.split("Container and configuration")[1][:400])
+    _noc = {**_scan3, "state_checks": [], "gtm": {}}
+    state_checks_for(_noc, ["CA"])
+    check("and a scan with no container does not crash on the badge",
+          "no container" in consent_html(
+              {"id": "tb", "target_url": "https://x.test", "client_name": "T"},
+              {"scan": _noc, "pages": [], "requested": {}}))
 
     print("\nEVIDENCE FOLDS AWAY; THE COUNT STAYS OUT")
     check("the evidence sections are closed by default",
@@ -1580,7 +1634,8 @@ def main():
     check("California gets its own card", "California" in _h3)
     check("headed with the law it is checking against",
           "CCPA/CPRA" in _h3)
-    check("and a count of what is failing", "3 failing" in _h3)
+    check("and a count of what is failing", "4 failing" in _h3,
+          _h3[_h3.index("California"):][:200])
     check("the US baseline is a card too, not a stray row",
           "Every US site" in _h3)
     check("the citation travels with the card", "1798.135" in _h3)
@@ -1593,6 +1648,63 @@ def main():
     check("a state we have no checks for is named, not dropped",
           "comprehensive law in our map for ga" in _h5.lower(),
           _h5[_h5.index("Checked against"):][:200])
+
+    print("\nHONORING THE SIGNAL IS AN ALTERNATIVE TO THE LINK")
+    # 1798.135(b)(1): a business "shall not be required to comply with
+    # subdivision (a)" - the links - if consumers can opt out through an
+    # opt-out preference signal. We were calling a missing link a FAIL on a
+    # site that honors GPC, which is the one case the statute exempts.
+    def _ca(gpc_honored):
+        _r = {"cmps": [{"name": "Termly"}], "optout_link": "",
+              "sensitive_link": None, "notice_at_collection": None,
+              "pre_consent": [], "post_consent": [], "gpc_tested": True,
+              "gpc_fires": [] if gpc_honored else [{"vendor": "Meta Pixel"}],
+              "privacy_policy_link": "privacy policy", "mode": "full",
+              "ok": True, "state_checks": []}
+        state_checks_for(_r, ["CA"])
+        return {c["check"]: c for c in _r["state_checks"]}
+    _on, _off = _ca(True), _ca(False)
+    check("a site honoring GPC is not failed for the missing opt-out link",
+          _on["Opt-out link"]["status"] == "warn",
+          _on["Opt-out link"]["status"])
+    check("nor for the missing sensitive-information link",
+          _on["Sensitive info link"]["status"] == "warn")
+    check("and the row cites the subsection that says so",
+          "1798.135(b)(1)" in _on["Opt-out link"]["detail"])
+    check("it is not a pass either - one page load is not the exemption",
+          _on["Opt-out link"]["status"] != "pass"
+          and "evidence rather than proof" in _on["Opt-out link"]["detail"])
+    check("a site that IGNORES the signal still fails both links",
+          _off["Opt-out link"]["status"] == "fail"
+          and _off["Sensitive info link"]["status"] == "fail")
+    check("notice at collection is unaffected - no signal alternative exists",
+          _on["Notice at collection"]["status"] == "fail"
+          and _off["Notice at collection"]["status"] == "fail")
+    check("and the fail names the single-link option",
+          "1798.135(a)(3)" in _off["Opt-out link"]["detail"])
+    # A state with no universal-signal rule cannot use the exemption.
+    _r5 = {"cmps": [{"name": "T"}], "optout_link": "", "sensitive_link": None,
+           "notice_at_collection": None, "pre_consent": [], "post_consent": [],
+           "gpc_tested": True, "gpc_fires": [],
+           "privacy_policy_link": "p", "mode": "full", "ok": True,
+           "state_checks": []}
+    state_checks_for(_r5, ["TN"])
+    check("a state with no signal rule still fails the link",
+          [c["status"] for c in _r5["state_checks"]
+           if c["check"] == "Opt-out link"] == ["fail"])
+
+    print("\nUNDER-16 IS OPT-IN; ADULTS ARE OPT-OUT")
+    # Verified against Cal. Civ. Code 1798.120(c): no sale or sharing where
+    # the business has actual knowledge the consumer is under 16 unless
+    # affirmatively authorized - by the consumer at 13-15, by a parent under
+    # 13. Adults keep the opt-out model.
+    _u16 = _on["Under-16 opt-in"]["detail"]
+    check("the row is about actual knowledge of a minor, not all visitors",
+          "under 16" in _u16)
+    check("13-15 authorizes for themselves", "13-15" in _u16)
+    check("under 13 needs a parent", "parent under 13" in _u16)
+    check("and it stays a warn, because a scan cannot know the audience",
+          _on["Under-16 opt-in"]["status"] == "warn")
 
     print("\nNAME THE STATE, DO NOT SAY \u201cCERTAIN STATES\u201d")
     _multi = {**_scan3, "state_checks": []}

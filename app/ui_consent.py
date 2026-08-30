@@ -173,7 +173,8 @@ def _sec(title, body, note="", tip=None, fold=False, count=""):
     I do", which is the only question they came with.
 
     A folded section still says how many rows are inside, because a closed box
-    with an unknown quantity behind it is a box nobody opens.
+    with an unknown quantity behind it is a box nobody opens. `count` is
+    markup, so a summary can carry a badge as well as a number.
 
     The note is ONE LINE now. Each of these was a short paragraph explaining
     both what the table is and why it matters, and stacked down the page they
@@ -194,7 +195,10 @@ def _sec(title, body, note="", tip=None, fold=False, count=""):
     if fold:
         return (f"<details class='cfold'><summary>"
                 f"<span class='cfold-t'>{e(title)}</span>"
-                + (f"<span class='cfold-n'>{e(count)}</span>" if count else "")
+                # `count` is MARKUP, not text. It carries the container id
+                # and the ownership badge, and escaping it printed the badge's
+                # HTML across the summary line. Callers escape what they pass.
+                + (f"<span class='cfold-n'>{count}</span>" if count else "")
                 + (_t(tip) if tip else "")
                 + "</summary><div class='cfold-b'>"
                 + (f"<div class='csec-note'>{note}</div>" if note else "")
@@ -1187,6 +1191,10 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
     cm = scan.get("consent_mode_default")
     defaults = scan.get("consent_defaults") or {}
     cfg_rows = []
+    # Defined outside the branch because the collapsed section header uses it
+    # too, and a name that only exists on the happy path is a NameError
+    # waiting for a scan with no container.
+    _own = ""
     if gtm:
         ids = gtm.get("container_ids") or []
         # WHOSE CONTAINER IT IS — ESTABLISHED, NOT DECLARED.
@@ -1339,8 +1347,15 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
             + "</div></details>")
            if scan.get("unmatched_sample") else ""),
         "", tip="gtm", fold=True,
-        count=(e(", ".join((scan.get("gtm") or {}).get("container_ids") or []))
-               or "no container")))
+        # WHOSE CONTAINER, ON THE LINE THAT NAMES IT.
+        #
+        # Ownership decides who does the work, and it was only visible after
+        # opening the section — so the collapsed line gave you an id and left
+        # the one operational question about it unanswered. The badge is the
+        # same one the work order uses, so the two read as the same fact.
+        count=((e(", ".join((scan.get("gtm") or {}).get("container_ids") or []))
+                or "no container")
+               + ((" " + _own) if _own else ""))))
 
     # -------------------------------------------------- container contents
     #

@@ -28,7 +28,11 @@ REVIEW PROCESS:
   codebase (state-law-check-map.docx).
 """
 
-LAST_REVIEWED = "2026-07-24"
+# 2026-08-27: CA re-verified against the statute text — 1798.120(c)
+# (under-16 opt-in), 1798.121 (limit sensitive PI), 1798.135(a)(3)
+# (single combined link) and 1798.135(b)(1) (honoring an opt-out
+# preference signal is an ALTERNATIVE to posting the links).
+LAST_REVIEWED = "2026-08-27"
 REVIEW_INTERVAL_DAYS = 120
 
 # Opt-out link phrases recognized on-page (lowercased substring match).

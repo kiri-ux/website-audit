@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-116"
-BUILD_NOTES = ("The full audit now renders INSIDE the app frame instead of being a separate document - same rail, topbar, breadcrumb and tabs as every other page, and only one copy of the tab stylesheet, which is how the two had drifted apart. The engine still produces a standalone document for the artifact and for mailing; the app unwraps it. Client PDF and Snapshot carry a download arrow so it is obvious they are files rather than pages, and the work order is three cards to a row with the owner badge above the title")
+BUILD = "2026.08.20-117"
+BUILD_NOTES = ("A correction from re-reading the statute: 1798.135(b)(1) makes honoring an opt-out preference signal an ALTERNATIVE to posting the opt-out and sensitive-information links, so a site that honors GPC is no longer FAILED for not having them - it warns, because one page load is evidence and not the exemption. A site that ignores the signal still fails both, and the notice at collection is unaffected because no signal alternative exists for it. The fail text now names the single combined link option. The collapsed container section carries the ownership badge beside the container id")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

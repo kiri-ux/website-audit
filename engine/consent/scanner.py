@@ -1388,6 +1388,15 @@ def state_checks_for(result, states, site_checks=True):
 
     for s in (states if site_checks else []):
         cfg = STATE_CHECKS[s]
+        # DID THE SITE HONOR THE UNIVERSAL OPT-OUT SIGNAL?
+        #
+        # This is not decoration on the GPC row: under 1798.135(b)(1) it
+        # decides whether the links are required at all. Only meaningful where
+        # the state recognizes such a signal, and only where we actually ran
+        # the GPC pass.
+        _uoom_alt = bool(cfg.get("gpc") and result.get("gpc_tested")
+                         and not result.get("gpc_fires"))
+
         if cfg.get("gpc"):
             if not result["gpc_tested"]:
                 result["state_checks"].append(
@@ -1456,12 +1465,37 @@ def state_checks_for(result, states, site_checks=True):
                     {"state": s, "check": "Opt-out link", "status": "pass",
                      "detail": f'Found "{result["optout_link"]}" on the '
                                f"page."})
+            elif _uoom_alt:
+                # HONORING THE SIGNAL IS A STATUTORY ALTERNATIVE TO THE LINK.
+                #
+                # 1798.135(b)(1): a business "shall not be required to comply
+                # with subdivision (a)" — the links — if it lets consumers opt
+                # out through an opt-out preference signal. This check called
+                # a missing link a failure on a site that honors GPC, which
+                # is the one case where the statute says the link is not
+                # required. Not a pass either: a single GPC page load shows no
+                # ad trackers fired, and the exemption asks for more than that.
+                result["state_checks"].append(
+                    {"state": s, "check": "Opt-out link", "status": "warn",
+                     "detail": "No opt-out link text found, but this site "
+                               "honored the opt-out preference signal on "
+                               "test, and 1798.135(b)(1) makes honoring that "
+                               "signal an ALTERNATIVE to posting the link. "
+                               "One page load is evidence rather than proof — "
+                               "confirm the signal is honored for every "
+                               "consumer and that the privacy policy says the "
+                               "business relies on it. Most sites post the "
+                               "link anyway, because it is what a person "
+                               "looks for."})
             else:
                 result["state_checks"].append(
                     {"state": s, "check": "Opt-out link", "status": "fail",
                      "detail": "No recognizable opt-out link text found on "
                                "this page. An accessible opt-out method is "
-                               f"expected for {cfg['name']} targeting."})
+                               f"expected for {cfg['name']} targeting. A "
+                               f"single combined 'Your Privacy Choices' link "
+                               f"can serve both this and the sensitive-"
+                               f"information right (1798.135(a)(3))."})
         # THREE OBLIGATIONS, NOT ONE.
         #
         # "Do Not Sell or Share" is the famous link and it was the only one
@@ -1473,15 +1507,30 @@ def state_checks_for(result, states, site_checks=True):
             _sl = result.get("sensitive_link")
             result["state_checks"].append(
                 {"state": s, "check": "Sensitive info link",
-                 "status": "pass" if _sl else "fail",
+                 "status": ("pass" if _sl
+                            else ("warn" if _uoom_alt else "fail")),
                  "detail": (f'Found "{_sl}" on the page.' if _sl else
-                            "No 'Limit the Use of My Sensitive Personal "
-                            "Information' link found. This is a SEPARATE "
-                            "right from the opt-out and needs its own link "
-                            "where the site uses sensitive personal "
-                            "information — precise location, race or "
-                            "ethnicity, health, or the contents of messages. "
-                            + cfg.get("sensitive_cite", ""))})
+                            (("No 'Limit the Use of My Sensitive Personal "
+                              "Information' link found, but this site honored "
+                              "the opt-out preference signal on test, and "
+                              "1798.135(b)(1) makes that an ALTERNATIVE to "
+                              "posting the links. One page load is evidence "
+                              "rather than proof: the exemption needs the "
+                              "signal honored for the sale/sharing opt-out "
+                              "AND for limiting sensitive PI, and the "
+                              "reliance disclosed in the privacy policy. "
+                              + cfg.get("sensitive_cite", ""))
+                             if _uoom_alt else
+                             ("No 'Limit the Use of My Sensitive Personal "
+                              "Information' link found. This is a SEPARATE "
+                              "right from the opt-out and needs its own link "
+                              "where the site uses sensitive personal "
+                              "information — precise location, race or "
+                              "ethnicity, health, or the contents of "
+                              "messages. A single combined 'Your Privacy "
+                              "Choices' link satisfies both under "
+                              "1798.135(a)(3). "
+                              + cfg.get("sensitive_cite", ""))))})
         if cfg.get("notice_at_collection"):
             _nc = result.get("notice_at_collection")
             result["state_checks"].append(
