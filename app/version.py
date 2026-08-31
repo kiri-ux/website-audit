@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-117"
-BUILD_NOTES = ("A correction from re-reading the statute: 1798.135(b)(1) makes honoring an opt-out preference signal an ALTERNATIVE to posting the opt-out and sensitive-information links, so a site that honors GPC is no longer FAILED for not having them - it warns, because one page load is evidence and not the exemption. A site that ignores the signal still fails both, and the notice at collection is unaffected because no signal alternative exists for it. The fail text now names the single combined link option. The collapsed container section carries the ownership badge beside the container id")
+BUILD = "2026.08.20-118"
+BUILD_NOTES = ("Neither DataForSEO notice needs anything from us - we read none of the six booleans being removed in January 2027, and the PHP client is not ours - but the goto-link rollout touched one place: GEO-25 counts slashes in a ranked result's URL to tell an interior page from a homepage, and a google.com/goto wrapper is all Google's slashes. An unresolved wrapper now leaves both halves of that fraction rather than being counted as a deep page, and a test asserts no removed field is read anywhere in the engine or the app")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

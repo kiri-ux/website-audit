@@ -360,6 +360,27 @@ def collect_rankings(domain: str, location_name: str | None = None,
 _SNIPPET_TYPES = {"featured_snippet", "answer_box"}
 
 
+def _is_goto(url) -> bool:
+    """
+    Is this one of Google's `google.com/goto/` redirect wrappers?
+
+    Google now serves some result links as intermediary URLs that redirect to
+    the real page. Our vendor resolves them back to the destination for
+    essentially all organic results, so this should be rare — but the one
+    place we read a result URL counts SLASHES in it to decide whether a
+    ranking sits on an interior page, and a wrapper URL has plenty of slashes
+    belonging to Google rather than to the client.
+
+    Counting one would not fail loudly; it would quietly inflate a percentage
+    in a checkpoint. So an unresolved wrapper is dropped from BOTH halves of
+    that fraction: it is a URL we could not read, not a shallow page, and a
+    denominator that includes rows we cannot classify is the wrong
+    denominator.
+    """
+    u = str(url or "").lower()
+    return "google.com/goto" in u or "google.com/url?" in u
+
+
 def _serp_feature_rows(rows: list) -> dict:
     out = {}
     if not rows:
@@ -397,7 +418,8 @@ def _serp_feature_rows(rows: list) -> dict:
     # passage ranking does its work.
     longtail = [r for r in ranked
                 if len((r.get("keyword") or "").split()) >= 4
-                and (r["position"] or 999) <= 20]
+                and (r["position"] or 999) <= 20
+                and not _is_goto(r.get("url"))]
     deep = [r for r in longtail
             if (r.get("url") or "").rstrip("/").count("/") > 2]
     if longtail:

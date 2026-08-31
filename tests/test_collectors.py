@@ -368,6 +368,55 @@ def main():
     check("with the count, not just the fact",
           f"{_skipped} more" in _rows["GSC-05"]["evidence"])
 
+    print("\nA GOOGLE REDIRECT WRAPPER IS NOT THE CLIENT'S URL")
+    # Google serves some result links as google.com/goto/... wrappers. Our
+    # vendor resolves them for essentially all organic results, but the one
+    # place we read a result URL counts SLASHES in it to decide whether a
+    # ranking sits on an interior page — and a wrapper has plenty of slashes
+    # belonging to Google. It would not fail loudly; it would quietly inflate
+    # a percentage in a checkpoint.
+    from engine.collectors.dataforseo import _is_goto, _serp_feature_rows
+    check("a goto wrapper is recognized",
+          _is_goto("https://www.google.com/goto/aHR0cHM6Ly9l/x"))
+    check("so is the older /url? redirect",
+          _is_goto("https://www.google.com/url?q=https://x.com"))
+    check("a real destination URL is not",
+          not _is_goto("https://belmontpark.com/tickets/season-passes"))
+    check("and a missing URL is not an error", not _is_goto(None))
+    _lt = [{"keyword": "a b c d", "position": 3, "search_volume": 10,
+            "url": "https://x.com/a/b/c", "serp_type": "organic"},
+           {"keyword": "e f g h", "position": 4, "search_volume": 10,
+            "url": "https://www.google.com/goto/xyz/1/2",
+            "serp_type": "organic"},
+           {"keyword": "i j k l", "position": 5, "search_volume": 10,
+            "url": "https://x.com/", "serp_type": "organic"}]
+    _v = _serp_feature_rows(_lt)["GEO-25"]["value"]
+    check("an unresolved wrapper leaves the numerator",
+          _v["on_deep_pages"] == 1, str(_v))
+    check("AND the denominator — it is unreadable, not shallow",
+          _v["longtail_ranked"] == 2, str(_v))
+    check("so the percentage is over rows we could actually classify",
+          _v["pct"] == 50.0, str(_v["pct"]))
+
+    print("\nWE READ NONE OF THE FIELDS DATAFORSEO IS REMOVING")
+    # The six legacy booleans go away on 2027-01-20. Asserted rather than
+    # remembered, because the day one of them gets used is the day this
+    # becomes a deadline.
+    import pathlib as _pl
+    _GONE = ("is_image", "is_video", "is_featured_snippet", "is_malicious",
+             "is_web_story", "amp_version")
+    _hits = []
+    for _f2 in _pl.Path(".").glob("engine/**/*.py"):
+        _txt = _f2.read_text()
+        _hits += [f"{_f2}:{_k}" for _k in _GONE if f'"{_k}"' in _txt
+                  or f"'{_k}'" in _txt]
+    for _f2 in _pl.Path(".").glob("app/*.py"):
+        _txt = _f2.read_text()
+        _hits += [f"{_f2}:{_k}" for _k in _GONE if f'"{_k}"' in _txt
+                  or f"'{_k}'" in _txt]
+    check("no removed boolean is read anywhere in the engine or app",
+          not _hits, "; ".join(_hits))
+
     print("\n" + "=" * 68)
     print(f"  {len(FAILURES)} FAILED: {FAILURES}" if FAILURES
           else "  ALL CHECKS PASSED — collectors degrade honestly; PDF ships")
