@@ -282,11 +282,34 @@ def findings_from_scan(scan: dict | None) -> dict:
         defaults = scan.get("consent_defaults") or {}
         if cm is True:
             denied = [k for k, v in defaults.items() if str(v).lower() == "denied"]
+            # ONE VANTAGE POINT, REPORTED AS THE WHOLE PICTURE.
+            #
+            # The scan reads defaults from a single browser context - one
+            # locale, one egress IP, one CMP-side geo lookup. Most CMPs
+            # (Osano, OneTrust, Cookiebot, etc.) apply DIFFERENT default
+            # rules per country AND per individual US state, and a state
+            # can be left on a stricter rule even after the country-level
+            # default looks right (this is exactly what happened on UTVFX
+            # and CBX - Osano's US default was fixed, but individual state
+            # entries still overrode it). A single-vantage Pass here cannot
+            # see that. We also don't have login access to a client's CMP
+            # dashboard to check it directly, so this can only ever be a
+            # flag to hand to their team, not a verified all-clear.
+            cmp_names = ", ".join(sorted({c.get("name", "?") for c in cmps
+                                          if c.get("name") != NOTICE_ONLY_CMP}))
             out["CONS-03"] = _f(
                 "Pass", {"defaults": defaults},
                 f"Google Consent Mode defaults are set"
                 + (f", denying {', '.join(sorted(denied))} until consent."
-                   if denied else "."), "Low")
+                   if denied else ".")
+                + (f" This reflects only the visitor location the scan ran "
+                   f"from - {cmp_names} may apply different default rules "
+                   f"per country or per individual US state, which this "
+                   f"scan cannot see from one location. We don't have "
+                   f"access to the client's CMP dashboard, so if "
+                   f"conversions look inconsistent by state, ask their "
+                   f"team to check each state entry there directly."
+                   if cmp_names else ""), "Low")
         elif cm is False:
             out["CONS-03"] = _f(
                 "Fail", {"defaults": defaults},
