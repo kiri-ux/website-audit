@@ -1,9 +1,11 @@
 """
-Section 01 — Analytics & Tracking (ANA-01 … ANA-12).
+Section 01 — Analytics & Tracking (ANA-01 … ANA-13).
 
-The audit template marks all twelve of these "Manual Review". Every one is a
-pattern match over the scripts the crawler already collected. This module is
-~80 lines and eliminates twelve manual checks per audit.
+The audit template marks all twelve of the original checks "Manual Review".
+Every one is a pattern match over the scripts the crawler already collected.
+This module is ~80 lines and eliminates twelve manual checks per audit.
+
+ANA-13 was added separately (Sep 2026) — see the check itself for why.
 """
 from __future__ import annotations
 import re
@@ -170,3 +172,78 @@ def ana05(a, c):
                    else "No Bing Webmaster Tools verification or Bing UET tag detected.",
                    [], "Low" if found else "Medium",
                    "" if found else "Verify the site in Bing Webmaster Tools — it also feeds Copilot.")
+
+
+# ---------------------------------------------------------------------------
+# ANA-13 — GTM container + hardcoded gtag('config') outside it
+#
+# Google is retiring gtm.js's support for gtag('config') commands that live
+# outside the container — see support.google.com/tagmanager/answer/17231523
+# (rollout is phased per account, not one universal date). Running GTM alone
+# is fine. Running gtag.js alone with no container is fine. The break is the
+# COMBINATION: a gtm.js container on the page AND a hardcoded
+# gtag('config', 'G-...'/'AW-...'/'DC-...') call sitting in the site's own
+# HTML/JS, outside anything the container itself injected. GTM stops
+# recognizing that config call once the change reaches that container, and
+# the tag it configures goes dark.
+#
+# Most common trigger, per the Aug–Sep 2026 Google Partners thread
+# (UTVFX/CBX): a client already had their own GA4 installed directly before
+# a Vici container tag was added on top of it, and the original snippet was
+# never removed.
+#
+# Both halves of this pattern are static-source facts — a page either ships
+# gtm.js and a hardcoded gtag('config', ...) call or it doesn't — so a plain
+# crawl sees this without needing a live browser render.
+# ---------------------------------------------------------------------------
+_HARDCODED_GTAG_CONFIG_RE = re.compile(
+    r"gtag\(\s*[\"']config[\"']\s*,\s*[\"'](?P<id>(?:G|AW|DC)-[A-Za-z0-9]+)[\"']",
+    re.I)
+
+
+@check("ANA-13")
+def ana13(a, c):
+    hay = c.setdefault("_tag_haystack", _haystack(a))
+    has_container = bool(re.search(SIGNATURES["ANA-01"][1][0], hay, re.I)
+                         or re.search(SIGNATURES["ANA-01"][1][1], hay, re.I))
+    ids = sorted({m.group("id").upper()
+                 for m in _HARDCODED_GTAG_CONFIG_RE.finditer(hay)})
+    val = {"container_present": has_container,
+           "hardcoded_gtag_config_ids": ids}
+    are = "is" if len(ids) == 1 else "are"
+    tag_word = "this tag" if len(ids) == 1 else "these tags"
+
+    if has_container and ids:
+        return finding(
+            "Fail", val,
+            f"A GTM container is installed on this site AND "
+            f"{', '.join(ids)} {are} configured with a hardcoded "
+            f"gtag('config', ...) call outside that container. Google is "
+            f"retiring gtm.js support for this combination — the config "
+            f"call stops being recognized once the change reaches this "
+            f"container, and {tag_word} will stop firing.",
+            [], "High",
+            f"Have the client's dev team remove the hardcoded "
+            f"gtag('config', ...) snippet(s) for {', '.join(ids)} from the "
+            f"page template or CMS, and configure that tag inside the GTM "
+            f"container instead. Check every page template and CMS plugin, "
+            f"not just the homepage — this is most common when a client's "
+            f"own GA4 was installed directly before a container tag was "
+            f"added on top of it, and the original snippet was never "
+            f"removed.")
+    if has_container and not ids:
+        return finding(
+            "Pass", val,
+            "A GTM container is present and no hardcoded gtag('config', "
+            "...) call was found outside it — not the mixed setup Google "
+            "is retiring support for.", [], "Low")
+    if ids and not has_container:
+        return finding(
+            "N/A", val,
+            f"{', '.join(ids)} {are} configured via gtag.js directly with "
+            f"no GTM container present. That's Google's own supported "
+            f"pattern, not the one being deprecated.", [], "Low")
+    return finding(
+        "N/A", val,
+        "No GTM container or hardcoded gtag('config', ...) call detected.",
+        [], "Low")
