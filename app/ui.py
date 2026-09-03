@@ -1843,12 +1843,26 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
       var box = document.getElementById('geopills');
       if (!box) return;
       box.innerHTML = MARKETS.map(function (label, i) {{
-        var st = geoIsNational(label) ? 'US' : geoState(label);
+        // A NATIONAL MARKET IS NOT A STATE CODE.
+        //
+        // This read `st = 'US'` for a nationwide target and then looked it up
+        // in GEO_STATES, which holds real states only — so the lookup threw,
+        // and because every pill is built inside one .map() the exception
+        // took the WHOLE box down. Not one broken pill: no pills at all, for
+        // any market, with nothing in the console to say why.
+        //
+        // Two fixes, and the second matters more than the first. National is
+        // its own branch rather than a fake state code; and every GEO_STATES
+        // read below is guarded, so a code this table has never heard of can
+        // cost its own pill a label and nothing else.
+        var nat = geoIsNational(label);
+        var st = nat ? null : geoState(label);
+        var row = (st && GEO_STATES[st]) || null;
+        var shown = label;
         // "Anderson County, TN" beside a TN tag says TN twice. Strip the
         // state off the label and let the tag carry it — the full string is
         // still what gets submitted and still what the tooltip shows.
-        var shown = label;
-        if (st) {{
+        if (row) {{
           // A CHARACTER CLASS WITH NO BACKSLASH, deliberately. This string
           // passes through a Python f-string and then a JS string literal, and
           // '\s' survives neither intact — it arrived as the letter s, so the
@@ -1856,16 +1870,19 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
           // a space are all this needs, and they cannot be mangled.
           shown = label.replace(
             new RegExp('[, ]+(' + st + '|'
-                       + GEO_STATES[st][0].replace(/ /g, '[ ]+') + ')$', 'i'),
+                       + row[0].replace(/ /g, '[ ]+') + ')$', 'i'),
             '').trim() || label;
         }}
-        return '<span class="gp' + (st ? '' : ' bad') + '" title="'
-             + geoEsc(st ? label + ' — ' + GEO_STATES[st][0]
-                         : 'No state found — this market cannot be matched '
-                           + 'to a privacy law') + '">'
+        var tag = nat ? 'ALL' : (st || '?');
+        var tip = nat
+          ? label + ' — nationwide, so every state law we check applies'
+          : (row ? label + ' — ' + row[0]
+                 : 'No state found — this market cannot be matched to a '
+                   + 'privacy law');
+        return '<span class="gp' + (nat || st ? '' : ' bad') + '" title="'
+             + geoEsc(tip) + '">'
              + '<b>' + geoEsc(shown) + '</b>'
-             + (st ? '<span class="st">' + st + '</span>'
-                   : '<span class="st">?</span>')
+             + '<span class="st">' + tag + '</span>'
              + '<button type="button" aria-label="Remove ' + geoEsc(label)
              + '" onclick="geoDrop(' + i + ')">&times;</button></span>';
       }}).join('');

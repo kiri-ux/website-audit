@@ -350,8 +350,58 @@ def main():
           "geoIsNational" in _dsrc and "'nationwide':1" in _dsrc)
     check("and lights every checkable chip for it",
           "national = true" in _dsrc)
-    check("the pill reads US rather than a question mark",
-          "geoIsNational(label) ? 'US'" in _dsrc)
+    check("a national market is its own branch, not a fake state code",
+          "var nat = geoIsNational(label)" in _dsrc
+          and "GEO_STATES[st][0]" not in _dsrc)
+    check("and every state-table read is guarded",
+          "(st && GEO_STATES[st]) || null" in _dsrc)
+
+    print("\nONE UNKNOWN CODE MUST NOT BLANK THE WHOLE BOX")
+    # Every pill is built inside one .map(), so a lookup that throws takes
+    # down the entire list: not one broken pill but NO pills, for any market,
+    # with nothing in the console to say why. That is exactly what shipped
+    # when a national market was given the state code "US" and looked up in a
+    # table of real states.
+    #
+    # Driven in a real browser, because this failure is invisible to Python:
+    # the page rendered perfectly and the script was dead.
+    try:
+        import asyncio as _aio
+        from playwright.sync_api import sync_playwright as _spw
+    except ImportError:
+        print("  SKIP  playwright is not installed here")
+    else:
+        import tempfile as _tf, os as _os
+        _p = _os.path.join(_tf.mkdtemp(), "dash.html")
+        with open(_p, "w") as _fh:
+            _fh.write(_dsrc)
+        with _spw() as _pw:
+            _b = _pw.chromium.launch()
+            _pg = _b.new_page()
+            _errs = []
+            _pg.on("pageerror", lambda e: _errs.append(str(e)))
+            _pg.goto("file://" + _p)
+            for _m in ("united states", "Knox County, TN", "Boise"):
+                _pg.fill("#geoinput", _m)
+                _pg.press("#geoinput", "Enter")
+            _pg.wait_for_timeout(200)
+            _tags = _pg.eval_on_selector_all("#geopills .st",
+                                             "e=>e.map(x=>x.textContent)")
+            _lit = _pg.eval_on_selector_all("#strow .tg.auto,#strow .tg.on",
+                                            "e=>e.map(x=>x.dataset.st)")
+            _hid = _pg.input_value("#primary_markets")
+            _b.close()
+        check("no script error while adding markets", not _errs, str(_errs[:2]))
+        check("three markets, three pills", len(_tags) == 3, str(_tags))
+        check("the national one is tagged ALL, not a state",
+              _tags and _tags[0] == "ALL", str(_tags))
+        check("a real state still tags itself", "TN" in _tags)
+        check("and an unresolvable market still shows its question mark",
+              "?" in _tags)
+        check("the hidden field carries every label",
+              "united states" in _hid and "Knox County, TN" in _hid)
+        check("a national market lights every checkable state",
+              len(_lit) == len(national_states()), str(len(_lit)))
 
     print("\nRUN AGAIN MEANS THE SAME RUN")
     # "'full audit' keeps getting checked when i only did a consent check".
