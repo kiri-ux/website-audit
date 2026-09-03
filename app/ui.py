@@ -440,18 +440,12 @@ td.hw{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .hist[open] summary:before{content:"▾";margin-right:5px}
 
 /* ---- progress ---- */
-/* AN INDETERMINATE BAR, because the run has no percentage to report.
-   A progress page's only job between refreshes is to look alive, and a bar
-   that sweeps does that in no words at all — which is why the paragraph
-   explaining how long a consent check takes could simply go. */
-.glide{height:3px;border-radius:3px;background:var(--track);overflow:hidden;
- margin:11px 0 3px}
-.glide > i{display:block;width:32%;height:100%;border-radius:3px;
- background:linear-gradient(90deg,transparent,var(--blue),transparent);
- animation:glide 1.5s ease-in-out infinite}
-@keyframes glide{0%{transform:translateX(-105%)}100%{transform:translateX(320%)}}
-@media (prefers-reduced-motion:reduce){
- .glide > i{animation:none;width:100%;opacity:.35}}
+/* ONE BAR, AND IT MEANS SOMETHING.
+   There were two moving at once — the phase rail sweeping and a second
+   sweeping bar under the status line — which is a lot of motion to say
+   nothing. A sweeping bar answers "is it alive"; the question people
+   actually have is "how far through", and the pipeline knows enough to
+   answer it. So the rail is determinate and the second bar is gone. */
 .spin{display:inline-block;width:11px;height:11px;border:2px solid var(--track);
  border-top-color:var(--blue);border-radius:50%;animation:s .8s linear infinite;
  vertical-align:-1px}
@@ -2267,6 +2261,91 @@ def _ext_version() -> str:
         return ""
 
 
+# HOW FAR THROUGH, NOT JUST WHETHER IT IS ALIVE.
+#
+# The page had two bars sweeping at once and neither said anything. A sweeping
+# bar answers "is this still running"; the question people actually have while
+# watching it is "how much longer", and the pipeline knows enough to answer.
+#
+# WHAT MAKES THIS HONEST RATHER THAN A CREEPING FAKE:
+#
+#   * The bands are the real phases, in the real order, and a run only ever
+#     moves forward through them. The number cannot go backwards.
+#   * Inside a band we interpolate only where there is something to count —
+#     pages crawled against the cap, or the page number the consent walk
+#     reports. Everywhere else the bar sits at the band's floor rather than
+#     drifting, because a bar that moves on a timer is a lie with an
+#     animation on it.
+#   * The caption always says what the number is derived from, so a reader can
+#     tell "17 of 40 pages" (measured) from "checking" (a position in a
+#     pipeline). Those are different kinds of claim and they should not look
+#     the same.
+#
+# It is an estimate of PROGRESS THROUGH THE WORK, never of elapsed time. Two
+# clients' checking phases differ by minutes; neither is more or less done.
+_BANDS = {"queued": (0, 4), "crawling": (4, 55), "checking": (55, 90),
+          "scoring": (90, 99)}
+
+# Sub-steps inside `checking`, in the order the worker runs them, as a
+# fraction of that band. Matched on the progress line the worker already
+# writes — one string per sub-step, which is what makes this readable rather
+# than a guess.
+_SUBSTEPS = (
+    ("reusing the crawl", 0.00), ("running checkpoints", 0.05),
+    ("assessing E-E-A-T", 0.15), ("Search Console", 0.30),
+    ("collecting Analytics", 0.40), ("backlink profile", 0.50),
+    ("Lighthouse", 0.60), ("keyword rankings", 0.68),
+    ("consent scan", 0.75), ("cookie banner", 0.75),
+    ("AI assistants", 0.85), ("public record", 0.92),
+)
+
+
+def _progress_pct(status, progress, done, target, consent_only=False):
+    """
+    (percent, caption) for the run's bar, or (None, "") when we cannot say.
+
+    None is a real answer and gets the indeterminate bar: a status we have no
+    band for is a status this function has not been taught, and inventing a
+    number for it would be the exact failure it exists to avoid.
+    """
+    import re as _re
+    band = _BANDS.get(status)
+    if not band:
+        return None, ""
+    lo, hi = band
+    frac, why = 0.0, status
+
+    if status == "crawling" and target and done:
+        frac = min(1.0, done / float(target))
+        why = f"{done} of up to {target} pages"
+    elif status == "checking":
+        # The consent walk counts its own pages, and on a consent-only run
+        # that walk IS the checking phase — so it gets the whole band rather
+        # than the slice it would occupy in a full audit.
+        m = _re.search(r"page (\d+) of (\d+)", progress)
+        if m and int(m.group(2)):
+            i, n = int(m.group(1)), int(m.group(2))
+            why = f"page {i} of {n}"
+            if consent_only:
+                frac = i / float(n)
+            else:
+                s0 = 0.75
+                frac = s0 + (0.10 * i / float(n))
+        else:
+            low = progress.lower()
+            for needle, at in _SUBSTEPS:
+                if needle.lower() in low:
+                    frac, why = at, needle
+                    break
+            else:
+                why = "checking"
+    elif status == "scoring":
+        why = "scoring"
+
+    pct = int(round(lo + (hi - lo) * max(0.0, min(1.0, frac))))
+    return max(1, min(99, pct)), why
+
+
 def _conly_run(a) -> bool:
     """Was this run asked for as a consent scan only?"""
     import json as _j
@@ -2428,14 +2507,15 @@ def audit_html(a):
             opts = {}
         done = a.get("pages_crawled") or 0
         target = int(opts.get("max_pages") or 0)
-        if cur == "crawling" and target and done:
-            pct = max(3, min(97, round(100 * done / target)))
+        pct, detail = _progress_pct(cur, a.get("progress") or "", done, target,
+                                    _conly_run(a))
+        if pct is None:
+            rail = "<div class='rail-p indet'><i></i></div>"
+        else:
             rail = (f"<div class='rail-p'><i style='width:{pct}%'></i></div>"
                     f"<div class='marks' style='margin-bottom:14px'>"
-                    f"<span class='on'>{done} of up to {target} pages</span>"
+                    f"<span class='on'>{e(detail)}</span>"
                     f"<span>{pct}%</span></div>")
-        else:
-            rail = "<div class='rail-p indet'><i></i></div>"
         # Is anything still working on this?
         #
         # The worker stamps heartbeat_at on every step. If that stopped moving
@@ -2567,7 +2647,6 @@ def audit_html(a):
                      f"<div class='card' style='margin-top:16px'>"
                      f"<span class='spin'></span> <b>{e(a.get('progress') or cur)}</b>"
                      f"&nbsp; {since}"
-                     f"<div class='glide'><i></i></div>"
                      f"<p class='sub'>{_eta}</p>"
                      f"{_slow}{act}</div>")
             # Six seconds, not four. Every refresh is a full page render and a

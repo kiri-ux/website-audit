@@ -499,7 +499,8 @@ def _consent(a, audit_id, findings, extras, opts, step):
             "This is a deployment problem, not a client one — the scanner "
             "needs Playwright and Chromium in the worker image."))
         return
-    step("checking", "checking consent, cookie banner and pre-consent tags")
+    step("checking", "consent scan — page 1 of "
+                     f"{1 + len(opts.get('conversion_urls') or [])}")
     try:
         scan = scan_site(a["target_url"],
                          prefer_full=not opts.get("skip_consent_browser"),
@@ -525,7 +526,17 @@ def _consent(a, audit_id, findings, extras, opts, step):
         if isinstance(scan, dict):
             pages.append({"url": a["target_url"], "role": "homepage",
                           "scan": scan})
-        for url in (opts.get("conversion_urls") or []):
+        # A PAGE WALK THAT SAYS WHICH PAGE.
+        #
+        # This wrote one step() and then spent minutes silent while it loaded
+        # every conversion page four times over — so the progress bar had
+        # nothing to move on and the run looked stalled the entire way. The
+        # loop already knows the numbers; saying them costs a database write
+        # per page and turns a frozen bar into a moving one.
+        _convs = list(opts.get("conversion_urls") or [])
+        _total = 1 + len(_convs)
+        for _i, url in enumerate(_convs, start=2):
+            step("checking", f"consent scan — page {_i} of {_total}")
             try:
                 one = scan_site(
                     url, prefer_full=not opts.get("skip_consent_browser"),

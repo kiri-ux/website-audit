@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-120"
-BUILD_NOTES = ("Fixes a break I shipped in 119: the national market was given the state code US and then looked up in a table of real states, which threw - and because every pill is built inside one map() the exception took the whole geo box down. No pills for any market, nothing in the console. National is its own branch now, tagged ALL, and every state-table read is guarded so an unknown code can cost its own pill a label and nothing else. Guarded by a test that drives the real form in a browser, because this failure is invisible from Python: the page rendered perfectly and the script was dead")
+BUILD = "2026.08.20-121"
+BUILD_NOTES = ("One progress bar instead of two sweeping at once, and it reports how far through the run is rather than only that the run is alive. The bands are the real phases in the real order so the number cannot go backwards; inside a band it interpolates only where there is something to count - pages crawled against the cap, or the page the consent walk is on - and sits at the band floor otherwise, because a bar that moves on a timer is a lie with an animation on it. The caption says which of the two it is. The consent walk now reports page N of M, so a multi-page consent scan stops looking frozen")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

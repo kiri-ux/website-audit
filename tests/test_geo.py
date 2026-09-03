@@ -425,6 +425,48 @@ def main():
           "do_audit'); \n" in _src or "getElementById('do_audit')" in _src)
     check("and re-syncs the panels after it does", "jobSync();" in _src)
 
+    print("\nONE BAR, AND IT MEANS SOMETHING")
+    # Two bars swept at once and neither said anything. A sweeping bar answers
+    # "is it alive"; the question people have is "how far through".
+    from app.ui import _progress_pct as _pp
+    check("the second sweeping bar is gone", ".glide{" not in _src)
+    check("queued sits at the floor", _pp("queued", "", 0, 0)[0] <= 5)
+    _c = _pp("crawling", "crawling site", 12, 40)
+    check("a crawl interpolates on pages actually crawled",
+          10 < _c[0] < 40 and _c[1] == "12 of up to 40 pages", str(_c))
+    check("and the caption names the measurement, not the phase",
+          "pages" in _c[1])
+    # Monotonic: the number can never go backwards through the pipeline.
+    _seq = [_pp("queued", "", 0, 0)[0],
+            _pp("crawling", "crawling site", 1, 40)[0],
+            _pp("crawling", "crawling site", 39, 40)[0],
+            _pp("checking", "assessing E-E-A-T and GEO checkpoints", 0, 40)[0],
+            _pp("checking", "collecting Search Console data", 0, 40)[0],
+            _pp("checking", "asking 4 AI assistants about x", 0, 40)[0],
+            _pp("scoring", "scoring", 0, 40)[0]]
+    check("it only ever moves forward", _seq == sorted(_seq), str(_seq))
+    check("and never claims to be finished", max(_seq) <= 99, str(max(_seq)))
+    # The consent walk counts its own pages, and on a consent-only run that
+    # walk IS the checking phase.
+    _p1 = _pp("checking", "consent scan \u2014 page 1 of 4", 0, 1, True)
+    _p4 = _pp("checking", "consent scan \u2014 page 4 of 4", 0, 1, True)
+    check("a consent walk moves page by page", _p1[0] < _p4[0],
+          f"{_p1[0]} -> {_p4[0]}")
+    check("and says which page", _p1[1] == "page 1 of 4", str(_p1))
+    check("the same walk inside a full audit takes a slice, not the band",
+          _pp("checking", "consent scan \u2014 page 4 of 4",
+              0, 40, False)[0] < 90)
+    check("a status we have no band for gets the honest indeterminate bar",
+          _pp("ready", "", 0, 0) == (None, ""))
+    check("as does a phase with nothing countable in it",
+          _pp("checking", "doing something new", 0, 0)[1] == "checking")
+    # And the worker has to emit the line this reads.
+    from app import worker as _wk
+    _wsrc = _in2.getsource(_wk)
+    check("the consent walk reports which page it is on",
+          'f"consent scan \u2014 page {_i} of {_total}"' in _wsrc
+          or "consent scan \u2014 page " in _wsrc)
+
     print("\nA HAND-PICKED PROPERTY SURVIVES THE RE-RUN")
     # _pendingProps was set by Run again and read by nothing at all, so the
     # operator's chosen property was carried to the form and dropped.

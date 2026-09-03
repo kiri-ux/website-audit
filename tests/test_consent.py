@@ -1819,11 +1819,13 @@ def main():
                                                    "max_pages": 1})})
     check("the explanation of what a consent check does is gone",
           "clicks the banner and watches" not in _run)
-    check("an indeterminate bar says it is alive instead",
-          "class='glide'" in _run)
-    check("which respects a reduced-motion preference",
-          "prefers-reduced-motion" in _ui4.CSS
-          and ".glide > i{animation:none" in _ui4.CSS)
+    # The second sweeping bar has since gone too: two bars moving at once said
+    # nothing twice. What is left is ONE bar that reports how far through the
+    # run actually is — see test_geo's "ONE BAR, AND IT MEANS SOMETHING".
+    check("there is exactly one progress bar, not two",
+          "class='glide'" not in _run and _run.count("rail-p") >= 1)
+    check("and it carries a real percentage",
+          "%</span>" in _run or "rail-p indet" in _run)
     check("a full crawl still quotes its own page count",
           "40 pages" in _ui4.audit_html(
               {"id": "r2", "client_name": "C", "target_url": "https://x.test",
