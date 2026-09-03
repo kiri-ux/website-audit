@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-121"
-BUILD_NOTES = ("One progress bar instead of two sweeping at once, and it reports how far through the run is rather than only that the run is alive. The bands are the real phases in the real order so the number cannot go backwards; inside a band it interpolates only where there is something to count - pages crawled against the cap, or the page the consent walk is on - and sits at the band floor otherwise, because a bar that moves on a timer is a lie with an animation on it. The caption says which of the two it is. The consent walk now reports page N of M, so a multi-page consent scan stops looking frozen")
+BUILD = "2026.08.20-122"
+BUILD_NOTES = ("The consent phase stops looking dead while it is working. A scan loads each page four times - untouched, after Accept, after Reject, and with GPC on - and the phase wrote one step before it started and the next after it finished, so the heartbeat sat still for minutes and past ten the stall detector declared a healthy run dead. The scan now runs on a thread while the heartbeat ticks every eight seconds with the elapsed time, which also makes Stop work during a page rather than only between pages. A page that overruns a seven-minute budget is abandoned and reported rather than holding the run")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

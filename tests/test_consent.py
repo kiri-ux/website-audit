@@ -1649,6 +1649,50 @@ def main():
           "comprehensive law in our map for ga" in _h5.lower(),
           _h5[_h5.index("Checked against"):][:200])
 
+    print("\nFOUR BROWSER LOADS ARE NOT ONE STEP")
+    # A consent scan loads each page four times — untouched, after Accept,
+    # after Reject, and with GPC on. The phase wrote one step() before it
+    # started and the next after it finished, so the heartbeat sat still for
+    # minutes, the bar had nothing to move on, and past ten minutes the stall
+    # detector declared a healthy run dead.
+    from app import worker as _wk2
+    import time as _t2
+    _beats = []
+
+    def _step(_s, _p):
+        _beats.append(_p)
+
+    _v, _e = _wk2._scan_with_heartbeat(
+        lambda: (_t2.sleep(_wk2._TICK_S * 2.4), "done")[1],
+        _step, "consent scan \u2014 page 1 of 4")
+    check("the work still returns its value", _v == "done", str(_v))
+    check("and no error", _e is None)
+    check("the heartbeat beat while it ran", len(_beats) >= 2, str(_beats))
+    check("every beat carries the elapsed time",
+          all("s" in b and "page 1 of 4" in b for b in _beats), str(_beats))
+    check("which means it changes, so a slow run cannot read as a dead one",
+          len(set(_beats)) == len(_beats), str(_beats))
+    # A budget, because one page must not be able to hold the whole run.
+    _v2, _e2 = _wk2._scan_with_heartbeat(
+        lambda: _t2.sleep(30), _step, "page 2 of 4", budget_s=_wk2._TICK_S)
+    check("a page that overruns its budget is abandoned", _v2 is None)
+    check("and it is REPORTED, not silently returned empty",
+          isinstance(_e2, TimeoutError) and "abandoned" in str(_e2), str(_e2))
+    # An exception inside the work still propagates — a scan that fails must
+    # not be swallowed by the thing watching it.
+    try:
+        _wk2._scan_with_heartbeat(
+            lambda: (_ for _ in ()).throw(ValueError("boom")), _step, "x")
+        check("an error inside the scan still raises", False)
+    except ValueError as _ve:
+        check("an error inside the scan still raises", str(_ve) == "boom")
+    # And the bar treats the elapsed suffix as noise, not motion.
+    from app.ui import _progress_pct as _pp2
+    check("elapsed time does not move the bar",
+          _pp2("checking", "consent scan \u2014 page 2 of 4", 0, 1, True)
+          == _pp2("checking", "consent scan \u2014 page 2 of 4 \u2014 1m 20s",
+                  0, 1, True))
+
     print("\nA CRAWL CAPTURE CANNOT ANSWER A CONSENT RUN")
     # A consent-only run that got parked for capture offered the CRAWL
     # capture button, whose endpoint scores 322 checkpoints — so it came back

@@ -468,6 +468,66 @@ def _phase_unanswered(ids, why, rec="", src="phase_unavailable"):
             for cid in ids}
 
 
+# FOUR BROWSER LOADS ARE NOT ONE STEP.
+#
+# A consent scan of one page loads it four times — untouched, after Accept,
+# after Reject, and with Global Privacy Control on — each with its own
+# navigation, challenge wait and settle. That is minutes on a slow site, and
+# the phase wrote ONE step() before it started and the next one after it
+# finished. So the heartbeat sat still the whole way, the progress bar had
+# nothing to move on, and past ten minutes the stall detector declared a
+# perfectly healthy run dead.
+#
+# The scan itself runs behind a process pool, so threading a callback through
+# it is more surgery than this needs. A ticker in this process is enough: the
+# scan runs on a worker thread, and the main thread beats the heartbeat every
+# few seconds with the elapsed time on it. That gives the page something that
+# visibly changes, keeps the stall detector honest, and — because step() is
+# also where a cancel is read — makes Stop work DURING a page scan rather
+# than only between pages.
+_TICK_S = 8.0
+
+
+def _scan_with_heartbeat(fn, step, label, budget_s=420.0):
+    """
+    Run `fn()` on a thread while beating the heartbeat with elapsed time.
+
+    Returns (value, error). A budget is enforced because one pathological
+    page must not be able to hold the whole run: a site that never falls
+    quiet would otherwise sit here until the container is recycled. Blowing
+    the budget is REPORTED as an error on that page rather than silently
+    returning less, which is the same rule the rest of this file follows.
+    """
+    import threading
+    box = {}
+
+    def _run():
+        try:
+            box["v"] = fn()
+        except BaseException as exc:  # noqa: BLE001
+            box["e"] = exc
+
+    t = threading.Thread(target=_run, daemon=True)
+    t0 = time.time()
+    t.start()
+    while t.is_alive():
+        t.join(_TICK_S)
+        el = int(time.time() - t0)
+        if not t.is_alive():
+            break
+        if el >= budget_s:
+            # The thread is a daemon and Playwright is not interruptible from
+            # here, so it is abandoned rather than killed. Saying so is the
+            # point: an abandoned page is a page with no result, and the
+            # record has to show that rather than a clean empty scan.
+            return None, TimeoutError(
+                f"{label} exceeded {int(budget_s)}s and was abandoned")
+        step("checking", f"{label} \u2014 {el // 60}m {el % 60:02d}s")
+    if "e" in box:
+        raise box["e"]
+    return box.get("v"), None
+
+
 def _consent(a, audit_id, findings, extras, opts, step):
     """
     One consent scan of the homepage, turned into nine checkpoints.
@@ -502,11 +562,17 @@ def _consent(a, audit_id, findings, extras, opts, step):
     step("checking", "consent scan — page 1 of "
                      f"{1 + len(opts.get('conversion_urls') or [])}")
     try:
-        scan = scan_site(a["target_url"],
-                         prefer_full=not opts.get("skip_consent_browser"),
-                         states=opts.get("consent_states") or None,
-                         industries=opts.get("consent_industries") or None,
-                         products=opts.get("consent_products") or None)
+        _n_pages = 1 + len(opts.get("conversion_urls") or [])
+        scan, _err = _scan_with_heartbeat(
+            lambda: scan_site(
+                a["target_url"],
+                prefer_full=not opts.get("skip_consent_browser"),
+                states=opts.get("consent_states") or None,
+                industries=opts.get("consent_industries") or None,
+                products=opts.get("consent_products") or None),
+            step, f"consent scan \u2014 page 1 of {_n_pages}")
+        if _err:
+            raise _err
         # CONVERSION PAGES TOO.
         #
         # The scan looked at the homepage and said so. But a thank-you page is
@@ -536,12 +602,17 @@ def _consent(a, audit_id, findings, extras, opts, step):
         _convs = list(opts.get("conversion_urls") or [])
         _total = 1 + len(_convs)
         for _i, url in enumerate(_convs, start=2):
-            step("checking", f"consent scan — page {_i} of {_total}")
+            _lbl = f"consent scan \u2014 page {_i} of {_total}"
+            step("checking", _lbl)
             try:
-                one = scan_site(
-                    url, prefer_full=not opts.get("skip_consent_browser"),
-                    site_checks=False,
-                    products=opts.get("consent_products") or None)
+                one, _perr = _scan_with_heartbeat(
+                    lambda u=url: scan_site(
+                        u, prefer_full=not opts.get("skip_consent_browser"),
+                        site_checks=False,
+                        products=opts.get("consent_products") or None),
+                    step, _lbl)
+                if _perr:
+                    raise _perr
                 extra.append(one)
                 pages.append({"url": url, "role": "conversion", "scan": one})
             except Exception as exc:  # noqa: BLE001

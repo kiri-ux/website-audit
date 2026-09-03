@@ -2322,6 +2322,10 @@ def _progress_pct(status, progress, done, target, consent_only=False):
         # The consent walk counts its own pages, and on a consent-only run
         # that walk IS the checking phase — so it gets the whole band rather
         # than the slice it would occupy in a full audit.
+        # "consent scan — page 2 of 4" and "consent scan — page 2 of 4 — 1m 20s"
+        # are the same position; the elapsed time is there to prove the run is
+        # alive, not to move the bar. A bar that advanced on a clock would be
+        # measuring patience rather than progress.
         m = _re.search(r"page (\d+) of (\d+)", progress)
         if m and int(m.group(2)):
             i, n = int(m.group(1)), int(m.group(2))
