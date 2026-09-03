@@ -310,6 +310,49 @@ def main():
     check("the form builds its copy from the scanner's table",
           "ZIP3_RANGES" in _in2.getsource(_ui2.dashboard_html))
 
+    print("\nA NATIONAL TARGET IS EVERY STATE, NOT NO STATE")
+    # "US" and "united states" landed in unparsed - no state, so no state law
+    # checked at all - on a client selling nationwide, which is the one case
+    # where EVERY state's law applies. The most exposed client got the
+    # emptiest legal section, and the pill showed a question mark.
+    from engine.geo import is_national, national_states
+    for _w in ("US", "us", "U.S.", "USA", "united states", "United States",
+               "nationwide", "National", "all 50 states"):
+        check(f"{_w!r} reads as national", is_national(_w))
+    check("a real market does not", not is_national("Knoxville, TN"))
+    check("and neither does a state that happens to be two letters",
+          not is_national("TN") and not is_national("CA"))
+    _n = summarize("US")
+    check("a national market is not 'unparsed'", _n["unparsed"] == [],
+          str(_n["unparsed"]))
+    check("it is flagged as national", _n["national"] is True)
+    check("and expands to every state in the map",
+          _n["checkable"] == national_states(), str(_n["checkable"])[:80])
+    check("which is more than a handful", len(_n["checkable"]) >= 20,
+          str(len(_n["checkable"])))
+    check("states_from_markets agrees",
+          states_from_markets("united states") == national_states())
+    # It is the CHECKABLE set on purpose - a nationwide seller is subject to
+    # Georgia too, and there is no Georgia law in the map to check against.
+    check("a state we have no checks for is not invented",
+          "GA" not in _n["checkable"])
+    _mix = summarize("Knoxville, TN \u00d7 US")
+    check("one national market covers the whole list",
+          _mix["checkable"] == national_states())
+    check("naming states without a national marker still narrows",
+          summarize("Knoxville, TN")["checkable"] == ["TN"]
+          and summarize("Knoxville, TN")["national"] is False)
+    import app.ui as _ui5
+    from types import SimpleNamespace as _N5
+    _dsrc = _ui5.dashboard_html([], _N5(name="V", email="e"), 0,
+                                caps={"consent": True, "aivis": True})
+    check("the browser mirrors the same vocabulary",
+          "geoIsNational" in _dsrc and "'nationwide':1" in _dsrc)
+    check("and lights every checkable chip for it",
+          "national = true" in _dsrc)
+    check("the pill reads US rather than a question mark",
+          "geoIsNational(label) ? 'US'" in _dsrc)
+
     print("\nRUN AGAIN MEANS THE SAME RUN")
     # "'full audit' keeps getting checked when i only did a consent check".
     # The two job boxes sit above the phase list and prefill never touched

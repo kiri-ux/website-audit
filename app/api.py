@@ -1638,6 +1638,28 @@ def ingest_capture(audit_id: str, payload: dict, x_api_key: str | None = Header(
         raise HTTPException(404, "audit not found")
     if not payload.get("pages"):
         raise HTTPException(400, "payload contained no pages")
+    # A CONSENT RUN CANNOT BE ANSWERED BY A CRAWL CAPTURE.
+    #
+    # This endpoint runs the WHOLE audit — 322 checkpoints, judgment,
+    # Search Console, Analytics, backlinks — and it did so without ever
+    # looking at what the run was asked for. So a consent-only run that got
+    # parked for capture came back as a full audit nobody selected, with the
+    # nine consent rows empty, because a crawl capture carries no banner, no
+    # Reject click and no GPC pass. Two wrongs at once: work that was not
+    # asked for, and the one thing that was asked for still missing.
+    #
+    # The right endpoint for that run is /ingest/consent-capture, and the
+    # right answer here is to say so rather than to produce a plausible
+    # report about a different question.
+    _o = json.loads(a.get("options") or "{}")
+    _o = _o if isinstance(_o, dict) else {}
+    if str(_o.get("quick") or "") == "consent":
+        raise HTTPException(
+            409, "This run is a consent scan, not a full audit. A crawl "
+                 "capture cannot answer it — it carries no banner, no Reject "
+                 "click and no GPC load. Use the consent capture instead: "
+                 f"/audits/{audit_id}/consent has the button, and the "
+                 "extension posts it to /ingest/consent-capture.")
 
     db.update_audit(audit_id, status="checking",
                     progress=f"ingesting {len(payload['pages'])} browser-captured pages")

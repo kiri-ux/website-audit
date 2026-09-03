@@ -1796,6 +1796,22 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
       return null;
     }}
 
+    // A NATIONAL TARGET IS EVERY STATE, NOT NO STATE.
+    //
+    // "US" and "united states" resolved to nothing, so a client selling
+    // nationwide got a question-mark pill and an empty state list — the most
+    // exposed client with the emptiest legal section. Mirrors is_national()
+    // in engine/geo.py; the server re-parses on submit and is the authority.
+    var GEO_NATIONAL = {{'us':1,'u.s.':1,'u.s.a.':1,'usa':1,'united states':1,
+      'united states of america':1,'national':1,'nationwide':1,
+      'nation-wide':1,'all 50 states':1,'50 states':1,'all states':1,
+      'country-wide':1,'countrywide':1,'coast to coast':1}};
+
+    function geoIsNational(label) {{
+      var t = String(label || '').trim().replace(/[\s,\.]+$/, '').toLowerCase();
+      return !!GEO_NATIONAL[t];
+    }}
+
     function geoState(label) {{
       var t = (label || '').trim().replace(/,+$/, '');
       if (!t) return null;
@@ -1827,7 +1843,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
       var box = document.getElementById('geopills');
       if (!box) return;
       box.innerHTML = MARKETS.map(function (label, i) {{
-        var st = geoState(label);
+        var st = geoIsNational(label) ? 'US' : geoState(label);
         // "Anderson County, TN" beside a TN tag says TN twice. Strip the
         // state off the label and let the tag carry it — the full string is
         // still what gets submitted and still what the tooltip shows.
@@ -1900,11 +1916,20 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
     }}
 
     function geoSyncStates() {{
-      var codes = [], seen = {{}};
+      var codes = [], seen = {{}}, national = false;
       MARKETS.forEach(function (m) {{
+        if (geoIsNational(m)) {{ national = true; return; }}
         var st = geoState(m);
         if (st && !seen[st]) {{ seen[st] = 1; codes.push(st); }}
       }});
+      if (national) {{
+        // Every state in the map, because a nationwide seller is subject to
+        // all of them. The ones we have no checks for are still reported as
+        // unchecked rather than quietly dropped.
+        Object.keys(GEO_STATES).forEach(function (c) {{
+          if (GEO_STATES[c][1] && !seen[c]) {{ seen[c] = 1; codes.push(c); }}
+        }});
+      }}
       codes.sort();
       var check = codes.filter(function (c) {{ return GEO_STATES[c][1]; }});
       var noLaw = codes.filter(function (c) {{ return !GEO_STATES[c][1]; }});
@@ -2205,6 +2230,46 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
                   tab="running" if running else None)
 
 
+def _ext_version() -> str:
+    """
+    The extension version we are actually shipping, read off the manifest.
+
+    It was typed into the install instructions as a literal and went stale
+    three releases ago — so the one step whose whole job is "check you loaded
+    the right thing" was telling people to look for a version that no longer
+    exists. The zip is built from this same tree, so the manifest is the
+    only honest source.
+    """
+    import json as _j, os as _os
+    p = _os.path.join(_os.path.dirname(_os.path.dirname(
+        _os.path.abspath(__file__))), "extension", "manifest.json")
+    try:
+        with open(p) as fh:
+            return str(_j.load(fh).get("version") or "")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _conly_run(a) -> bool:
+    """Was this run asked for as a consent scan only?"""
+    import json as _j
+    try:
+        o = _j.loads(a.get("options") or "{}")
+    except Exception:  # noqa: BLE001
+        return False
+    return isinstance(o, dict) and str(o.get("quick") or "") == "consent"
+
+
+def _conv_urls_for(a) -> list:
+    """The client's conversion URLs, for a capture that has to visit them."""
+    import json as _j
+    try:
+        o = _j.loads(a.get("options") or "{}")
+    except Exception:  # noqa: BLE001
+        return []
+    return list((o or {}).get("conversion_urls") or []) if isinstance(o, dict) else []
+
+
 def audit_html(a):
     """Live status page shown while an audit is still running."""
     import json as _json
@@ -2246,6 +2311,31 @@ def audit_html(a):
                  f"<button class='btn' type='submit'>Run it again from the "
                  f"stored pages</button></form></div>")
         refresh = None
+    elif cur == "needs_capture" and _conly_run(a):
+        # A CONSENT RUN THAT GOT BLOCKED NEEDS THE CONSENT CAPTURE.
+        #
+        # This page offered the CRAWL capture to every blocked run, including
+        # the consent-only ones — and that button runs the wrong job: it posts
+        # pages to an endpoint that scores 322 checkpoints, so a consent scan
+        # came back as a full audit nobody selected with the nine consent rows
+        # still empty. Same screen, same handoff, the right button on it.
+        from .ui_consent import _capture_panel as _cp, _PAGE_CSS as _pcss
+        inner = (
+            _pcss
+            + f"<div class='card' style='border-left:3px solid var(--serious)'>"
+              f"<b style='color:var(--serious)'>Server crawl blocked</b>"
+              f"<p class='sub'>{e(a.get('crawl_note') or a.get('progress'))}</p>"
+              f"<p class='sub'>Nothing has been reported as a defect — a "
+              f"blocked crawl is a handoff, not a result. This run asked for "
+              f"the consent scan only, so the capture below is the consent "
+              f"one: four loads in your own Chrome, and the nine consent "
+              f"rows come back answered.</p></div>"
+            + _cp(a["id"], a["target_url"],
+                  "The server's browser was turned away before it could load "
+                  "the banner.",
+                  heading="Capture it from your own browser",
+                  extra_urls=_conv_urls_for(a)))
+        refresh = None
     elif cur == "needs_capture":
         # One button, no copying. The extension's content script finds
         # #vici-capture, reads the id and target off it, and wires the button
@@ -2279,7 +2369,7 @@ def audit_html(a):
             f"copy</button> — Chrome will not let a page link there.</li>"
             f"<li>Turn on <b>Developer mode</b>, top right.</li>"
             f"<li><b>Load unpacked</b>, and choose the folder you unzipped. "
-            f"You should see <b>Site Scanner 1.5.0</b>.</li>"
+            f"You should see <b>Site Scanner {e(_ext_version())}</b>.</li>"
             f"<li>Reload this page — the Start capture button appears once "
             f"the extension is detected.</li></ol>"
             f"<p class='sub' style='margin-top:10px'>"

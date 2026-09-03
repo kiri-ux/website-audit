@@ -1649,6 +1649,38 @@ def main():
           "comprehensive law in our map for ga" in _h5.lower(),
           _h5[_h5.index("Checked against"):][:200])
 
+    print("\nA CRAWL CAPTURE CANNOT ANSWER A CONSENT RUN")
+    # A consent-only run that got parked for capture offered the CRAWL
+    # capture button, whose endpoint scores 322 checkpoints — so it came back
+    # as a full audit nobody selected, with the nine consent rows still empty,
+    # because a crawl capture carries no banner, no Reject click and no GPC
+    # pass. Work that was not asked for, and the thing that was asked for
+    # still missing.
+    from app import ui as _ui6
+    import json as _js6
+    _blocked = {"id": "cap1", "client_name": "C",
+                "target_url": "https://x.test", "status": "needs_capture",
+                "progress": "blocked", "crawl_note": "bot protection",
+                "heartbeat_at": None,
+                "options": _js6.dumps({"quick": "consent", "max_pages": 1,
+                                       "conversion_urls": ["https://x.test/c"]})}
+    _bh = _ui6.audit_html(_blocked)
+    check("a blocked consent run is offered the consent capture",
+          "vici-consent" in _bh)
+    check("and NOT the crawl capture", "vici-capture" not in _bh)
+    check("the conversion URLs travel with it", "https://x.test/c" in _bh)
+    _bh2 = _ui6.audit_html({**_blocked,
+                            "options": _js6.dumps({"max_pages": 150})})
+    check("a blocked full audit still gets the crawl capture",
+          "vici-capture" in _bh2 and "vici-consent" not in _bh2)
+    # And the endpoint refuses rather than producing a plausible report about
+    # a different question.
+    _isrc = _in2.getsource(__import__("app.api", fromlist=["x"]).ingest_capture)
+    check("the crawl-capture endpoint refuses a consent run",
+          'quick") or "") == "consent"' in _isrc and "409" in _isrc)
+    check("and names the endpoint that can answer it",
+          "ingest/consent-capture" in _isrc)
+
     print("\nHONORING THE SIGNAL IS AN ALTERNATIVE TO THE LINK")
     # 1798.135(b)(1): a business "shall not be required to comply with
     # subdivision (a)" - the links - if consumers can opt out through an

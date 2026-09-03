@@ -174,6 +174,46 @@ def split_markets(text: str) -> list:
     return out
 
 
+# A NATIONAL TARGET IS EVERY STATE, NOT NO STATE.
+#
+# "US" and "united states" landed in `unparsed` — no state, so no state law
+# checked at all — on a client selling nationwide, which is the one case where
+# EVERY state's law is in play. The most exposed client got the emptiest legal
+# section, and the pill showed a question mark next to the answer.
+#
+# These expand to every state in the scanner's map rather than to a special
+# case downstream, so nothing else has to know about it.
+_NATIONAL = {
+    "us", "u.s.", "u.s.a.", "usa", "united states", "united states of america",
+    "national", "nationwide", "nation-wide", "all 50 states", "50 states",
+    "all states", "country-wide", "countrywide", "coast to coast",
+}
+
+
+def is_national(market: str) -> bool:
+    """
+    Does this market mean 'the whole country' rather than one place?
+
+    Periods are dropped rather than stripped from the ends, because "U.S." is
+    how half of people write it and trailing-strip alone leaves "u.s".
+    """
+    t = " ".join((market or "").split()).strip(" ,.").lower().replace(".", "")
+    return t in {k.replace(".", "") for k in _NATIONAL}
+
+
+def national_states() -> list:
+    """
+    Every state we can actually check, for a nationwide target.
+
+    Deliberately the CHECKABLE set and not all fifty: a client selling
+    nationwide is subject to Georgia's law too, and there is no Georgia law in
+    our map to check against. Listing thirty states with nothing to say about
+    them would be noise; `summarize` still reports the gap under `unchecked`.
+    """
+    from .consent.state_checks import STATE_CODES
+    return sorted(STATE_CODES)
+
+
 def parse_markets(text: str) -> list:
     """
     [{label, state, state_name, ok}] — one entry per market, in typed order.
@@ -185,16 +225,23 @@ def parse_markets(text: str) -> list:
     """
     rows = []
     for label in split_markets(text):
+        if is_national(label):
+            rows.append({"label": label, "state": None, "state_name": "",
+                         "national": True, "ok": True})
+            continue
         st = state_of(label)
         rows.append({"label": label, "state": st,
                      "state_name": STATES.get(st or "", ""),
-                     "ok": bool(st)})
+                     "national": False, "ok": bool(st)})
     return rows
 
 
 def states_from_markets(text: str) -> list:
     """Sorted, de-duplicated state codes the markets name."""
-    return sorted({r["state"] for r in parse_markets(text) if r["state"]})
+    rows = parse_markets(text)
+    if any(r.get("national") for r in rows):
+        return national_states()
+    return sorted({r["state"] for r in rows if r["state"]})
 
 
 def checkable(codes) -> tuple:
@@ -218,8 +265,10 @@ def checkable(codes) -> tuple:
 def summarize(text: str) -> dict:
     """Everything the form needs to describe a markets string in one call."""
     rows = parse_markets(text)
-    codes = sorted({r["state"] for r in rows if r["state"]})
+    nat = any(r.get("national") for r in rows)
+    codes = (national_states() if nat
+             else sorted({r["state"] for r in rows if r["state"]}))
     have, lack = checkable(codes)
     return {"markets": rows, "states": codes, "checkable": have,
-            "unchecked": lack,
+            "unchecked": lack, "national": nat,
             "unparsed": [r["label"] for r in rows if not r["ok"]]}
