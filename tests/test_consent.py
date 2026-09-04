@@ -1649,6 +1649,48 @@ def main():
           "comprehensive law in our map for ga" in _h5.lower(),
           _h5[_h5.index("Checked against"):][:200])
 
+    print("\nA CAPTURE THAT ANSWERS THE RUN HAS TO END THE RUN")
+    # The ingest wrote the rows, the detail and the score and left `status`
+    # where it found it — fine on a finished audit being re-scanned, an
+    # infinite loop on a blocked one. The panel was still there after a
+    # successful upload, the page reloaded itself as promised, the extension
+    # saw the panel and started over: "done — 8 of 9 rows filled", then
+    # eleven seconds later "page 1 of 1" again.
+    _isrc2 = _in2.getsource(
+        __import__("app.api", fromlist=["x"]).ingest_consent_capture)
+    check("a run that was not already finished is completed",
+          'a.get("status") != "ready"' in _isrc2
+          and 'status="ready"' in _isrc2)
+    check("with the score the capture produced",
+          'overall_score=sc["overall"]["score"]' in _isrc2)
+    check("and marked as captured in a browser",
+          'capture_method="browser_extension"' in _isrc2)
+    check("a finished audit being re-scanned is left alone",
+          _isrc2.index('a.get("status") != "ready"')
+          < _isrc2.index('status="ready"'))
+
+    print("\nAN INDUSTRY IS MORE THAN ONE THING")
+    # A furniture retailer that also does financing is under the furniture
+    # rules AND the GLBA ones, and a single-value field made somebody choose
+    # which half of the law to check. The server has always split this on
+    # commas and derive_contexts() has always taken a list — only the form
+    # was narrower than the thing behind it.
+    from app import ui as _ui7
+    from types import SimpleNamespace as _N7
+    _d7 = _ui7.dashboard_html([], _N7(name="V", email="e"), 0,
+                              caps={"consent": True, "aivis": True})
+    check("industries are pills, like markets and conversion URLs",
+          "id='indbox'" in _d7 and "id='indpills'" in _d7)
+    check("submitting through a hidden canonical field",
+          "id='consent_industries'" in _d7 and "type='hidden'" in _d7)
+    check("choosing from the dropdown commits, not just typing and Enter",
+          "ind.addEventListener('change'" in _d7)
+    check("and Run again rebuilds them rather than assigning a string",
+          "INDS = [];" in _d7 and "indAdd(st.consent_industries)" in _d7)
+    from engine.consent.industries import derive_contexts as _dc
+    check("the scanner already took a list, so nothing downstream changes",
+          isinstance(_dc(["Furniture", "Financial Services - Banking"]), set))
+
     print("\nFOUR BROWSER LOADS ARE NOT ONE STEP")
     # A consent scan loads each page four times — untouched, after Accept,
     # after Reject, and with GPC on. The phase wrote one step() before it

@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-122"
-BUILD_NOTES = ("The consent phase stops looking dead while it is working. A scan loads each page four times - untouched, after Accept, after Reject, and with GPC on - and the phase wrote one step before it started and the next after it finished, so the heartbeat sat still for minutes and past ten the stall detector declared a healthy run dead. The scan now runs on a thread while the heartbeat ticks every eight seconds with the elapsed time, which also makes Stop work during a page rather than only between pages. A page that overruns a seven-minute budget is abandoned and reported rather than holding the run")
+BUILD = "2026.08.20-123"
+BUILD_NOTES = ("The consent capture could not finish the run it was answering. The ingest wrote the rows, the detail and the score and left the status where it found it - fine on a finished audit being re-scanned, an infinite loop on a blocked one: the panel was still there after a successful upload, the page reloaded itself as promised, the extension saw the panel and started again. A capture that answers the question is now the result of the run. Industry is multi-select, because a furniture retailer that also does financing is under both sets of rules and a single-value field made somebody choose which half of the law to check")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

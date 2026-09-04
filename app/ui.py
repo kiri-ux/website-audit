@@ -1322,10 +1322,24 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
           <label>Industry<i class='tip' tabindex='0' data-tip="Also drives the health, children&#39;s and financial rules — FTC pixel enforcement, COPPA, GLBA.">i</i></label>
           <!-- One control, not a filter beside a select. A datalist IS the
                filter: type to narrow, or open it and scroll. Two boxes doing
-               one job was the thing that needed removing. -->
-          <input name='consent_industries' form='auditform' list='indlist'
-                 placeholder='Type to search 346 industries…'>
+               one job was the thing that needed removing.
+
+               MORE THAN ONE, because businesses are more than one thing. A
+               furniture retailer that also does financing is under the
+               furniture rules AND the GLBA ones, and a single-value field
+               made somebody choose which half of the law to check. The
+               server has always accepted a comma-separated list here and
+               derive_contexts() has always taken a list; only the form was
+               narrower than the thing behind it. -->
+          <div class='geobox' id='indbox'>
+            <span id='indpills'></span>
+            <input id='indinput' class='geoin' list='indlist'
+                   autocomplete='off'
+                   placeholder='Type to search 346 industries…'>
+          </div>
           <datalist id='indlist'>{INDOPTS}</datalist>
+          <input type='hidden' name='consent_industries' id='consent_industries'
+                 form='auditform'>
 
         </div>
         <div><label>Partner name</label>
@@ -2011,6 +2025,34 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
     }}
 
     // ---- conversion URLs, same pill pattern as the markets ---------------
+    // Industries, as pills. Same shape as the markets and conversion URLs
+    // above: an array, a render, a hidden field that carries the canonical
+    // comma-joined string the server already knows how to split.
+    var INDS = [];
+    function indRender() {{
+      var box = document.getElementById('indpills');
+      if (!box) return;
+      box.innerHTML = INDS.map(function (v, i) {{
+        return '<span class="gp" title="' + geoEsc(v) + '"><b>'
+             + geoEsc(v) + '</b><button type="button" aria-label="Remove '
+             + geoEsc(v) + '" onclick="indDrop(' + i + ')">&times;</button>'
+             + '</span>';
+      }}).join('');
+      document.getElementById('consent_industries').value = INDS.join(', ');
+    }}
+    function indDrop(i) {{ INDS.splice(i, 1); indRender(); }}
+    function indAdd(raw) {{
+      String(raw || '').split(',').forEach(function (chunk) {{
+        var v = chunk.trim();
+        if (!v) return;
+        var dupe = INDS.some(function (x) {{
+          return x.toLowerCase() === v.toLowerCase();
+        }});
+        if (!dupe) INDS.push(v);
+      }});
+      indRender();
+    }}
+
     var CONVS = [];
     function cvRender() {{
       var box = document.getElementById('cvpills');
@@ -2096,6 +2138,29 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
           ev.preventDefault(); geoAdd(t); input.value = '';
         }}
       }});
+      var ind = document.getElementById('indinput');
+      if (ind) {{
+        // A datalist pick fires `change`, not Enter — so choosing from the
+        // dropdown with the mouse has to commit too, or the pill only
+        // appears for people who type the whole name and press Enter.
+        ind.addEventListener('change', function () {{
+          if (ind.value.trim()) {{ indAdd(ind.value); ind.value = ''; }}
+        }});
+        ind.addEventListener('keydown', function (ev) {{
+          if (ev.key === 'Enter' || ev.key === ',') {{
+            ev.preventDefault(); indAdd(ind.value); ind.value = '';
+          }} else if (ev.key === 'Backspace' && !ind.value && INDS.length) {{
+            indDrop(INDS.length - 1);
+          }}
+        }});
+        ind.addEventListener('blur', function () {{
+          if (ind.value.trim()) {{ indAdd(ind.value); ind.value = ''; }}
+        }});
+      }}
+      var ib = document.getElementById('indbox');
+      if (ib) ib.addEventListener('click', function (ev) {{
+        if (ev.target === ib && ind) ind.focus();
+      }});
       var cv = document.getElementById('cvinput');
       if (cv) {{
         cv.addEventListener('keydown', function (ev) {{
@@ -2139,7 +2204,7 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
       var f = document.getElementById('auditform');
       ['target_url', 'client_name', 'vertical', 'max_pages',
        'primary_conversion', 'partner',
-       'consent_industries', 'implementation'].forEach(function (k) {{
+       'implementation'].forEach(function (k) {{
         var el = f.querySelector('[name=' + k + ']')
               || document.querySelector('[name=' + k + ']');
         if (el && st[k] !== undefined && st[k] !== '') el.value = st[k];
@@ -2161,6 +2226,8 @@ def dashboard_html(audits, principal, queue_depth, caps=None):
       }});
       var ph = document.getElementById('consent_products');
       if (ph) ph.value = want.join(',');
+      INDS = [];
+      if (st.consent_industries) indAdd(st.consent_industries);
       CONVS = [];
       if (st.conversion_urls) cvAdd(st.conversion_urls);
       if (st.consent_states) {{

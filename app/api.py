@@ -1612,6 +1612,29 @@ def ingest_consent_capture(audit_id: str, payload: dict,
     sc = engine_scoring.score(findings, cat, a.get("vertical"))
     db.save_scores(audit_id, sc)
 
+    # THE RUN THIS CAPTURE WAS ANSWERING HAS TO END.
+    #
+    # This wrote the rows, the detail and the score and left `status` exactly
+    # where it found it — which is fine on a finished audit being re-scanned,
+    # and an infinite loop on a blocked one. A consent run parked at
+    # `needs_capture` still showed the capture panel after a successful
+    # upload, the page reloaded itself as promised, the extension saw the
+    # panel and started over. The log read "done — 8 of 9 rows filled" and
+    # then, eleven seconds later, "page 1 of 1" again.
+    #
+    # A capture that answered the question IS the result of the run. Anything
+    # else is a job with no way to finish.
+    if a.get("status") != "ready":
+        db.update_audit(
+            audit_id, status="ready",
+            progress=f"complete — consent captured in your browser "
+                     f"({len(_scans)} page{'s' if len(_scans) != 1 else ''})",
+            overall_score=sc["overall"]["score"],
+            overall_rating=sc["overall"]["rating"],
+            coverage=f"{len(findings)}/{len(cat)}",
+            capture_method="browser_extension",
+            crawl_blocked=1, completed_at=time.time())
+
     answered = sum(1 for f in rows.values() if f.get("status") != "Need Access")
     print(f"[api] {audit_id} consent capture ingested — {answered}/{len(rows)} "
           f"rows answered from the browser", flush=True)
