@@ -1304,9 +1304,24 @@ def products_and_containers(result, html, raw_low, pre_urls, post_urls,
     # Read from the page's own source, not the rendered DOM — see the note on
     # gtag_outside_container. Both scan paths reach this line, so the browser
     # scan and the extension capture cannot disagree about it.
-    _out, _in = gtag_outside_container(raw_low, _cids, corpora)
-    _gtm["gtag_outside"] = _out
-    _gtm["gtag_inside"] = _in
+    # A TRUNCATED READ CANNOT REPORT "NONE".
+    #
+    # The extension sends outerHTML capped at 400 KB. A snippet past that cut
+    # is a snippet we did not look at, and reporting it as "none found" would
+    # be a clean bill of health issued from a page we only read part of. The
+    # cap is the extension's, so this only applies to that path; the browser
+    # scan reads the whole response.
+    _cap = 400_000
+    _truncated = (result.get("source") == "extension"
+                  and (result.get("html_len") or 0) >= _cap - 2000)
+    _gtm["gtag_scan_truncated"] = bool(_truncated)
+    if _truncated:
+        _gtm["gtag_outside"] = []
+        _gtm["gtag_inside"] = []
+    else:
+        _out, _in = gtag_outside_container(raw_low, _cids, corpora)
+        _gtm["gtag_outside"] = _out
+        _gtm["gtag_inside"] = _in
 
     # THE PUBLISHED CONFIGURATION, WHERE WE HAVE THE KEYS.
     #

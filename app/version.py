@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.08-124"
-BUILD_NOTES = ("The consent scan now reports a Tag Manager container on the page together with a hardcoded gtag('config') call in the site's own source - the combination Google is retiring support for. It reads the container ids and the page source the scan already has, on both the browser and the extension paths, and an id the container itself configures is reported separately rather than as the failure. A container whose Tag Manager check errored reads as owner unknown with the reason attached, instead of asserting the client owns it from a failure on our side")
+BUILD = "2026.09.08-125"
+BUILD_NOTES = ("The gtag('config') check cannot report none from a page it only half read. The extension sends outerHTML capped at 400 KB, and a capture that hits the cap now reads as not checked with the reason on the row, rather than as a clean result. The browser path has no cap and is unaffected. The definition also states the scope: this reads the page's own source, so a config call loaded from an external script file, or living on a template the scan did not visit, is not covered")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

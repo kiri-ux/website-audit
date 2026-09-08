@@ -1706,6 +1706,32 @@ def main():
     check("so the extension capture gets it as well as the browser scan",
           "products_and_containers(" in _in2.getsource(_fc3))
 
+    print("\nA TRUNCATED READ CANNOT REPORT \u201cNONE\u201d")
+    # The extension sends outerHTML capped at 400 KB. A snippet past that cut
+    # is a snippet nobody looked at, and "none found" from a page we only
+    # half read is a clean bill of health nobody earned.
+    from engine.consent.scanner import products_and_containers as _pac
+    def _run(src, n):
+        _r = {"gtm": {"found": True, "container_ids": ["GTM-K1"]},
+              "source": src, "html_len": n, "products": [],
+              "pre_consent": [], "post_consent": []}
+        _pac(_r, "<script>gtag('config','G-ABC12345')</script>",
+             "<script>gtag('config','g-abc12345')</script>", [], [])
+        return _r["gtm"]
+    _t1 = _run("extension", 399_000)
+    check("a capture at the size cap is marked not-checked",
+          _t1["gtag_scan_truncated"] is True)
+    check("and reports nothing rather than a false clean",
+          _t1["gtag_outside"] == [])
+    _t2 = _run("extension", 5_000)
+    check("a capture well under the cap is read normally",
+          _t2["gtag_scan_truncated"] is False
+          and _t2["gtag_outside"] == ["G-ABC12345"])
+    _t3 = _run("browser", 399_000)
+    check("the browser path has no such cap, so size never blocks it",
+          _t3["gtag_scan_truncated"] is False
+          and _t3["gtag_outside"] == ["G-ABC12345"])
+
     print("\nAND THE CONSENT PAGE SAYS SO")
     from app.ui_consent import consent_html as _ch_gt
     _gt = {"ok": True, "mode": "full", "cmps": [], "banner_visible": False,
@@ -1734,6 +1760,17 @@ def main():
                  {"scan": _clean_gt, "pages": [], "requested": {}})
     check("a clean container gets no work-order row",
           "will stop firing" not in _hc)
+    _trunc_gt = {**_gt, "state_checks": [],
+                 "gtm": {"found": True, "container_ids": ["GTM-K1"],
+                         "gtag_outside": [], "gtag_inside": [],
+                         "gtag_scan_truncated": True}}
+    _ht = _ch_gt({"id": "g3", "target_url": "https://x.test",
+                  "client_name": "T"},
+                 {"scan": _trunc_gt, "pages": [], "requested": {}})
+    check("a truncated read shows as not checked, not as none",
+          "not checked" in _ht and "400 KB" in _ht)
+    check("and still raises nothing in the work order",
+          "will stop firing" not in _ht)
     check("but the container row still says it was checked",
           "gtag('config') outside the container" in _hc)
 

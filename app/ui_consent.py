@@ -87,7 +87,9 @@ _DEFS = {
                     "site's own pages while a Tag Manager container is also "
                     "installed. Google is ending support for that "
                     "combination; the tag stops collecting once the change "
-                    "reaches the container.",
+                    "reaches the container. Read from this page's source, so "
+                    "a call loaded from an external script file, or living "
+                    "on a template this scan did not visit, is not covered.",
     "gtm": "Google Tag Manager. One container script on the page that loads "
            "every other tag, so gating the container is how you gate them "
            "all at once.",
@@ -1291,12 +1293,16 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
             ", ".join(f"<code>{e(i)}</code>" for i in ids) + _readbit or "—"])
     if gtm.get("found"):
         _go = list(gtm.get("gtag_outside") or [])
+        _gtrunc = bool(gtm.get("gtag_scan_truncated"))
         cfg_rows.append([
             "gtag('config') outside the container" + _t("gtag_outside"),
-            _chip("found", "bad") if _go else _chip("none", "ok"),
-            (", ".join(f"<code>{e(i)}</code>" for i in _go)
-             + " &mdash; Google is ending support for this combination"
-             if _go else "&mdash;")])
+            (_chip("not checked", "hold") if _gtrunc else
+             (_chip("found", "bad") if _go else _chip("none", "ok"))),
+            ("The captured page source hit the extension's 400 KB limit, so "
+             "the whole page was not read." if _gtrunc else
+             (", ".join(f"<code>{e(i)}</code>" for i in _go)
+              + " &mdash; Google is ending support for this combination"
+              if _go else "&mdash;"))])
     cfg_rows.append([
         "Consent Mode default",
         _chip("set", "ok") if cm is True else
