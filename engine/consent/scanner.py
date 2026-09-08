@@ -397,6 +397,60 @@ def _container_corpora(container_ids, limit=3):
     return out
 
 
+# ---------------------------------------------------------------------------
+# A CONTAINER ON THE PAGE PLUS A HARDCODED gtag('config') OUTSIDE IT.
+#
+# Google is retiring gtm.js's support for gtag('config') commands that live
+# outside the container (support.google.com/tagmanager/answer/17231523;
+# phased per account, not one universal date). GTM alone is fine. gtag.js
+# alone with no container is fine. The break is the COMBINATION: a container
+# on the page AND a hardcoded gtag('config','G-…'/'AW-…'/'DC-…') in the
+# site's own source. Once the change reaches that container, GTM stops
+# recognizing the config call and the tag it configures goes dark.
+#
+# The usual cause: the client had their own GA4 installed directly, a Vici
+# container tag went on top of it, and nobody removed the original snippet.
+#
+# WHY IT LIVES ON THE CONSENT PATH.
+#
+# There is a static-crawl version of this (ANA-13 in engine/checks). It only
+# runs during a full audit, and the run that actually looks at somebody's tag
+# setup is the consent scan. Both halves of the pattern are already in hand
+# here — the container ids the scanner found, and the page source it read —
+# so this reads signals rather than adding a scan.
+_GTAG_CONFIG_RE = re.compile(
+    r"gtag\(\s*[\"']config[\"']\s*,\s*[\"'](?P<id>(?:G|AW|DC)-[A-Za-z0-9]+)[\"']",
+    re.I)
+
+
+def gtag_outside_container(raw_low, container_ids, corpora):
+    """
+    ({ids outside the container}, {ids the container itself configures}).
+
+    `raw_low` is the page's own source, which is the whole point: anything
+    gtm.js injects at runtime is not in it, so a literal config call found
+    here belongs to the site rather than to the container.
+
+    An id the published container JS also carries is NOT reported. That one
+    is genuinely configured inside the container, and the hardcoded copy is
+    then a duplicate rather than the retiring pattern — a different
+    conversation, and not one to open on evidence this thin.
+
+    Returns empty when no container is on the page. gtag.js on its own is
+    the safe configuration, and reporting it would be reporting the opposite
+    of the finding.
+    """
+    if not container_ids:
+        return [], []
+    found = sorted({m.group("id").upper()
+                    for m in _GTAG_CONFIG_RE.finditer(raw_low or "")})
+    if not found:
+        return [], []
+    inside = sorted({i for i in found
+                     if any(i.lower() in js for js in (corpora or {}).values())})
+    return [i for i in found if i not in inside], inside
+
+
 def _containers_with(hints, corpora):
     """Container IDs whose published JS carries any of these fingerprints.
 
@@ -1246,6 +1300,13 @@ def products_and_containers(result, html, raw_low, pre_urls, post_urls,
     corpora = _container_corpora(_cids)
     _gtm["containers_read"] = sorted(corpora)
     _gtm["containers_unread"] = [c for c in _cids[:3] if c not in corpora]
+
+    # Read from the page's own source, not the rendered DOM — see the note on
+    # gtag_outside_container. Both scan paths reach this line, so the browser
+    # scan and the extension capture cannot disagree about it.
+    _out, _in = gtag_outside_container(raw_low, _cids, corpora)
+    _gtm["gtag_outside"] = _out
+    _gtm["gtag_inside"] = _in
 
     # THE PUBLISHED CONFIGURATION, WHERE WE HAVE THE KEYS.
     #

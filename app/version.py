@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.20-123"
-BUILD_NOTES = ("The consent capture could not finish the run it was answering. The ingest wrote the rows, the detail and the score and left the status where it found it - fine on a finished audit being re-scanned, an infinite loop on a blocked one: the panel was still there after a successful upload, the page reloaded itself as promised, the extension saw the panel and started again. A capture that answers the question is now the result of the run. Industry is multi-select, because a furniture retailer that also does financing is under both sets of rules and a single-value field made somebody choose which half of the law to check")
+BUILD = "2026.09.08-124"
+BUILD_NOTES = ("The consent scan now reports a Tag Manager container on the page together with a hardcoded gtag('config') call in the site's own source - the combination Google is retiring support for. It reads the container ids and the page source the scan already has, on both the browser and the extension paths, and an id the container itself configures is reported separately rather than as the failure. A container whose Tag Manager check errored reads as owner unknown with the reason attached, instead of asserting the client owns it from a failure on our side")
 
 # Not printed on the dashboard any more — it was three lines of chrome above
 # the first number anyone came to read. It stays here, and in /healthz, where

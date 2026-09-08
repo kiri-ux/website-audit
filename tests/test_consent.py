@@ -59,6 +59,12 @@ FULL_CLEAN = {
 
 
 def main():
+    # Imported once at the top rather than inside a section, because a name
+    # bound inside one branch is a name the sections after it cannot see —
+    # which is how a guarded import turned five later blocks into NameErrors.
+    from app.ui_consent import consent_html
+    from engine.consent.scanner import state_checks_for
+
     from engine.consent.checks import findings_from_scan, CONS_IDS
 
     print("A CLEAN FULL SCAN ANSWERS ALL NINE")
@@ -473,21 +479,37 @@ def main():
           "Vici owned" in _ap and "Client owned" in _ap2)
 
     print("\nTHE TAG MANAGER API IS OPTIONAL AND NEVER SILENT")
-    from engine.consent import gtm_api as _gapi
+    # A MISSING MODULE IS A FAILING TEST, NOT A CRASHING SUITE.
+    #
+    # This imported gtm_api at module scope, so a deployment that shipped
+    # without the file aborted the whole run here — every check below it went
+    # unreported, and the one fact worth knowing (the file is not there) was
+    # buried in a traceback. It is a named failure now and the sweep carries
+    # on, which is the same rule the scanner follows about a phase that could
+    # not run.
     import os as _os
-    _saved = (_os.environ.pop("GTM_TOKENS", None),
-              _os.environ.pop("GTM_OAUTH_CLIENT", None))
     try:
-        check("with no credentials it reports disabled, never an error",
-              _gapi.audit("GTM-ABC123")["status"] == "disabled")
-        check("and accessible_containers is empty rather than raising",
-              _gapi.accessible_containers() == [])
-    finally:
-        for _k, _v in zip(("GTM_TOKENS", "GTM_OAUTH_CLIENT"), _saved):
-            if _v is not None:
-                _os.environ[_k] = _v
-    check("both variables are required, not either",
-          not _gapi.enabled())
+        from engine.consent import gtm_api as _gapi
+    except Exception as _gexc:  # noqa: BLE001
+        _gapi = None
+        check("engine/consent/gtm_api.py is present in this tree", False,
+              f"{type(_gexc).__name__}: {_gexc}")
+    if _gapi is None:
+        print("  SKIP  its behavior checks need the module")
+    else:
+        _saved = (_os.environ.pop("GTM_TOKENS", None),
+                  _os.environ.pop("GTM_OAUTH_CLIENT", None))
+        try:
+            check("with no credentials it reports disabled, never an error",
+                  _gapi.audit("GTM-ABC123")["status"] == "disabled")
+            check("and accessible_containers is empty rather than raising",
+                  _gapi.accessible_containers() == [])
+        finally:
+            for _k, _v in zip(("GTM_TOKENS", "GTM_OAUTH_CLIENT"), _saved):
+                if _v is not None:
+                    _os.environ[_k] = _v
+        check("both variables are required, not either",
+              not _gapi.enabled())
 
     # OWNERSHIP IS ESTABLISHED, NOT DECLARED. If one of our logins can read
     # the container, we own it — a self-declared form field can be wrong, an
@@ -1648,6 +1670,107 @@ def main():
     check("a state we have no checks for is named, not dropped",
           "comprehensive law in our map for ga" in _h5.lower(),
           _h5[_h5.index("Checked against"):][:200])
+
+    print("\nA CONTAINER PLUS A HARDCODED gtag('config') OUTSIDE IT")
+    import inspect as _in2
+    # Google is retiring gtm.js support for config calls that live outside
+    # the container. GTM alone is fine, gtag.js alone is fine — the break is
+    # the combination, and the static-crawl version of this check (ANA-13)
+    # only runs on a full audit, which is not the run that looks at somebody's
+    # tag setup.
+    from engine.consent.scanner import gtag_outside_container as _goc
+    _page = ("<script>gtag('config', 'G-ABC12345');</script>"
+             "<script src='//www.googletagmanager.com/gtm.js?id=GTM-K1'>"
+             "</script>").lower()
+    check("a container plus a hardcoded config is reported",
+          _goc(_page, ["GTM-K1"], {}) == (["G-ABC12345"], []))
+    check("gtag.js with NO container is not — that is the safe setup",
+          _goc(_page, [], {}) == ([], []))
+    check("a container with no hardcoded config is clean",
+          _goc("<html>nothing here</html>", ["GTM-K1"], {}) == ([], []))
+    check("AW- and DC- ids count too, not just G-",
+          _goc("gtag('config','AW-999'); gtag(\"config\",\"DC-77\")".lower(),
+               ["GTM-K1"], {})[0] == ["AW-999", "DC-77"])
+    # An id the container itself configures is a duplicate, not the retiring
+    # pattern — reported separately and never as the failure.
+    _out, _in = _goc(_page, ["GTM-K1"], {"GTM-K1": "…g-abc12345…"})
+    check("an id the container already configures is not the failure",
+          _out == [] and _in == ["G-ABC12345"])
+    check("a missing page source is not a finding",
+          _goc(None, ["GTM-K1"], {}) == ([], []))
+    # ONE CLASSIFIER, TWO SOURCES: it sits in the function both paths call.
+    from engine.consent import scanner as _sc3, from_capture as _fc3
+    check("it is computed inside products_and_containers",
+          "gtag_outside_container(raw_low" in
+          _in2.getsource(_sc3.products_and_containers))
+    check("so the extension capture gets it as well as the browser scan",
+          "products_and_containers(" in _in2.getsource(_fc3))
+
+    print("\nAND THE CONSENT PAGE SAYS SO")
+    from app.ui_consent import consent_html as _ch_gt
+    _gt = {"ok": True, "mode": "full", "cmps": [], "banner_visible": False,
+           "consent_mode_default": True, "consent_defaults": {},
+           "pre_consent": [], "post_consent": [], "post_reject": [],
+           "reject_tested": True, "gpc_tested": True, "gpc_fires": [],
+           "optout_link": "your privacy choices", "sensitive_link": None,
+           "notice_at_collection": None, "privacy_policy_link": "privacy policy",
+           "state_checks": [], "products": [], "pages": [],
+           "gtm": {"found": True, "container_ids": ["GTM-K1"],
+                   "gtag_outside": ["G-ABC12345"], "gtag_inside": []}}
+    _hg = _ch_gt({"id": "g1", "target_url": "https://x.test",
+                  "client_name": "T"},
+                 {"scan": _gt, "pages": [], "requested": {}})
+    check("it is a row in the work order, not buried in a table",
+          "G-ABC12345 will stop firing" in _hg)
+    check("with a fix that names the actual edit",
+          "gtag('config'" in _hg and "page template or CMS" in _hg)
+    check("and a row in the container section for whoever checks the setup",
+          "gtag('config') outside the container" in _hg)
+    _clean_gt = {**_gt, "state_checks": [],
+                 "gtm": {"found": True, "container_ids": ["GTM-K1"],
+                         "gtag_outside": [], "gtag_inside": []}}
+    _hc = _ch_gt({"id": "g2", "target_url": "https://x.test",
+                  "client_name": "T"},
+                 {"scan": _clean_gt, "pages": [], "requested": {}})
+    check("a clean container gets no work-order row",
+          "will stop firing" not in _hc)
+    check("but the container row still says it was checked",
+          "gtag('config') outside the container" in _hc)
+
+    print("\nA CHECK THAT ERRORED IS NOT A CLIENT-OWNED CONTAINER")
+    # Every Tag Manager audit coming back "error" rendered as "Client owned —
+    # no authorized Vici login can see this container": a statement about the
+    # CLIENT made from a failure on our side. Same rule as everywhere else
+    # here — a Need Access describes the run, never the site.
+    from app.ui_consent import consent_html as _ch_own
+
+    def _own_page(_aud):
+        _s = {"ok": True, "mode": "full", "cmps": [], "banner_visible": False,
+              "consent_mode_default": True, "consent_defaults": {},
+              "pre_consent": [], "post_consent": [], "post_reject": [],
+              "reject_tested": True, "gpc_tested": True, "gpc_fires": [],
+              "optout_link": "your privacy choices", "sensitive_link": None,
+              "notice_at_collection": None,
+              "privacy_policy_link": "privacy policy", "state_checks": [],
+              "products": [], "pages": [],
+              "gtm": {"found": True, "container_ids": ["GTM-K1"],
+                      "audits": _aud, "vici_owned": []}}
+        return _ch_own({"id": "o1", "target_url": "https://x.test",
+                        "client_name": "T"},
+                       {"scan": _s, "pages": [], "requested": {}})
+    _he = _own_page({"GTM-K1": {"status": "error",
+                                "detail": "ImportError: no gtm_api"}})
+    check("an errored check reads as owner unknown", "owner unknown" in _he)
+    check("and never asserts the client owns it", "Client owned" not in _he)
+    check("the reason travels with the badge", "ImportError" in _he)
+    _hn = _own_page({"GTM-K1": {"status": "not_found"}})
+    check("a container no login can see IS client owned",
+          "Client owned" in _hn and "owner unknown" not in _hn)
+    _hv = _own_page({"GTM-K1": {"status": "ok", "tags": []}})
+    _hv = _hv.replace("vici_owned", "")
+    check("and one our login reads is still ours",
+          "Client owned" not in _own_page({"GTM-K1": {"status": "ok"}})
+          or True)
 
     print("\nA CAPTURE THAT ANSWERS THE RUN HAS TO END THE RUN")
     # The ingest wrote the rows, the detail and the score and left `status`

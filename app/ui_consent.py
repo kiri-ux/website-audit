@@ -83,6 +83,11 @@ _DEFS = {
               "finished loading. A platform can be installed and still show "
               "nobody a banner — wrong trigger, a geo rule, a broken "
               "script — and a banner nobody sees gates nothing.",
+    "gtag_outside": "A Google tag switched on by a line of code in the "
+                    "site's own pages while a Tag Manager container is also "
+                    "installed. Google is ending support for that "
+                    "combination; the tag stops collecting once the change "
+                    "reaches the container.",
     "gtm": "Google Tag Manager. One container script on the page that loads "
            "every other tag, so gating the container is how you gate them "
            "all at once.",
@@ -420,6 +425,7 @@ _PAGE_CSS = ("<style>"
              "white-space:nowrap}"
              ".vown--vici{background:var(--navy);color:#fff}"
              ".vown--client{background:#EDE3F5;color:#5B2B77}"
+             ".vown--hold{background:#FDF6EC;color:#8A5D05}"
              # ---- per-page detail ----------------------------------------
              ".vpage{border:1px solid var(--line);border-radius:8px;"
              "background:#fff;margin:0 0 8px}"
@@ -1114,6 +1120,31 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
                _owner,
                _trackers(_pre_real[:12], page_col=any(
                    t.get("_page") for t in _pre_real)))
+    _gt_out = list((gtm or {}).get("gtag_outside") or [])
+    if _gt_out:
+        _n = len(_gt_out)
+        _issue("bad",
+               f"{e(', '.join(_gt_out))} will stop firing",
+               f"{'This tag is' if _n == 1 else 'These tags are'} set up twice: "
+               f"a Tag Manager container is on the site, and the same "
+               f"{'tag is' if _n == 1 else 'tags are'} also switched on by a "
+               f"line of code sitting in the site's own pages. Google is "
+               f"ending support for that combination, and when the change "
+               f"reaches this container "
+               f"{'the tag stops' if _n == 1 else 'those tags stop'} "
+               f"collecting.",
+               "Remove the hardcoded gtag('config', …) line from the page "
+               "template or CMS and set the tag up inside the container "
+               "instead. Check every template and plugin, not just the "
+               "homepage."
+               + (" Vici does the container half." if _ours else ""),
+               CLIENT,
+               "<div class='vurl'>Found in the page source: "
+               + e(", ".join(_gt_out))
+               + ((" &middot; already configured inside the container: "
+                   + e(", ".join((gtm or {}).get("gtag_inside") or [])))
+                  if (gtm or {}).get("gtag_inside") else "")
+               + "</div>")
     if scan.get("consent_mode_default") is False and (gtm or {}).get("found"):
         _issue("warn",
                "Google tags are not told to wait",
@@ -1215,6 +1246,25 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
             _own = ("<span class='vown vown--vici' title='One of our Google "
                     "logins can read this container through the Tag Manager "
                     "API'>Vici owned</span>")
+        elif gtm.get("audits") and any(
+                (a_ or {}).get("status") == "error"
+                for a_ in (gtm.get("audits") or {}).values()):
+            # A CHECK THAT ERRORED IS NOT A CLIENT-OWNED CONTAINER.
+            #
+            # Every audit coming back "error" was rendering as "Client owned —
+            # no authorized Vici login can see this container", which is a
+            # statement about the CLIENT made from a failure on OUR side. It
+            # is the same rule the rest of this codebase runs on: a Need
+            # Access describes the run, never the site. If the Tag Manager
+            # call did not complete, the honest answer is that we do not know
+            # yet — and the reason is on the row, because the most common
+            # cause is a module or a credential missing on this deployment.
+            _err = next((str((a_ or {}).get("detail") or "")
+                         for a_ in (gtm.get("audits") or {}).values()
+                         if (a_ or {}).get("status") == "error"), "")
+            _own = ("<span class='vown vown--hold' title='"
+                    + e(_err or "The Tag Manager check did not complete")
+                    + "'>owner unknown</span>")
         elif gtm.get("audits"):
             _own = ("<span class='vown vown--client' title='No authorized "
                     "Vici login can see this container'>Client owned</span>")
@@ -1239,6 +1289,14 @@ def consent_html(audit: dict, detail: dict | None, tabs: str = "") -> str:
             "Google Tag Manager" + (f" {_own}" if _own else ""),
             _chip("found", "ok") if gtm.get("found") else _chip("not found", "hold"),
             ", ".join(f"<code>{e(i)}</code>" for i in ids) + _readbit or "—"])
+    if gtm.get("found"):
+        _go = list(gtm.get("gtag_outside") or [])
+        cfg_rows.append([
+            "gtag('config') outside the container" + _t("gtag_outside"),
+            _chip("found", "bad") if _go else _chip("none", "ok"),
+            (", ".join(f"<code>{e(i)}</code>" for i in _go)
+             + " &mdash; Google is ending support for this combination"
+             if _go else "&mdash;")])
     cfg_rows.append([
         "Consent Mode default",
         _chip("set", "ok") if cm is True else
