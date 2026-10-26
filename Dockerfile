@@ -2,7 +2,7 @@
 # Installing Chromium onto a plain python:slim base is possible but brittle —
 # it breaks on every upstream libc/font change. Start from the image that is
 # tested against the browser version you're pinning.
-FROM mcr.microsoft.com/playwright/python:v1.42.0-jammy
+FROM mcr.microsoft.com/playwright/python:v1.64.1-jammy
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -26,7 +26,7 @@ ENV PYTHONUNBUFFERED=1 \
 # font lacks rather than printing a black box, so the failure was silent.
 # The definition badge itself is drawn as vector and never depended on this.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends fonts-dejavu-core fonts-roboto \
+ && apt-get install -y --no-install-recommends ca-certificates fonts-dejavu-core fonts-roboto \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /srv
